@@ -1,0 +1,43 @@
+# Build outputs
+build/
+*.obj
+*.lib
+*.exp
+*.pdb
+*.exe
+*.dll
+*.ilk
+__pycache__/
+*.pyc
+
+# game data, and anything derived from the client - never committed
+*.tsv
+# except the one table rc1.0 ships: our weapon level ladder (data\README.md)
+!data/challenges.tsv
+*.csv
+*.dat
+*.csf
+*.gscc
+*.ff
+*.pak
+*.xpak
+*.sabs
+version_orig.dll
+XINPUT9_1_0.dll
+
+# release packages: the zip is a release asset, never a blob
+release/
+release/*.zip
+*.zip
+
+# local evidence and study material
+trace/
+backup/
+archive/
+probe/
+
+# editor / OS
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini

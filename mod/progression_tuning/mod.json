@@ -1,0 +1,8 @@
+{
+    "name": "Progression Tuning",
+    "author": "ripsawuk",
+    "version": "1.0",
+    "type": "ui,script",
+    "requires": [],
+    "description": "Progression tuning mod for Kronos client (v1.41+ compatible) aiming to restore original game functionality related to progression."
+}

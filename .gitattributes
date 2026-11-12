@@ -1,0 +1,12 @@
+# The mod's Lua and everything the replay reads must stay LF: the replay asserts it, and the loader reads it.
+* text=auto eol=lf
+
+# Batch files are happiest with CRLF.
+*.cmd text eol=crlf
+
+# Never touched
+*.zip binary
+*.dll binary
+
+# The shipped table is installed as it is: no eol or encoding conversion, ever.
+data/*.tsv -text

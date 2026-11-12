@@ -1,0 +1,22 @@
+; clienthook - the proxy's export table. Each name the process imports is answered by the ch_ wrapper,
+; which calls the original version_orig.dll. Hand-written because the wrappers cannot be called by the
+; imported names directly: winver.h already declares those names, so the definitions carry a ch_ prefix.
+LIBRARY version
+EXPORTS
+    GetFileVersionInfoA=ch_GetFileVersionInfoA
+    GetFileVersionInfoByHandle=ch_GetFileVersionInfoByHandle
+    GetFileVersionInfoExA=ch_GetFileVersionInfoExA
+    GetFileVersionInfoExW=ch_GetFileVersionInfoExW
+    GetFileVersionInfoSizeA=ch_GetFileVersionInfoSizeA
+    GetFileVersionInfoSizeExA=ch_GetFileVersionInfoSizeExA
+    GetFileVersionInfoSizeExW=ch_GetFileVersionInfoSizeExW
+    GetFileVersionInfoSizeW=ch_GetFileVersionInfoSizeW
+    GetFileVersionInfoW=ch_GetFileVersionInfoW
+    VerFindFileA=ch_VerFindFileA
+    VerFindFileW=ch_VerFindFileW
+    VerInstallFileA=ch_VerInstallFileA
+    VerInstallFileW=ch_VerInstallFileW
+    VerLanguageNameA=ch_VerLanguageNameA
+    VerLanguageNameW=ch_VerLanguageNameW
+    VerQueryValueA=ch_VerQueryValueA
+    VerQueryValueW=ch_VerQueryValueW
