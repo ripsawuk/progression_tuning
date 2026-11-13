@@ -633,7 +633,7 @@ DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
 SHIP_LUA_LEN = 159729
 SHIP_LUA_SHA = "2A989E66CDEDBB05B1B29F820B301C8CCFC1E86F2E85406D63A77209D707A010"
-LITERAL_SHA = "4AB72DCB79F2DA35B1FFAFDFC162FAF517B94E197D1E4AAF437CD37A6650C108"
+LITERAL_SHA = "3B6E80C6A98B3FB1BB9EBF49B271A3F6D2F3550B8C3E012AC7E2FF4B58BD32E0"
 LITERAL_REMOVED = [
     " ah=",
     " err=",
@@ -793,6 +793,74 @@ LITERAL_ADDED = [
     "weaponLevel",
     "diag off",
     "pt_diag_off",
+    " 101644 b=",
+    " 131708 b=",
+    " agree=",
+    " bit0=",
+    " bit1=",
+    " bundle=",
+    " bundleType=",
+    " cat=",
+    " complete=false progress=",
+    " complete=true progress=",
+    " csv=",
+    " diff=",
+    " hex=",
+    " isComplete=",
+    " k398=",
+    " k400=",
+    " live=",
+    " lvl=",
+    " lvl=1 reward=",
+    " max=",
+    " our=",
+    " prestigeRef=",
+    " ranks=",
+    " rewardData=",
+    " src=",
+    " wkhead=",
+    " wlevel=",
+    " x=",
+    "3",
+    "7C6F4A53654BFFDF",
+    "E1A4D0E8679C1CCB",
+    "GetAmount",
+    "GetRewardDataUnlockedAtWeaponLevel",
+    "IsChallengeComplete",
+    "QB1 ",
+    "QB1 done=none",
+    "QB10 ref=",
+    "QB11 id=",
+    "QB11 row=none",
+    "QB2 ",
+    "QB2 api=",
+    "QB3 hash=",
+    "QB4 ",
+    "QB5 anchor 126605 b=",
+    "QB5 diff ",
+    "QB5 n=",
+    "QB6 ",
+    "QB7 ",
+    "QB8 prestige0=",
+    "QB9 ref=",
+    "category",
+    "false",
+    "getactiveweaponranktablebundle",
+    "getactiveweaponranktableranklist",
+    "getaekindfromid",
+    "getlootiteminfofromid",
+    "getprimaryprojectfromref",
+    "hash_7dc362a78cf1d3d3",
+    "id315",
+    "isComplete",
+    "levelUnlock",
+    "lui_use_gl_splash",
+    "pt_diagb",
+    "rbdiag",
+    "reticle",
+    "t10_me_p55_bgloves",
+    "true",
+    "type",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
@@ -2242,6 +2310,216 @@ def diag_match(lua51):
     n = len(blk)
     pump(rt, 40)
     check("diag: and prints once, not per tick", len(rc1d_lines(lines_of(rt))) == n, str(n))
+
+
+QB_WEEKS = r"""
+Challenge[xhash('IsChallengeComplete')] = function(c, id) return id == 60333 or id == 60334 end
+ROWS['zmweekly'] = {
+  ['60330'] = { id = '60330', ref = 'w1', amount = '3' },
+  ['60331'] = { id = '60331', ref = 'w2', amount = '10' },
+  ['60332'] = { id = '60332', ref = 'w3', amount = '10' },
+  ['60333'] = { id = '60333', ref = 'w4', amount = '10' },
+  ['60334'] = { id = '60334', ref = 'w5', amount = '10' } }
+SET_OC(60331, 1, 0)
+SET_OC(60332, 9, 0)
+SET_OC(60333, 5, 0)
+SET_OC(60334, 10, 0)
+WeeklyChallenge = {}
+WeeklyChallenge[xhash('getallweeklychallenges')] = function(c, opts)
+  return { { achievementID = 60330, isComplete = false, progress = { default = 52 },
+             data = { type = 'weekly' } },
+           { achievementID = 60333, isComplete = true, progress = { default = 5 },
+             data = { type = 'weekly2' } } }
+end
+"""
+
+QB_CAMO_ROW = ("(function() local s = rawget(_G, 'ProgressionTuning').camo.rows"
+               " for k in pairs(s) do s[k] = nil end"
+               " s['probe'] = { id = 107478, th = { 100, 200 }, n = 0 } end)()")
+
+
+def rb_lines(lines):
+    return [ln for ln in lines if "rbdiag:" in ln]
+
+
+def rb_end(lines):
+    for ln in lines:
+        m = re.search(r"rbdiag: end \((\d+) lines\)", ln)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def rb_rt(lua51, extra="", b=True, d=True, frontend=True, slabs=None, after=""):
+    rt = new_rt(lua51, frontend=frontend, src=False)
+    rt.execute(DIAGFIX)
+    if extra:
+        rt.execute(extra)
+    if slabs:
+        lua_slabs(rt, slabs_of(slabs))
+        rt.execute("SET_G11(21)")
+    if d:
+        rt.execute("SET_TOGGLE('pt_diag', 1)")
+    if b:
+        rt.execute("SET_TOGGLE('pt_diagb', 1)")
+    load(rt)
+    if after:
+        rt.eval(after)
+    pump(rt, 8)
+    return rt
+
+
+def diag_qb_gate(lua51):
+    rt = rb_rt(lua51, b=False)
+    check("diag B: the second switch on its own prints nothing - it is off by default",
+          not rb_lines(lines_of(rt)), " | ".join(rb_lines(lines_of(rt))[:3]))
+
+    rt.execute("SET_TOGGLE('pt_diagb', 1)")
+    pump(rt, 8)
+    blk = rb_lines(lines_of(rt))
+    check("diag B: the second switch prints one block that names its vm, its ref and its cap",
+          count_line(blk, "rbdiag: 1 block") == 1
+          and has_line(blk, "rbdiag: 1 block vm=menu ref=sat_pi_alcor cap=40"), " | ".join(blk[:2]))
+    check("diag B: it closes with a line that counts its own lines", rb_end(blk) == len(blk),
+          "end=%s lines=%d" % (rb_end(blk), len(blk)))
+    check("diag B: every line of it carries the prefix",
+          all("rbdiag:" in ln for ln in blk) and blk[-1].startswith("progression_tuning: rbdiag"),
+          " | ".join(blk[:2]))
+    check("diag B: the block is bounded", len(blk) <= 40, str(len(blk)))
+    n = len(blk)
+    pump(rt, 40)
+    check("diag B: it prints once per switch on, not once per tick",
+          len(rb_lines(lines_of(rt))) == n, str(n))
+
+    rt.execute("SET_TOGGLE('pt_diag', 0)")
+    pump(rt, 8)
+    rt.execute("SET_TOGGLE('pt_diagb', 0)")
+    pump(rt, 8)
+    rt.execute("SET_TOGGLE('pt_diagb', 1)")
+    pump(rt, 8)
+    check("diag B: the first switch silences it too",
+          len(rb_lines(lines_of(rt))) == n, str(len(rb_lines(lines_of(rt)))))
+
+
+def diag_qb_weeklies(lua51):
+    rt = rb_rt(lua51, extra=QB_WEEKS)
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB1 - the three weeklies nearest completion, worst first",
+          has_line(blk, "QB1 60330 complete=false progress=52/3 status=nil")
+          and has_line(blk, "QB1 60332 complete=false progress=9/10 status=nil")
+          and has_line(blk, "QB1 60331 complete=false progress=1/10 status=nil"),
+          " | ".join([ln for ln in blk if "QB1 " in ln]))
+    check("diag B: QB1 - the two the native already calls complete",
+          has_line(blk, "QB1 60333 complete=true progress=5/10 status=nil")
+          and has_line(blk, "QB1 60334 complete=true progress=10/10 status=nil"),
+          " | ".join([ln for ln in blk if "QB1 " in ln]))
+    check("diag B: QB2 - the api, its count and one row's own fields",
+          has_line(blk, "QB2 api=table n=2")
+          and has_line(blk, "QB2 60330 isComplete=false progress=52 type=weekly")
+          and has_line(blk, "QB2 60333 isComplete=true progress=5 type=weekly2"),
+          " | ".join([ln for ln in blk if "QB2 " in ln]))
+    check("diag B: QB3 - the same title tried four ways beside the mod's own answer",
+          has_line(blk, "QB3 hash=L:hash_7dc362a78cf1d3d3")
+          and has_line(blk, " hex=L:0x7dc362a78cf1d3d3")
+          and has_line(blk, "key=L:challenge/jup_ch_weekly_challenge_completed")
+          and has_line(blk, "wkhead=L:#x37dc362a78cf1d3d3"),
+          " | ".join([ln for ln in blk if "QB3 " in ln]))
+
+    bare = rb_rt(lua51, extra="ROWS['zmweekly'] = {}")
+    blk2 = rb_lines(lines_of(bare))
+    check("diag B: a vm with no weekly api and no weekly rows still answers both",
+          has_line(blk2, "QB2 api=nil n=none") and has_line(blk2, "QB1 done=none")
+          and not has_line(blk2, "raised"),
+          " | ".join([ln for ln in blk2 if "QB1 " in ln or "QB2 " in ln]))
+
+
+def diag_qb_kinds(lua51):
+    agree = ("Challenge[xhash('getaekindfromid')] = function(id) return { id = 30 } end\n"
+             "Challenge[xhash('GetAEKindID')] = function(n) return 30 end")
+    rt = rb_rt(lua51, extra=agree)
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB4 - the kind a challenge id carries, beside the kind a name resolves",
+          has_line(blk, "QB4 id315=table:table(1) reticle=number:30 match=true"),
+          " | ".join([ln for ln in blk if "QB4 " in ln]))
+
+    no = ("Challenge[xhash('getaekindfromid')] = function(id) return { id = 31 } end\n"
+          "Challenge[xhash('GetAEKindID')] = function(n) return 30 end")
+    rt2 = rb_rt(lua51, extra=no)
+    blk2 = rb_lines(lines_of(rt2))
+    check("diag B: QB4 - and says so when the two disagree",
+          has_line(blk2, "reticle=number:30 match=false"),
+          " | ".join([ln for ln in blk2 if "QB4 " in ln]))
+
+
+def diag_qb_owned(lua51):
+    extra = ("Loot[xhash('IsOwned')] = function(c, id)"
+             " if tonumber(id) == 126605 or tonumber(id) == 131708 then return 1 end return 0 end\n"
+             "Loot[xhash('getlootiteminfofromid')] = function(id)"
+             " if tonumber(id) == 126605 then return { category = 'attachment', type = 7 } end"
+             " return { category = 'camo' } end\n"
+             "SET_BUNDLE(126605, { levelUnlock = 7, [xhash('weaponunlock')] = 'sat_pi_alcor' })")
+    rt = rb_rt(lua51, extra=extra, slabs=[126605, 101644])
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB5 - the payload bit against the client's own answer, id by id",
+          has_line(blk, "QB5 n=24 bit1=2 bit0=22 agree=22 diff=2"),
+          " | ".join([ln for ln in blk if "QB5 " in ln]))
+    check("diag B: QB5 - the two that disagree are named with both answers",
+          has_line(blk, "QB5 diff 131708 bit=0 live=1")
+          and has_line(blk, "QB5 diff 101644 bit=1 live=0"),
+          " | ".join([ln for ln in blk if "QB5 diff" in ln]))
+    check("diag B: QB5 - the three anchors are named whether they agree or not",
+          has_line(blk, "QB5 anchor 126605 b=1 131708 b=0 101644 b=1"),
+          " | ".join([ln for ln in blk if "QB5 anchor" in ln]))
+    check("diag B: QB6 - the item's category, its level, its owner and the owner's level",
+          has_line(blk, "QB6 126605 cat=attachment type=7 lvl=7 owner=sat_pi_alcor wlevel=2")
+          and has_line(blk, "QB6 131708 cat=camo type=nil lvl=nil owner=nil wlevel=nil"),
+          " | ".join([ln for ln in blk if "QB6 " in ln]))
+
+
+def diag_qb_ladder(lua51):
+    extra = ("RBB = { [string.char(0xdf,0xff,0x4b,0x65,0x53,0x4a,0x6f,0x7c)] = 1800 }\n"
+             "PRESTIGE[string.char(0xcb,0x1c,0x9c,0x67,0xe8,0xd0,0xa4,0xe1)] ="
+             " function(c) return 1800 end\n"
+             "PROGRESSION[xhash('getactiveweaponranktablebundle')] = function(c) return RBB end\n"
+             "PROGRESSION[xhash('getactiveweaponranktableranklist')] = function(c)"
+             " return { { rank = 0 }, { rank = 1 }, { rank = 2 } } end")
+    rt = rb_rt(lua51, extra=extra)
+    blk = rb_lines(lines_of(rt))
+    q8 = [ln for ln in blk if "QB8 " in ln]
+    check("diag B: QB8 - the prestige getter answers twice and the bundle field is read",
+          len(q8) == 1 and q8[0].count("1800") == 3 and has_line(q8, "bundleType=number"),
+          " | ".join(q8))
+    check("diag B: QB9 - the rank list's length beside the level ceiling",
+          has_line(blk, "QB9 ref=sat_pi_alcor ranks=3 max=55"),
+          " | ".join([ln for ln in blk if "QB9 " in ln]))
+
+
+def diag_qb_sources(lua51):
+    rt = rb_rt(lua51, extra="SET_REWARD('sat_pi_alcor', { [1] = { 126605 } })\n"
+                           "Challenge[xhash('GetAmount')] = function(id, k, c)"
+                           " if k == 398 then return 81 end return 100 end",
+                after=QB_CAMO_ROW)
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB10 - the reward list is the source the card would use",
+          has_line(blk, "QB10 ref=sat_pi_alcor lvl=1 reward=1 rewardData=0 weapon=0 csv=0 "
+                        "src=reward splash=nil"),
+          " | ".join([ln for ln in blk if "QB10 " in ln]))
+    check("diag B: QB11 - the row's own amount for the kind and for our target, both raw",
+          has_line(blk, "QB11 id=107478 k398=81 k400=100 our=100"),
+          " | ".join([ln for ln in blk if "QB11 " in ln]))
+
+    rt2 = rb_rt(lua51, extra="SET_WD('sat_pi_alcor', { 2200, 3400 }, { { 126605 } })")
+    check("diag B: QB10 - with no reward list the weapon data answers instead",
+          has_line(rb_lines(lines_of(rt2)), "reward=0 rewardData=0 weapon=1 csv=0 src=weapon"),
+          " | ".join([ln for ln in rb_lines(lines_of(rt2)) if "QB10 " in ln]))
+
+    rt3 = rb_rt(lua51, extra="CELL('wp', 'weaponRef', 'sat_pi_alcor', 'loot', '126605|130000')")
+    blk3 = rb_lines(lines_of(rt3))
+    check("diag B: QB10 - and the csv cell is the last of the three",
+          has_line(blk3, "reward=0 rewardData=0 weapon=0 csv=1 src=csv"),
+          " | ".join([ln for ln in blk3 if "QB10 " in ln]))
+    check("diag B: QB11 - a vm with no camo row says so instead of printing nothing",
+          has_line(blk3, "QB11 row=none"), " | ".join([ln for ln in blk3 if "QB11 " in ln]))
 
 
 def splashck_lines(lines):
@@ -5374,6 +5652,12 @@ def main():
             diag_q7_fields(lua51)
             diag_neutral(lua51)
             diag_match(lua51)
+            diag_qb_gate(lua51)
+            diag_qb_weeklies(lua51)
+            diag_qb_kinds(lua51)
+            diag_qb_owned(lua51)
+            diag_qb_ladder(lua51)
+            diag_qb_sources(lua51)
             splashck_arm(lua51)
             splashck_absent(lua51)
             splashck_slot(lua51)

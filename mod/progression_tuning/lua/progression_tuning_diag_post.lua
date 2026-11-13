@@ -947,6 +947,327 @@ local function ck_head()
   return v
 end
 
+-- a value behind a hashed key whatever its type
+local function rc1d_hval(t, hex)
+  if type(t) ~= "table" then return nil end
+  local want = string.gsub(string.upper(hex), "^0+", "")
+  local okb, b = pcall(function() return t[rc1d_bytes(hex)] end)
+  if okb and b ~= nil then return b end
+  local found = nil
+  pcall(function()
+    for k, v in pairs(t) do
+      if found == nil then
+        local s = string.gsub(string.upper(tostring(k)), "[^0-9A-F]", "")
+        if string.len(s) == 17 and string.sub(s, 1, 1) == "3" then s = string.sub(s, 2) end
+        s = string.gsub(s, "^0+", "")
+        if s == want then found = v end
+      end
+    end
+  end)
+  return found
+end
+
+-- the weekly rows as id and amount
+local function rc1d_weekrows()
+  local out, n = {}, 0
+  local tbl = rc1d_csv("aezmweeklychallenges")
+  local cols = rc1d_field(tbl, "cols")
+  local f = fn_of(rawget(_G, "StringTable"), "tablereadallrows")
+  if type(cols) ~= "table" or f == nil then return out, 0 end
+  local idcol = rc1d_field(cols, "id")
+  local ok, rows = pcall(f, csv_file(tbl), { id = idcol, amount = rc1d_field(cols, "amount") }, idcol)
+  if not ok or type(rows) ~= "table" then return out, 0 end
+  pcall(function()
+    for k, row in pairs(rows) do
+      if n < 20 then
+        local id = nil
+        if type(row) == "table" then id = tonumber(rc1d_field(row, "id")) end
+        if id == nil then id = tonumber(k) end
+        if id ~= nil then
+          n = n + 1
+          out[n] = { id = id, amount = tonumber(rc1d_field(row, "amount")) }
+        end
+      end
+    end
+  end)
+  return out, n
+end
+
+-- the second block its own switch and prefix
+local RB = "rbdiag"
+local RB_CAP = 40
+local RB_ON = false
+
+-- reads eleven questions and writes nothing
+local function rc1diag_b()
+  local out, n, full = {}, 0, false
+  local function put(t)
+    if n >= RB_CAP - 2 then full = true return end
+    n = n + 1
+    out[n] = t
+  end
+  local KIND_WEAPON = 398
+  local CHF = rawget(_G, "Challenge")
+  local LOOTT = rawget(_G, "LOOT")
+  local LT = rawget(_G, "Loot")
+  local PRG = rawget(_G, "PROGRESSION")
+  local PRE = rawget(_G, "PRESTIGE")
+  local WEP = rawget(_G, "WEAPON")
+  local ids = {}
+  local i = 1
+  while i <= #RC1D_IDS do
+    ids[i] = RC1D_IDS[i][1]
+    i = i + 1
+  end
+  ids[#ids + 1] = 101644
+  local wrows, wcount = rc1d_weekrows()
+  local icf = fn_of(CHF, "IsChallengeComplete")
+  local near, done, nnear, ndone = {}, {}, 0, 0
+  i = 1
+  while i <= wcount do
+    local r = wrows[i]
+    local rec = rc1d_rec(r.id)
+    local fin = false
+    if icf ~= nil then
+      local okc, v = pcall(icf, 0, r.id)
+      if okc and v == true then fin = true end
+    end
+    local e = { id = r.id, amount = r.amount or 0, progress = rc1d_prog(rec), rec = rec }
+    if fin then
+      if ndone < 2 then
+        ndone = ndone + 1
+        done[ndone] = e
+      end
+    else
+      nnear = nnear + 1
+      near[nnear] = e
+    end
+    i = i + 1
+  end
+  table.sort(near, function(a, b)
+    local ax, bx = a.amount, b.amount
+    if ax <= 0 then ax = 1 end
+    if bx <= 0 then bx = 1 end
+    if a.progress * bx ~= b.progress * ax then return a.progress * bx > b.progress * ax end
+    return a.id < b.id
+  end)
+  local shown = 0
+  for j = 1, #near do
+    if shown < 3 then
+      local e = near[j]
+      shown = shown + 1
+      put("QB1 " .. e.id .. " complete=false progress=" .. e.progress .. "/" .. e.amount
+        .. " status=" .. rc1d_txt(rc1d_field(e.rec, "status")))
+    end
+  end
+  for j = 1, #done do
+    local e = done[j]
+    shown = shown + 1
+    put("QB1 " .. e.id .. " complete=true progress=" .. e.progress .. "/" .. e.amount
+      .. " status=" .. rc1d_txt(rc1d_field(e.rec, "status")))
+  end
+  if shown == 0 then put("QB1 done=none") end
+  local wct = rawget(_G, "WeeklyChallenge")
+  local gaw = fn_of(wct, "getallweeklychallenges")
+  local wlist = nil
+  if gaw ~= nil then
+    local okl, v = pcall(gaw, 0, { includeComplete = true })
+    if okl and type(v) == "table" then wlist = v end
+  end
+  local wn = 0
+  if wlist ~= nil then pcall(function() for _ in pairs(wlist) do wn = wn + 1 end end) end
+  put("QB2 api=" .. type(wct) .. " n=" .. (wlist ~= nil and wn or "none"))
+  if wlist ~= nil then
+    local seen = 0
+    for j = 1, #wlist do
+      if seen < 3 then
+        local e = wlist[j]
+        if type(e) == "table" then
+          seen = seen + 1
+          put("QB2 " .. rc1d_txt(rc1d_field(e, "achievementID")) .. " isComplete="
+            .. rc1d_txt(rc1d_field(e, "isComplete")) .. " progress="
+            .. rc1d_prog(e) .. " type="
+            .. rc1d_txt(rc1d_field(rc1d_field(e, "data"), "type")))
+        end
+      end
+    end
+  end
+  put("QB3 hash=" .. ck_loc("hash_7dc362a78cf1d3d3") .. " x=" .. ck_loc("#x37dc362a78cf1d3d3")
+    .. " hex=" .. ck_loc("0x7dc362a78cf1d3d3")
+    .. " key=" .. ck_loc("challenge/jup_ch_weekly_challenge_completed") .. " wkhead=" .. ck_head())
+  local kaf, kbf = fn_of(CHF, "getaekindfromid"), fn_of(CHF, "GetAEKindID")
+  local msame = "false"
+  if kaf ~= nil and kbf ~= nil then
+    local oka, va = pcall(kaf, 315)
+    local okb, vb = pcall(kbf, "ae_kind_reticle")
+    local na, nb = nil, nil
+    if oka then
+      if type(va) == "table" then na = tonumber(rc1d_field(va, "id")) else na = tonumber(va) end
+    end
+    if okb then nb = tonumber(vb) end
+    if na ~= nil and nb ~= nil and na == nb then msame = "true" end
+  end
+  put("QB4 " .. rc1d_clause("id315", kaf, 315) .. " " .. rc1d_clause("reticle", kbf, "ae_kind_reticle")
+    .. " match=" .. msame)
+  local livef = fn_of(LT, "IsOwned")
+  local _, _, _, gorigo = lockview()
+  local origf = gorigo
+  if type(origf) ~= "function" then origf = livef end
+  local b1, b0, same, diff = 0, 0, 0, 0
+  local dips, ndip, bits = {}, 0, {}
+  i = 1
+  while i <= #ids do
+    local id = ids[i]
+    local bit = 0
+    if A.bit(id) then bit = 1 end
+    bits[id] = bit
+    local lv, ov = nil, nil
+    if livef ~= nil then
+      local okl, v = pcall(livef, 0, id)
+      if okl then lv = v end
+    end
+    if origf ~= nil then
+      local oko, v = pcall(origf, 0, id)
+      if oko then ov = v end
+    end
+    local lb = 0
+    if lv ~= nil and lv ~= false and lv ~= 0 then lb = 1 end
+    if bit == 1 then b1 = b1 + 1 else b0 = b0 + 1 end
+    if lb == bit then
+      same = same + 1
+    else
+      diff = diff + 1
+      if ndip < 4 then
+        ndip = ndip + 1
+        dips[ndip] = { id = id, bit = bit, live = lv, orig = ov }
+      end
+    end
+    i = i + 1
+  end
+  put("QB5 n=" .. #ids .. " bit1=" .. b1 .. " bit0=" .. b0 .. " agree=" .. same .. " diff=" .. diff)
+  i = 1
+  while i <= ndip do
+    local d = dips[i]
+    put("QB5 diff " .. d.id .. " bit=" .. d.bit .. " live=" .. rc1d_txt(d.live)
+      .. " orig=" .. rc1d_txt(d.orig))
+    i = i + 1
+  end
+  put("QB5 anchor 126605 b=" .. tostring(bits[126605]) .. " 131708 b=" .. tostring(bits[131708])
+    .. " 101644 b=" .. tostring(bits[101644]))
+  local six = { 126605, 131708, 101644 }
+  i = 1
+  while i <= #six do
+    local id = six[i]
+    local info = call(LT, "getlootiteminfofromid", id)
+    if type(info) ~= "table" then info = call(LOOTT, "getlootiteminfofromid", id) end
+    local b = A.gbundle(id)
+    local cat, ty, lvl, owner, wl = "nil", "nil", "nil", "nil", "nil"
+    if type(info) == "table" then
+      cat = rc1d_txt(rc1d_field(info, "category"))
+      ty = rc1d_txt(rc1d_field(info, "type"))
+    end
+    if type(b) == "table" then
+      lvl = rc1d_txt(rc1d_field(b, "levelUnlock"))
+      local ow = rc1d_field(b, "weaponunlock")
+      if type(ow) == "string" and ow ~= "" then
+        owner = ow
+        wl = rc1d_txt(call(PRG, "GetWeaponLevel", 0, ow))
+      end
+    end
+    put("QB6 " .. id .. " cat=" .. cat .. " type=" .. ty .. " lvl=" .. lvl .. " owner=" .. owner
+      .. " wlevel=" .. wl)
+    i = i + 1
+  end
+  local ppf = fn_of(LOOTT, "getprimaryprojectfromref")
+  put("QB7 " .. rc1d_clause("sat", ppf, "sat_pi_alcor") .. " "
+    .. rc1d_clause("t10", ppf, "t10_me_p55_bgloves"))
+  local pg = rc1d_hval(PRE, "E1A4D0E8679C1CCB")
+  local p0, pr = "absent", "absent"
+  if pg ~= nil then
+    local ok0, v0 = pcall(pg, 0)
+    if ok0 then p0 = rc1d_txt(v0) end
+    local okr, vr = pcall(pg, RC1D_REF)
+    if okr then pr = rc1d_txt(vr) end
+  end
+  local b8 = call(PRG, "getactiveweaponranktablebundle", RC1D_REF)
+  local bv = rc1d_hval(b8, "7C6F4A53654BFFDF")
+  put("QB8 prestige0=" .. p0 .. " prestigeRef=" .. pr .. " bundle=" .. rc1d_txt(bv)
+    .. " bundleType=" .. type(bv))
+  local rk = "none"
+  local rl = call(PRG, "getactiveweaponranktableranklist", 0)
+  if type(rl) == "table" then rk = #rl end
+  put("QB9 ref=" .. RC1D_REF .. " ranks=" .. rk
+    .. " max=" .. rc1d_txt(call(PRG, "getmaxweaponlevel", RC1D_REF)))
+  local rw = call(PRG, "GetRewardUnlockedAtWeaponLevel", RC1D_REF, 1)
+  local rd = call(PRG, "GetRewardDataUnlockedAtWeaponLevel", RC1D_REF, 1)
+  local nw, nd = 0, 0
+  if type(rw) == "table" then nw = #rw end
+  if type(rd) == "table" then nd = #rd end
+  local nwp = 0
+  local wdat = call(WEP, "getweapondataforref", RC1D_REF)
+  local wp = rc1d_field(wdat, "weaponProgression")
+  if type(wp) == "table" then
+    local ul = rc1d_field(wp[2], "levelunlocks")
+    if type(ul) == "table" then nwp = #ul end
+  end
+  local nc = 0
+  local cell = A.cell_pick(A.gun_tries(RC1D_REF), "loot")
+  if type(cell) == "string" then
+    local first = string.match(cell, "[^|]+")
+    if first ~= nil then
+      for part in string.gmatch(first, "[^+]+") do
+        if tonumber(part) ~= nil then nc = nc + 1 end
+      end
+    end
+  end
+  -- the three list sources one of them is stupid
+  local src = "none"
+  if nw > 0 then
+    src = "reward"
+  elseif nwp > 0 then
+    src = "weapon"
+  elseif nc > 0 then
+    src = "csv"
+  end
+  local splash = A.dv("lui_use_gl_splash")
+  if splash == nil or splash == "" then splash = "nil" end
+  put("QB10 ref=" .. RC1D_REF .. " lvl=1 reward=" .. nw .. " rewardData=" .. nd .. " weapon=" .. nwp
+    .. " csv=" .. nc .. " src=" .. src .. " splash=" .. splash)
+  local cs = S.camo
+  local rows = nil
+  if type(cs) == "table" then rows = cs.rows end
+  local c0 = nil
+  if type(rows) == "table" then
+    local _, first = next(rows)
+    if type(first) == "table" then c0 = first end
+  end
+  if c0 == nil then
+    put("QB11 row=none")
+  else
+    local cid = rc1d_field(c0, "id")
+    local th = c0.th
+    local our = nil
+    if type(th) == "table" then
+      local m = tonumber(c0.n) or 0
+      our = th[m + 1]
+      if our == nil then our = th[#th] end
+    end
+    put("QB11 id=" .. tostring(cid) .. " k398=" .. rc1d_txt(call(CHF, "GetAmount", cid, KIND_WEAPON, 0))
+      .. " k400=" .. rc1d_txt(call(CHF, "GetAmount", cid, 400, 0)) .. " our=" .. rc1d_txt(our))
+  end
+  if full then
+    put("cap=" .. RB_CAP .. " reached - the rest of the block is not printed")
+  end
+  log(RB .. ": 1 block vm=" .. (S.front and "menu" or "match") .. " ref=" .. RC1D_REF
+    .. " cap=" .. RB_CAP)
+  local k = 1
+  while k <= n do
+    log(RB .. ": " .. (k + 1) .. " " .. out[k])
+    k = k + 1
+  end
+  log(RB .. ": end (" .. (n + 2) .. " lines)")
+end
+
 -- a type entry as priority and override
 local function ck_mt(mt, name)
   local e = rc1d_field(mt, name)
@@ -1141,6 +1462,10 @@ local function rc1diag_chain()
   if diag_off() then return end
   pcall(ck_poll)
   rc1diag_poll()
+  local don = toggle("pt_diag", false)
+  local bot = don and toggle("pt_diagb", false)
+  if bot and RB_ON ~= true then pcall(rc1diag_b) end
+  RB_ON = bot
 end
 
 -- the carry forward world this vm runs in
