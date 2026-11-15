@@ -1,4 +1,4 @@
-local VERSION = "v1.0"
+local VERSION = "v1.1"
 local PREFIX = "progression_tuning: "
 
 local TICK_MS = 250
@@ -1004,7 +1004,7 @@ local function grefresh()
   if S.tracker ~= nil then S.tracker.drops, S.tracker.inN, S.tracker.outN = {}, 0, 0 end
   G.badver = nil
   log("g11 rebuilt from serial " .. G.serial .. " (locks " .. G.locks .. ", " .. G.inScope .. " in scope)"
-    .. (typepair() and " types=attachment,camo" or " types=scope-fallback"))
+    .. (typepair() and " types=attachment,camo,reticle" or " types=scope-fallback"))
 end
 
 -- a line for the serials the rebuild skipped

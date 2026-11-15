@@ -16,7 +16,6 @@ source tree, the image's strings, the package scan, the client's own bytes, and 
 
 | driver (`tools\*.c` -> `build\*.exe`) | unit under test | harness |
 |---|---|---|
-| `aexp_test.c` | `src\aexp.c` | `test_aexp.py` |
 | `g11_test.c` | `src\g11.c` | `test_g11.py` |
 | `master_test.c` | `src\master.c` + `src\resolve.c` | `test_master.py` |
 | `detour_test.c` | `src\master.c` + `src\resolve.c` | `test_detour.py` |
@@ -29,15 +28,14 @@ source tree, the image's strings, the package scan, the client's own bytes, and 
 | `logline_test.c` | the shipped `src\proxy_main.c`, included outright | **none - run it by hand**, see below |
 
     python -I clienthook\tools\test_proxy.py      -> pass-through: OK - identical (no game folder needed)
-    python -I clienthook\tools\test_aexp.py       -> needs an ae_events.log, or KRONOS_GAME_DIR
     python -I clienthook\tools\test_g11.py
     python -I clienthook\tools\test_master.py
     python -I clienthook\tools\test_detour.py
     python -I clienthook\tools\test_nativepay.py
     python -I clienthook\tools\test_resolve.py    -> needs KRONOS_GAME_DIR (it reads the client file)
 
-`test_aexp.py` and `test_resolve.py` skip with a `SKIP` line and exit 0 when no game folder is configured; the
-rest need only the build.
+`test_resolve.py` skips with a `SKIP` line and exits 0 when no game folder is configured; the rest need only the
+build.
 
 `logline_test.exe` has no Python harness: the bounded log line is static, so the only way to call it with an
 over-long text is from its own translation unit. Run it and read the last line:

@@ -375,6 +375,7 @@ function SET_TYPE(id, t) TYPES[tostring(id)] = t end
 function CLR_TYPES() TYPES = {} end
 function DROP_TYPE_API() LOOT[xhash("gettypeforid")] = nil end
 function DROP_TYPES() LOOT.itemTypes = nil end
+function DROP_RETICLE_TYPE() LOOT.itemTypes.RETICLE = nil end
 function TYPE_RAISES()
   LOOT[xhash("gettypeforid")] = function(id) error("no type") end
 end
@@ -384,7 +385,10 @@ LOOT[xhash("gettypeforid")] = function(id)
   if t ~= nil then return t end
   return 7
 end
-LOOT.itemTypes = { ATTACHMENT = 7, CAMO = 13, WEAPON = 2, PLAYERCARD = 11 }
+LOOT.itemTypes = { ATTACHMENT = 7, CAMO = 13, RETICLE = 14, WEAPON = 2, PLAYERCARD = 11 }
+DEFID = {}
+function SET_DEFAULT(id) DEFID[tostring(id)] = true end
+LOOT[xhash("isitemdefault")] = function(id) return DEFID[tostring(id)] == true end
 LOOT[xhash("isunlockedwithid")] = function(c, id) LCALLS = LCALLS + 1; return OWNED end
 
 ATTACHMENT = {}
@@ -631,9 +635,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 159729
-SHIP_LUA_SHA = "2A989E66CDEDBB05B1B29F820B301C8CCFC1E86F2E85406D63A77209D707A010"
-LITERAL_SHA = "3B6E80C6A98B3FB1BB9EBF49B271A3F6D2F3550B8C3E012AC7E2FF4B58BD32E0"
+SHIP_LUA_LEN = 160400
+SHIP_LUA_SHA = "1AFCC286B2FDF079932E3E17F4F968819ABD0BD406500B59DAF4EFC6B84AE041"
+LITERAL_SHA = "5238D6B85C132CCDEC40F39F986D8966F00DD40B633AF9AA221604142FE03F84"
 LITERAL_REMOVED = [
     " ah=",
     " err=",
@@ -641,9 +645,11 @@ LITERAL_REMOVED = [
     " isp=",
     " len=",
     " playing=",
+    "Challenge.GetAEKindID refused ae_kind_reticle",
     "GetSoundLengthMS",
     "IsSoundPlaying",
     "PlaySound",
+    "no Challenge.GetAEKindID in this VM",
     "sndprobe alias=",
     "sndprobe: no PlaySound in this vm",
     "sndprobe: raised alias=",
@@ -658,6 +664,7 @@ LITERAL_ADDED = [
     " - not one of ours, so no row is read for it",
     " - the camo map is truncated and",
     " belongs to ",
+    " complete=",
     " computed and it keeps the client's own answer",
     " is ",
     " is ",
@@ -688,7 +695,10 @@ LITERAL_ADDED = [
     "WeeklyChallengeSplashNotification",
     "WeaponLevel",
     "a",
+    "absent",
+    "absent/absent",
     "acarry:",
+    "ae_kind_reticle_cer",
     "b",
     "c",
     "camo bundles ",
@@ -702,6 +712,7 @@ LITERAL_ADDED = [
     "carry-forward: pack=unknown dvar=",
     "chalD",
     "chalWB",
+    "chal week gate - no Challenge.IsChallengeComplete in this VM, the vanished row is carded",
     "challenges",
     "challenge/jup_ch_weekly_challenge_completed",
     "core absent - no part ",
@@ -726,6 +737,7 @@ LITERAL_ADDED = [
     "mwcf_box_pools",
     " names ",
     " none",
+    "nil",
     "nosplash",
     "part main armed ",
     "prestige lock: the weapon list is longer than ",
@@ -737,6 +749,7 @@ LITERAL_ADDED = [
     "progression_tuning: part reticles armed",
     "progression_tuning: part splash armed",
     "progression_tuning: part weaponxp armed",
+    "raised",
     "ret",
     "reticles",
     " route=",
@@ -754,6 +767,7 @@ LITERAL_ADDED = [
     "t10_",
     "weaponxp",
     "weaponProgression",
+    "weekgate",
     "weekly body=",
     "weekly body=empty",
     "weekly card id=",
@@ -801,8 +815,10 @@ LITERAL_ADDED = [
     " bundle=",
     " bundleType=",
     " cat=",
+    " cer=",
     " complete=false progress=",
     " complete=true progress=",
+    " ctl=",
     " csv=",
     " diff=",
     " hex=",
@@ -817,14 +833,21 @@ LITERAL_ADDED = [
     " prestigeRef=",
     " ranks=",
     " rewardData=",
+    " show315=",
+    " show422=",
     " src=",
+    " tbl315=",
+    " tbl422=",
     " wkhead=",
     " wlevel=",
     " x=",
+    "/absent",
     "3",
     "7C6F4A53654BFFDF",
+    "Dvar",
     "E1A4D0E8679C1CCB",
     "GetAmount",
+    "GetFileTableByType",
     "GetRewardDataUnlockedAtWeaponLevel",
     "IsChallengeComplete",
     "QB1 ",
@@ -832,6 +855,8 @@ LITERAL_ADDED = [
     "QB10 ref=",
     "QB11 id=",
     "QB11 row=none",
+    "QB12 bool=",
+    "QB13 aek=",
     "QB2 ",
     "QB2 api=",
     "QB3 hash=",
@@ -855,12 +880,16 @@ LITERAL_ADDED = [
     "isComplete",
     "levelUnlock",
     "lui_use_gl_splash",
+    "lui_weekly_challenge_menu_enabled",
     "pt_diagb",
     "rbdiag",
     "reticle",
+    "RETICLE",
+    " types=attachment,camo,reticle",
     "t10_me_p55_bgloves",
     "true",
     "type",
+    "xhashdvar",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
@@ -1004,7 +1033,7 @@ def static_checks():
 
     check("mod.json: name", mod["name"] == "Progression Tuning", mod.get("name"))
     check("mod.json: author", mod["author"] == "ripsawuk", mod.get("author"))
-    check("mod.json: version 1.0", mod["version"] == "1.0", mod.get("version"))
+    check("mod.json: version 1.1", mod["version"] == "1.1", mod.get("version"))
     check("mod.json: type names the ui and the script", mod["type"] == "ui,script", mod.get("type"))
     check("mod.json: requires is empty", mod["requires"] == [])
     check("mod.json: the keys are the installed mods' six, in order",
@@ -1079,7 +1108,7 @@ def static_checks():
           and LOAD_ORDERS["harness"] != LOAD_ORDERS["reversed"]
           and len(set(tuple(v) for v in LOAD_ORDERS.values())) == 3)
 
-    found = [k for k in REMOVED if k in ship]
+    found = [k for k in REMOVED if k in ship.replace('"RETICLE"', "")]
     have = literals(SRC)
     gone = sorted(set(LITERAL_REMOVED) & have)
     dig = hashlib.sha256(("\n".join(sorted(have)) + "\n").encode()).hexdigest().upper()
@@ -1150,13 +1179,15 @@ def static_checks():
     check("lua: refuses a payload whose length is not 65,536",
           "local GHEXLEN = 65536" in SRC and "refused, keeping the previous payload" in SRC)
     check("lua: the answer needs the bit AND the client's own item type",
-          "glockedNow(n)" in SRC and "GTYPE_A" in SRC and "GTYPE_C" in SRC
-          and "local locked = (bit == 1 and (t == GTYPE_A or t == GTYPE_C) and not gcarried(n))" in SRC)
+          "glockedNow(n)" in SRC and "GTYPE_A" in SRC and "GTYPE_C" in SRC and "GTYPE_R" in SRC
+          and "local locked = (bit == 1 and (t == GTYPE_A or t == GTYPE_C"
+                  " or (t == GTYPE_R and not gdefault(n)))" in SRC
+          and "    and not gcarried(n))" in SRC)
     check("lua: a locked answer is refused when the id's own ref is carried",
           "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 1)
     check("lua: types come from the client's own constants and its own getter",
           '"gettypeforid"' in SRC and '"itemTypes"' in SRC and '"ATTACHMENT"' in SRC
-          and '"CAMO"' in SRC and "GTYPE_A, GTYPE_C = na, nc" in SRC)
+          and '"CAMO"' in SRC and '"RETICLE"' in SRC and "GTYPE_A, GTYPE_C, GTYPE_R = na, nc, tonumber(r)" in SRC)
     check("lua: the type is cached per id",
           "G.typecache[n] = t" in SRC and "local c = G.typecache[n]" in SRC)
     check("lua: a missing type answers from the shipped scope, never from everything",
@@ -1390,7 +1421,7 @@ def g11_reader(lua51, ls):
     lines = lines_of(rt)
 
     check("g11: the menu context arms the reader",
-          has_line(lines, "armed v1.0 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
+          has_line(lines, "armed v1.1 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
           " | ".join(lines[:6]))
     check("g11: both ownership doors are wrapped",
           has_line(lines, "g11 isunlockedwithid wrapped (2 of 2: PROGRESSION, LOOT)"), " | ".join(lines[:8]))
@@ -1665,7 +1696,7 @@ def s1_door(lua51, ls):
     lines = lines_of(rt)
 
     check("s1: the rebuild line names the type route the door will use",
-          has_line(lines, "g11 rebuilt from serial 31 (locks %d, %d in scope) types=attachment,camo"
+          has_line(lines, "g11 rebuilt from serial 31 (locks %d, %d in scope) types=attachment,camo,reticle"
                            % (len(lit), len(ls & set(lit)))),
           " | ".join([ln for ln in lines if "rebuilt" in ln]))
 
@@ -1759,6 +1790,65 @@ def s1_door(lua51, ls):
     quiet.eval("ASK_L(150030)")
     check("s1: and the second ask for the same id is answered from the cached type",
           int(quiet.eval("TYPECALLS")) == tq, str(int(quiet.eval("TYPECALLS")) - tq))
+
+
+def s1_reticle(lua51, ls):
+    ret = [129198, 129199]
+    dflt = [109901]
+    camo = [131708]
+    attach = [126608]
+    nobit = 129300
+    lit = ret + dflt + camo + attach
+    slabs = slabs_of(lit)
+
+    def run(pre=""):
+        rt = new_rt(lua51, frontend=True, src=False, pre=pre)
+        lua_slabs(rt, slabs)
+        for i in ret + dflt:
+            rt.execute("SET_TYPE(%d, 14)" % i)
+        rt.execute("SET_TYPE(%d, 13)" % camo[0])
+        rt.execute("SET_TYPE(%d, 7)" % attach[0])
+        rt.execute("SET_DEFAULT(%d)" % dflt[0])
+        rt.execute("SET_G11(51)")
+        load(rt)
+        pump(rt, 1)
+        return rt
+
+    rt = run()
+    lines = lines_of(rt)
+    check("s1 reticle: the rebuild line names the reticle type beside the two",
+          has_line(lines, "types=attachment,camo,reticle"),
+          " | ".join([ln for ln in lines if "rebuilt" in ln]))
+    check("s1 reticle: a reticle id with a bit reads locked on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in ret),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in ret]))
+    check("s1 reticle: a default reticle with a bit keeps the client's own answer",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in dflt),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in dflt]))
+    check("s1 reticle: a reticle with no bit at all reads unchanged on both doors",
+          rt.eval("ASK_P(%d)" % nobit) is True and rt.eval("ASK_L(%d)" % nobit) is True,
+          str(rt.eval("ASK_L(%d)" % nobit)))
+    check("s1 reticle: an attachment and a camo with a bit still read locked beside it",
+          all(rt.eval("ASK_L(%d)" % i) is False for i in camo + attach),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in camo + attach]))
+    lines = lines_of(rt)
+    check("s1 reticle: a reticle decision is logged as type 14",
+          has_line(lines, "door id=129198 type=14 bit=1 answer=locked"),
+          " | ".join([ln for ln in lines if "door id=" in ln][:6]))
+    check("s1 reticle: and the default reticle is logged as a pass",
+          has_line(lines, "door id=109901 type=14 bit=1 answer=pass"),
+          " | ".join([ln for ln in lines if "door id=" in ln][:6]))
+
+    rt2 = run("DROP_RETICLE_TYPE()")
+    check("s1 reticle: with no RETICLE in itemTypes a reticle with a bit keeps the client's own answer",
+          all(rt2.eval("ASK_P(%d)" % i) is True and rt2.eval("ASK_L(%d)" % i) is True for i in ret),
+          str([(i, rt2.eval("ASK_L(%d)" % i)) for i in ret]))
+    check("s1 reticle: and the door is unchanged for an attachment and a camo with a bit",
+          all(rt2.eval("ASK_L(%d)" % i) is False for i in camo + attach),
+          str([(i, rt2.eval("ASK_L(%d)" % i)) for i in camo + attach]))
+    check("s1 reticle: and no reticle line is printed when the type is missing",
+          not has_line(lines_of(rt2), "type=14"),
+          " | ".join([ln for ln in lines_of(rt2) if "door id=" in ln][:4]))
 
 
 def s1_fallback(lua51, ls):
@@ -2520,6 +2610,54 @@ def diag_qb_sources(lua51):
           " | ".join([ln for ln in blk3 if "QB10 " in ln]))
     check("diag B: QB11 - a vm with no camo row says so instead of printing nothing",
           has_line(blk3, "QB11 row=none"), " | ".join([ln for ln in blk3 if "QB11 " in ln]))
+
+
+def diag_qb_dvar(lua51):
+    rt = rb_rt(lua51, extra="SET_DVAR('lui_weekly_challenge_menu_enabled', '1')"
+                            " SET_DVAR('lui_use_gl_splash', '1')")
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB12 - the weekly switch and its control read by the api's own dvar read",
+          has_line(blk, "QB12 bool=nil wk=1 ctl=1"),
+          " | ".join([ln for ln in blk if "QB12 " in ln]))
+
+    rt2 = rb_rt(lua51, extra="Dvar[xhash('GetDvarBool')] = function(k) return true end"
+                             " SET_DVAR('lui_weekly_challenge_menu_enabled', '1')")
+    blk2 = rb_lines(lines_of(rt2))
+    check("diag B: QB12 - and the bool getter is named by type when the vm carries one",
+          has_line(blk2, "QB12 bool=function wk=1 ctl="),
+          " | ".join([ln for ln in blk2 if "QB12 " in ln]))
+
+
+QB_KINDS = r"""
+Challenge[xhash('GetAEKindID')] = function(n)
+  if n == 'ae_kind_reticle' or n == xhash('ae_kind_reticle') then return 422 end
+  if n == 'ae_kind_reticle_cer' or n == xhash('ae_kind_reticle_cer') then return 315 end
+  return nil
+end
+Challenge[xhash('shouldshowcompletionsplash')] = function(o) return tonumber(o.kind) == 422 end
+Challenge[xhash('GetFileTableByType')] = function(kind, id)
+  if tonumber(kind) == 422 then return { aeID = tonumber(id) } end
+  return nil
+end
+"""
+
+
+def diag_qb_reticle(lua51):
+    rt = rb_rt(lua51, extra=QB_KINDS)
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB13 - both reticle kinds by plain name and by hashed key, both splash answers,"
+          " both table answers by type",
+          has_line(blk, "QB13 aek=422/422 cer=315/315 show422=true show315=false"
+                        " tbl422=table tbl315=nil"),
+          " | ".join([ln for ln in blk if "QB13 " in ln]))
+
+    bare = rb_rt(lua51)
+    blk2 = rb_lines(lines_of(bare))
+    check("diag B: QB13 - a vm with none of the three natives answers absent, and raises nothing",
+          has_line(blk2, "QB13 aek=absent/absent cer=absent/absent show422=absent show315=absent"
+                         " tbl422=absent tbl315=absent")
+          and not has_line(blk2, "raised"),
+          " | ".join([ln for ln in blk2 if "QB13 " in ln or "raised" in ln]))
 
 
 def splashck_lines(lines):
@@ -4667,6 +4805,10 @@ Challenge[xhash("GetAEKindID")] = function(name)
   return nil
 end
 Challenge[xhash("isweeklychallengetype")] = function(k) return k == 585 or k == 590 end
+COMPLETE = {}
+function SET_COMPLETE(id) COMPLETE[id] = true end
+Challenge[xhash("IsChallengeComplete")] = function(c, id) return COMPLETE[id] == true end
+function SET_CHAL_REC(id) OC[tostring(id)] = { xp = 0, rank = 0 } end
 DAILYROWS = {}
 function SET_DAILY_ROW(id, amount, ref)
   DAILYROWS[#DAILYROWS + 1] = { id = id, amount = amount, ref = ref, kind = 438 }
@@ -4854,13 +4996,73 @@ def week_sweep(lua51):
     check("G: without the store call the client's own weekly list is the source, by presence",
           has_line(l, "chal sweep src=list kind=585,590,592 n=2 done=0 prog=2"),
           " | ".join([x for x in l if "chal sweep" in x][:1]))
+    rt.execute("SET_COMPLETE(70300)")
     rt.execute("DROP_WEEK_LIST()")
     pump(rt, 40)
     l = lines_of(rt)
     check("G: a weekly that disappears from that list is carded as a completion",
           count_line(l, "chal week cross id=70300 ref=sat_weekly_zm_list_a was=1 now=gone") == 1
-          and has_line(l, "weekly card id=70300 row=sat_weekly_zm_list_a kind=585 target=4 value=4 route=B"),
+          and has_line(l, "weekly card id=70300 row=sat_weekly_zm_list_a kind=585 target=4 value=4 route=B")
+          and has_line(l, "chal week cross id=70300 ref=sat_weekly_zm_list_a was=1 now=gone v=4/4"
+                          " complete=true"),
           " | ".join([x for x in l if "chal week cross" in x][:2]))
+
+    rt = new_rt(lua51, src=False)
+    rt.execute(PRE)
+    rt.execute("DROP_FORK()")
+    rt.execute("SET_WEEK_LIST(70500, '4', 'sat_weekly_zm_neg_a', 585, 1)")
+    rt.execute("SET_CHAL_REC(70500)")
+    rt.execute("SET_G11(220)")
+    load(rt)
+    pump(rt, 24)
+    rt.execute("DROP_WEEK_LIST()")
+    pump(rt, 32)
+    l = lines_of(rt)
+    check("G: a vanished weekly the game calls incomplete is not carded, and the line says so",
+          count_line(l, "chal week cross id=70500") == 1
+          and has_line(l, "chal week cross id=70500 ref=sat_weekly_zm_neg_a was=1 now=gone v=4/4"
+                          " complete=false")
+          and not has_line(l, "weekly card id=70500")
+          and rt.eval("NEVENTS()") == 0,
+          " | ".join([x for x in l if "chal week cross" in x or " card id=" in x][:3]))
+
+    rt = new_rt(lua51, src=False)
+    rt.execute(PRE)
+    rt.execute("DROP_FORK()")
+    rt.execute("SET_WEEK_LIST(70600, '4', 'sat_weekly_zm_gone_a', 585, 1)")
+    rt.execute("SET_G11(221)")
+    load(rt)
+    pump(rt, 24)
+    rt.execute("DROP_WEEK_LIST()")
+    pump(rt, 32)
+    l = lines_of(rt)
+    check("G: a vanished weekly whose record is gone too is carded once, as unknown",
+          count_line(l, "chal week cross id=70600") == 1
+          and has_line(l, "chal week cross id=70600 ref=sat_weekly_zm_gone_a was=1 now=gone v=4/4"
+                          " complete=unknown")
+          and has_line(l, "weekly card id=70600 row=sat_weekly_zm_gone_a kind=585 target=4 value=4"
+                          " route=B"),
+          " | ".join([x for x in l if "chal week cross" in x or " card id=" in x][:3]))
+
+    rt = new_rt(lua51, src=False)
+    rt.execute(PRE)
+    rt.execute("DROP_FORK()")
+    rt.execute("Challenge[xhash('IsChallengeComplete')] = nil")
+    rt.execute("SET_WEEK_LIST(70700, '4', 'sat_weekly_zm_nogate_a', 585, 1)")
+    rt.execute("SET_G11(222)")
+    load(rt)
+    pump(rt, 24)
+    rt.execute("DROP_WEEK_LIST()")
+    pump(rt, 32)
+    l = lines_of(rt)
+    check("G: with no gate in the VM one line says so and the vanished row is carded as today",
+          count_line(l, "chal week gate - no Challenge.IsChallengeComplete in this VM,"
+                        " the vanished row is carded") == 1
+          and has_line(l, "chal week cross id=70700 ref=sat_weekly_zm_nogate_a was=1 now=gone v=4/4"
+                          " complete=unknown")
+          and has_line(l, "weekly card id=70700 row=sat_weekly_zm_nogate_a kind=585 target=4 value=4"
+                          " route=B"),
+          " | ".join([x for x in l if "chal week cross" in x or "chal week gate" in x][:3]))
 
     rt = new_rt(lua51, src=False)
     rt.execute(PRE)
@@ -5016,10 +5218,6 @@ end
 GUNSMITH[xhash("getreticlechallengesforcategory")] = function(c, id) return RETMAP[id] end
 function DROP_RETGUNSMITH() GUNSMITH[xhash("getreticlechallengesforcategory")] = nil end
 function DROP_RETAPI() CSV.reticleChallenges = nil end
-function RET_KIND_OFF()
-  local f = Challenge[xhash("GetAEKindID")]
-  Challenge[xhash("GetAEKindID")] = function(name) return f(name) end
-end
 """
 
 RET_SETUP = """
@@ -5051,7 +5249,7 @@ def reticle_rows(lua51):
     pump(rt, 40)
     l = lines_of(rt)
     check("I: the reticle rows come from the mode's own list, one entry per optic row",
-          has_line(l, "reticle rows n=2 zm=2 mode=2 kind=315 sample=56892,66938 cap=36"),
+          has_line(l, "reticle rows n=2 zm=2 mode=2 kind=422 sample=66938,56892 cap=36"),
           " | ".join([x for x in l if "reticle rows" in x][:1]))
     check("I: the multiplayer optic row is never watched in a Zombies match",
           not has_line(l, "reticle prime id=57777"), " | ".join([x for x in l if "57777" in x][:1]))
@@ -5063,7 +5261,7 @@ def reticle_rows(lua51):
     l = lines_of(rt)
     check("I: a reticle tier crossing cards once, with the reticle kind and that row",
           rt.eval("NAMED('completed_challenge')") == 1
-          and int(rt.eval("LASTOF('completed_challenge').kind")) == 315
+          and int(rt.eval("LASTOF('completed_challenge').kind")) == 422
           and rt.eval("LASTOF('completed_challenge').id") == 66938,
           "%s / %s / %s" % (rt.eval("NAMED('completed_challenge')"),
                             rt.eval("LASTOF('completed_challenge').kind"),
@@ -5077,8 +5275,8 @@ def reticle_rows(lua51):
     pump(rt, 8)
     blk = rc1d_lines(lines_of(rt))
     check("I: the diagnostic names the reticle gate and the optic the row belongs to",
-          has_line(blk, "Q14 reticle rows n=2 zm=2 kind=315")
-          and has_line(blk, "Q14 gate kind=315 id=66938 answer=true")
+          has_line(blk, "Q14 reticle rows n=2 zm=2 kind=422")
+          and has_line(blk, "Q14 gate kind=422 id=66938 answer=true")
           and has_line(blk, "Q14 reticle 66938 itemref=") and has_line(blk, "name=ITEM 129198"),
           " | ".join([x for x in blk if "Q14" in x][:3]))
 
@@ -5131,10 +5329,18 @@ end
     load(rt4)
     pump(rt4, 40)
     l4 = lines_of(rt4)
-    check("I: without the reticle aeKind one line says so and no card route is invented",
-          count_line(l4, "reticle rows - Challenge.GetAEKindID refused ae_kind_reticle") == 1
-          and not has_line(l4, "progression_tuning: error"),
-          " | ".join([x for x in l4 if "reticle" in x or "error" in x][:3]))
+    check("I: the rows line carries kind 422 even when the name lookup answers nil",
+          count_line(l4, "reticle rows n=2 zm=2 mode=2 kind=422 sample=66938,56892 cap=36") == 1
+          and not has_line(l4, "no reticle card this match"),
+          " | ".join([x for x in l4 if "reticle rows" in x][:1]))
+    rt4.execute("SET_CAMO_PROGRESS(66938, 200)")
+    pump(rt4, 40)
+    check("I: and a crossing cards kind 422 with the row it crossed",
+          rt4.eval("NAMED('completed_challenge')") == 1
+          and int(rt4.eval("LASTOF('completed_challenge').kind")) == 422
+          and rt4.eval("LASTOF('completed_challenge').id") == 66938,
+          "%s / %s" % (rt4.eval("NAMED('completed_challenge')"),
+                       rt4.eval("LASTOF('completed_challenge').kind")))
 
     rt5 = new_rt(lua51, src=False)
     rt5.execute(PRE)
@@ -5149,6 +5355,62 @@ end
           and has_line(lines_of(rt5), "reticle prime id=66938 row=sat_ch_reticle_zm_sat_microreflex07"
                                       " value=200 tiers=3 hits=1"),
           " | ".join([x for x in lines_of(rt5) if "reticle" in x][:2]))
+
+    rt6 = new_rt(lua51, src=False)
+    rt6.execute(PRE)
+    rt6.execute("""
+SET_MODE_ROW('sat_pi_alcor', 2, 68970, {'100'})
+SET_CAMO_PROGRESS(68970, 0)
+local i = 1
+while i <= 40 do
+  SET_RET(66900 + i - 1, 'sat_ch_reticle_zm_sat_row' .. tostring(i), '100|200')
+  SET_CAMO_PROGRESS(66900 + i - 1, 0)
+  i = i + 1
+end
+SET_CAMO_PROGRESS(66938, 121)
+""")
+    rt6.execute("SET_G11(225)")
+    rt6.execute("SET_PAID('v1;125186:900:1')")
+    load(rt6)
+    pump(rt6, 40)
+    l6 = lines_of(rt6)
+    check("I: the watch window orders by stored progress, so the one row carrying it survives the cap",
+          count_line(l6, "reticle rows n=36 zm=40 mode=2 kind=422 sample=66938,66900,66901,66902,66903,66904"
+                         " cap=36 clipped=4") == 1
+          and has_line(l6, "reticle prime id=66938 row=sat_ch_reticle_zm_sat_row39 value=121 tiers=2 hits=1"),
+          " | ".join([x for x in l6 if "reticle" in x][:2]))
+    rt6.execute("SET_CAMO_PROGRESS(66938, 200)")
+    pump(rt6, 40)
+    check("I: and a crossing on that row cards kind 422",
+          rt6.eval("NAMED('completed_challenge')") == 1
+          and int(rt6.eval("LASTOF('completed_challenge').kind")) == 422
+          and rt6.eval("LASTOF('completed_challenge').id") == 66938
+          and has_line(lines_of(rt6), "reticle card id=66938 row=sat_ch_reticle_zm_sat_row39 target=200"
+                                     " route=A value=200 tier=2"),
+          "%s / %s" % (rt6.eval("NAMED('completed_challenge')"),
+                       rt6.eval("LASTOF('completed_challenge').kind")))
+
+    rt7 = new_rt(lua51, src=False)
+    rt7.execute(PRE)
+    rt7.execute("""
+SET_MODE_ROW('sat_pi_alcor', 2, 68970, {'100'})
+SET_CAMO_PROGRESS(68970, 0)
+local i = 1
+while i <= 40 do
+  SET_RET(66900 + i - 1, 'sat_ch_reticle_zm_sat_row' .. tostring(i), '100|200')
+  i = i + 1
+end
+""")
+    rt7.execute("SET_G11(226)")
+    rt7.execute("SET_PAID('v1;125186:900:1')")
+    load(rt7)
+    pump(rt7, 40)
+    l7 = lines_of(rt7)
+    check("I: with no store record on any row the rows line is today's",
+          count_line(l7, "reticle rows n=36 zm=40 mode=2 kind=422"
+                         " sample=66900,66901,66902,66903,66904,66905 cap=36 clipped=4") == 1
+          and not has_line(l7, "reticle prime"),
+          " | ".join([x for x in l7 if "reticle rows" in x][:1]))
 
 
 THREE_GUNS = """
@@ -5626,6 +5888,7 @@ def main():
             g11_absent(lua51)
             g11_order_and_cap(lua51, ls)
             s1_door(lua51, ls)
+            s1_reticle(lua51, ls)
             s1_fallback(lua51, ls)
             s3_prestige(lua51, ls)
             s3_universal(lua51)
@@ -5658,6 +5921,8 @@ def main():
             diag_qb_owned(lua51)
             diag_qb_ladder(lua51)
             diag_qb_sources(lua51)
+            diag_qb_dvar(lua51)
+            diag_qb_reticle(lua51)
             splashck_arm(lua51)
             splashck_absent(lua51)
             splashck_slot(lua51)

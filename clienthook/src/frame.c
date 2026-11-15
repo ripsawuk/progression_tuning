@@ -1,38 +1,30 @@
 // clienthook - the frame: what runs in the game process beside the proxy and the payment.
 //
-// Five things, and nothing else:
+// Four things, and nothing else:
 //
 //   1. the install gate. One mutex, created here and handed to master.c's installer and to nativepay.c's, so
 //      the two thread-freeze windows (five call sites, one call site) can never overlap. It lives as long as
 //      the process and is never closed.
-//   2. the game's own event stream. `players\ae_events.log` is written by the client through WriteFile /
-//      WriteFileEx; the hooks on those two slots feed `aexp.c`'s line parser, and the match boundary
-//      (`ev=109`) resets the published per-match figures. Read-only: no byte of the stream is changed.
-//   3. the attachment-lock payload (g11). After each of the client's own publishes, the client's live lock
+//   2. the attachment-lock payload (g11). After each of the client's own publishes, the client's live lock
 //      bitmap (`*(void**)(client+0x466CD8)`, 32,768 B) is copied into 33 hex dvars plus a header, through the
 //      client's own register-or-find, so every lock it holds can reach the menu. No client byte is written.
-//   4. the published weapon XP (`ptsplash_paid`). `nativepay.c` calls `pubxp_on_paid` around each payment on
+//   3. the published weapon XP (`ptsplash_paid`). `nativepay.c` calls `pubxp_on_paid` around each payment on
 //      the client's drain thread; this file reads the gun's record (`rec+0x560`) at both edges, keeps the
 //      ledger in `pubxp.c` and stores the text into the dvar from its own thread.
-//   5. the forced publish (`publish.c`). A thread of ours calls the client's own serialise-and-publish
+//   4. the forced publish (`publish.c`). A thread of ours calls the client's own serialise-and-publish
 //      (`client+0x962E0`) once a paid payment or a moved record asks for one, at most once per second, so the
 //      state a menu reads is taken during a match instead of only at a boundary.
 //
-// Four threads: `probe_thread` (waits for the client image, installs master.c's hook, patches the four import
-// slots), `g11_thread` (arms the payload and publishes it), `pxp_thread` (arms `ptsplash_paid`, writes it, and
-// emits the log lines for both channels) and `publish_thread` (the forced publish's clock and its record scan).
-// The client's own threads only ever reach memory here: `ae_on_rec` and `pubxp_on_paid` run on them, and neither
-// opens a file except the once-per-match `ev=109` line.
-//
-// Import-table patching only - no inline hooks - so the client's own code is never rewritten: `patch_module`
-// walks a module's import descriptors and replaces the four named slots, recording what the kernel32 address
-// was first so every hook calls through.
+// Four threads: `probe_thread` (waits for the client image and installs master.c's hook), `g11_thread` (arms
+// the payload and publishes it), `pxp_thread` (arms `ptsplash_paid`, writes it, and emits the log lines for
+// both channels) and `publish_thread` (the forced publish's clock and its record scan).
+// The client's own threads only ever reach memory here: `pubxp_on_paid` and `pubxp_match_reset` run on them,
+// and neither opens a file.
 
 #include <windows.h>
 #include <stdio.h>
 #include <wchar.h>
 
-#include "aexp.h"
 #include "g11.h"
 #include "master.h"
 #include "pubxp.h"
@@ -64,186 +56,14 @@ static const char *frame_reason(char *buf, size_t cap, const RS_TABLE *rs, RS_FE
     return buf;
 }
 
-// Both are called from threads that are not ours (the client's drain thread and the ae_events path), so they
-// are forward-declared above the block that defines them.
+// Both are called from threads that are not ours (the client's drain thread), so they are forward-declared
+// above the block that defines them.
 void pubxp_on_paid(unsigned int loot, int amount, int phase);
 void pubxp_match_reset(void);
 
 // The publish gate's state (publish.h). Declared here, not beside its thread, because the payment's own hook
 // raises its want and that hook is defined above the block that drives it.
 static PUB_GATE PUB;
-
-typedef HANDLE(WINAPI *fn_create_file_w)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
-typedef HANDLE(WINAPI *fn_create_file_a)(LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
-typedef BOOL(WINAPI *fn_write_file)(HANDLE, LPCVOID, DWORD, LPDWORD, LPOVERLAPPED);
-typedef BOOL(WINAPI *fn_write_file_ex)(HANDLE, LPCVOID, DWORD, LPOVERLAPPED, LPOVERLAPPED_COMPLETION_ROUTINE);
-
-static fn_create_file_w real_create_file_w;
-static fn_create_file_a real_create_file_a;
-static fn_write_file real_write_file;
-static fn_write_file_ex real_write_file_ex;
-
-// --- the game's own event stream ---------------------------------------------------------------
-//
-// One line of `players\ae_events.log` is `<unix time>\tev=<n>\t<field>=<value>\t...` (aexp.h parses it). The
-// handle is taken from the open when the hooks are armed in time, otherwise from the first write that looks
-// like an event line (`<digits>\tev=`) and whose handle resolves to the file. A WriteFile may carry part of a
-// line or several, so the accumulator only hands over whole lines.
-//
-// Only one event is acted on here: `ev=109`, the match start, which drops every gun's per-match base so
-// `ptsplash_paid` renders 0 until the next payment. The rest of the stream is the payment's own business -
-// `nativepay.c` reads field 45 off the event it intercepts.
-
-#define AE_REJECT_MAX 64
-
-static SRWLOCK AE_LOCK = SRWLOCK_INIT;
-static HANDLE volatile AE_H = NULL;
-static HANDLE AE_REJECT[AE_REJECT_MAX];
-static int AE_REJECT_N = 0;
-static AE_ACC AE_ACCUM;
-
-static int ae_tail_is(const wchar_t *path)
-{
-    if (path == NULL)
-        return 0;
-    const wchar_t *tail = wcsrchr(path, L'\\');
-    tail = (tail == NULL) ? path : tail + 1;
-    return _wcsicmp(tail, L"ae_events.log") == 0;
-}
-
-static int ae_tail_is_a(const char *path)
-{
-    if (path == NULL)
-        return 0;
-    const char *tail = strrchr(path, '\\');
-    tail = (tail == NULL) ? path : tail + 1;
-    return _stricmp(tail, "ae_events.log") == 0;
-}
-
-static void ae_adopt(HANDLE h, DWORD access, const char *via)
-{
-    if (h == INVALID_HANDLE_VALUE || h == NULL)
-        return;
-    if ((access & (GENERIC_WRITE | GENERIC_ALL | FILE_WRITE_DATA | FILE_APPEND_DATA)) == 0)
-        return;
-    AcquireSRWLockExclusive(&AE_LOCK);
-    HANDLE old = AE_H;
-    AE_H = h;
-    AE_ACCUM.n = 0;
-    AE_ACCUM.overflow = 0;
-    ReleaseSRWLockExclusive(&AE_LOCK);
-    ch_logf("ae: ae_events.log handle taken via=%s access=0x%lX%s", via, (unsigned long)access,
-            old != NULL ? " (replaces an earlier handle)" : "");
-}
-
-static void ae_on_rec(const AE_REC *r, void *ctx)
-{
-    (void)ctx;
-    if (r->ev != 109)
-        return;
-    // ONE BOUNDARY, ONE RESET. The payment's own wrapper (nativepay_call, on the client's award call)
-    // sees ev=109 unconditionally and owns the boundary whenever it is installed - which is the case with the
-    // stock `log_events 0`, where no line ever reaches this reader. So when the wrapper is live this path stays
-    // quiet: the same boundary cannot reset twice, and a payment that arrived between the two would keep its base.
-    // This reader is the fallback for the one configuration where the wrapper is not installed (the nativepay kill
-    // switch), and then only `log_events 1` gets it the event at all.
-    if (nativepay_hook_live())
-        return;
-    ch_logf("ae: ev=109 match start - the published per-match figures reset");
-    pubxp_match_reset();
-}
-
-static void ae_absorb(LPCVOID buf, DWORD n)
-{
-    if (buf == NULL || n == 0)
-        return;
-    AcquireSRWLockExclusive(&AE_LOCK);
-    ae_feed(&AE_ACCUM, (const char *)buf, (size_t)n, ae_on_rec, NULL);
-    ReleaseSRWLockExclusive(&AE_LOCK);
-}
-
-// a write that looks like an event line, on a handle nobody has named yet
-static int ae_sniff(HANDLE h, LPCVOID buf, DWORD n)
-{
-    const char *b = (const char *)buf;
-    if (b == NULL || n < 8 || b[0] < '1' || b[0] > '9')
-        return 0;
-    DWORD lim = n < 20 ? n : 20;
-    int hit = 0;
-    for (DWORD i = 1; i + 3 < lim; i++)
-    {
-        if (b[i] == '\t' && b[i + 1] == 'e' && b[i + 2] == 'v' && b[i + 3] == '=')
-        {
-            hit = 1;
-            break;
-        }
-        if (b[i] < '0' || b[i] > '9')
-            break;
-    }
-    if (!hit)
-        return 0;
-    AcquireSRWLockShared(&AE_LOCK);
-    for (int i = 0; i < AE_REJECT_N; i++)
-    {
-        if (AE_REJECT[i] == h)
-        {
-            ReleaseSRWLockShared(&AE_LOCK);
-            return 0;
-        }
-    }
-    ReleaseSRWLockShared(&AE_LOCK);
-    // name queries can block on a synchronous pipe with a pending read: only ever ask a disk file
-    DWORD len = 0;
-    wchar_t path[MAX_PATH];
-    if (GetFileType(h) == FILE_TYPE_DISK)
-    {
-        len = GetFinalPathNameByHandleW(h, path, MAX_PATH, FILE_NAME_NORMALIZED);
-    }
-    if (len > 0 && len < MAX_PATH && ae_tail_is(path))
-    {
-        ae_adopt(h, FILE_APPEND_DATA, "write-sniff");
-        return 1;
-    }
-    AcquireSRWLockExclusive(&AE_LOCK);
-    if (AE_REJECT_N < AE_REJECT_MAX)
-        AE_REJECT[AE_REJECT_N++] = h;
-    ReleaseSRWLockExclusive(&AE_LOCK);
-    ch_logf("ae: an event-shaped write went to another file (len=%lu) - ignored", (unsigned long)len);
-    return 0;
-}
-
-static void ae_route_write(HANDLE h, LPCVOID buf, DWORD n)
-{
-    if (h == AE_H)
-    {
-        ae_absorb(buf, n);
-    }
-    else if (AE_H == NULL && ae_sniff(h, buf, n))
-    {
-        ae_absorb(buf, n);
-    }
-}
-
-static BOOL WINAPI hook_write_file(HANDLE h, LPCVOID buf, DWORD want, LPDWORD wrote, LPOVERLAPPED ov)
-{
-    BOOL ok = real_write_file(h, buf, want, wrote, ov);
-    if (ok)
-    {
-        ae_route_write(h, buf, (wrote != NULL && ov == NULL) ? *wrote : want);
-    }
-    return ok;
-}
-
-static BOOL WINAPI hook_write_file_ex(HANDLE h, LPCVOID buf, DWORD want, LPOVERLAPPED ov,
-                                      LPOVERLAPPED_COMPLETION_ROUTINE cb)
-{
-    BOOL ok = real_write_file_ex(h, buf, want, ov, cb);
-    if (ok)
-    {
-        ae_route_write(h, buf, want);
-    }
-    return ok;
-}
 
 // --- g11: the payload channel ------------------------------------------------------------------
 //
@@ -917,7 +737,8 @@ void pubxp_on_paid(unsigned int loot, int amount, int phase)
     }
 }
 
-// `ev=109` (ae_on_rec): the match boundary. Called on the thread that saw the event line, so again: no logging.
+// `ev=109`: the match boundary, from the payment's wrapper (nativepay.c) on the client's drain thread. No
+// logging here.
 // The reset is visible in the log as the publish it causes (`pubxp: published "v1;…:0;…"`), so nothing is flagged.
 void pubxp_match_reset(void)
 {
@@ -1289,109 +1110,6 @@ static DWORD WINAPI publish_thread(LPVOID unused)
     }
 }
 
-// --- import-table patching (no inline hooks) -----------------------------------------------------
-//
-// The two CreateFile hooks exist only to catch the open of `players\ae_events.log` and keep its handle; every
-// other open is passed through untouched.
-
-static HANDLE WINAPI hook_create_file_w(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa,
-                                        DWORD disp, DWORD flags, HANDLE tmpl)
-{
-    HANDLE h = real_create_file_w(name, access, share, sa, disp, flags, tmpl);
-    if (ae_tail_is(name))
-    {
-        ae_adopt(h, access, "CreateFileW");
-    }
-    return h;
-}
-
-static HANDLE WINAPI hook_create_file_a(LPCSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa,
-                                        DWORD disp, DWORD flags, HANDLE tmpl)
-{
-    HANDLE h = real_create_file_a(name, access, share, sa, disp, flags, tmpl);
-    if (ae_tail_is_a(name))
-    {
-        ae_adopt(h, access, "CreateFileA");
-    }
-    return h;
-}
-
-static int patch_one(FARPROC *slot, void *replacement, const char *what, const char *who)
-{
-    if (slot == NULL || *slot == (FARPROC)replacement)
-    {
-        return 0;
-    }
-    DWORD old = 0;
-    if (!VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &old))
-    {
-        ch_logf("frame: refused - %s %s could not be made writable", who, what);
-        return 0;
-    }
-    *slot = (FARPROC)replacement;
-    VirtualProtect(slot, sizeof(void *), old, &old);
-    return 1;
-}
-
-static int patch_module(HMODULE mod, const char *who)
-{
-    if (mod == NULL)
-    {
-        return 0;
-    }
-    BYTE *base = (BYTE *)mod;
-    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE)
-    {
-        return 0;
-    }
-    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE)
-    {
-        return 0;
-    }
-    IMAGE_DATA_DIRECTORY dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    if (dir.VirtualAddress == 0)
-    {
-        return 0;
-    }
-
-    int patched = 0;
-    IMAGE_IMPORT_DESCRIPTOR *desc = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir.VirtualAddress);
-    for (; desc->Name != 0; desc++)
-    {
-        if (desc->OriginalFirstThunk == 0)
-        {
-            continue;
-        }
-        IMAGE_THUNK_DATA *int_thunk = (IMAGE_THUNK_DATA *)(base + desc->OriginalFirstThunk);
-        IMAGE_THUNK_DATA *iat = (IMAGE_THUNK_DATA *)(base + desc->FirstThunk);
-        for (; int_thunk->u1.AddressOfData != 0; int_thunk++, iat++)
-        {
-            if (IMAGE_SNAP_BY_ORDINAL(int_thunk->u1.Ordinal))
-            {
-                continue;
-            }
-            IMAGE_IMPORT_BY_NAME *by_name = (IMAGE_IMPORT_BY_NAME *)(base + int_thunk->u1.AddressOfData);
-            const char *fn = (const char *)by_name->Name;
-            void *repl = NULL;
-            if (strcmp(fn, "CreateFileW") == 0)
-                repl = (void *)hook_create_file_w;
-            else if (strcmp(fn, "CreateFileA") == 0)
-                repl = (void *)hook_create_file_a;
-            else if (strcmp(fn, "WriteFile") == 0)
-                repl = (void *)hook_write_file;
-            else if (strcmp(fn, "WriteFileEx") == 0)
-                repl = (void *)hook_write_file_ex;
-            if (repl != NULL)
-            {
-                patched += patch_one((FARPROC *)&iat->u1.Function, repl, fn, who);
-            }
-        }
-    }
-    return patched;
-}
-
 // --- the ops check patch ---------------------------------------------------------------------------
 //
 // one byte at rva 0xe6c8e turns jne into jmp short
@@ -1561,17 +1279,6 @@ void opsfix_stop(void)
 static DWORD WINAPI probe_thread(LPVOID unused)
 {
     (void)unused;
-    HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
-    real_create_file_w = (fn_create_file_w)GetProcAddress(k32, "CreateFileW");
-    real_create_file_a = (fn_create_file_a)GetProcAddress(k32, "CreateFileA");
-    real_write_file = (fn_write_file)GetProcAddress(k32, "WriteFile");
-    real_write_file_ex = (fn_write_file_ex)GetProcAddress(k32, "WriteFileEx");
-    if (!real_create_file_w || !real_create_file_a || !real_write_file || !real_write_file_ex)
-    {
-        ch_logf("frame: refused - the kernel32 lookups failed, the reader is off");
-        return 0;
-    }
-
     for (int i = 0; i < 300; i++)
     {
         HMODULE client = GetModuleHandleW(L"XINPUT9_1_0.dll");
@@ -1584,16 +1291,11 @@ static DWORD WINAPI probe_thread(LPVOID unused)
             // threads have not started the 500 ms challenge worker, so the five call sites are almost certainly
             // idle). It refuses and logs on any signature mismatch, and nothing here depends on it.
             master_install(client);
-            int n = patch_module(client, "client");
-            int m = patch_module(GetModuleHandleW(NULL), "exe");
-            ch_logf("frame: reader armed - %d client slot(s), %d exe slot(s) (CreateFileW/A, WriteFile, "
-                    "WriteFileEx); ae_events.log ev=109 resets the published figures",
-                    n, m);
             return 0;
         }
         Sleep(100);
     }
-    ch_logf("frame: refused - the client module never appeared, the reader is off");
+    ch_logf("frame: refused - the client module never appeared");
     return 0;
 }
 
@@ -1614,6 +1316,9 @@ void ch_frame_start(void)
     // and the match boundary: the same call site sees ev=109 before the client's `log_events` gate, which is the
     // only boundary signal that exists with the stock `log_events 0`.
     nativepay_set_match_reset_hook(pubxp_match_reset);
+    // one line, once, so a reader of the log knows what the boundary depends on
+    ch_logf("frame: the match boundary comes from the payment's call site - with the payment hook off, the "
+            "published per-match figures do not reset");
     // the publish gate's state, explicitly, before any thread can raise or honour a want
     pub_init(&PUB);
 

@@ -22,9 +22,11 @@ local function csv_table(...) return A.csv_table(...) end
 local function csv_file(...) return A.csv_file(...) end
 
 local CAMO_FIELDS = { "progress", "xp", "default" }
+-- the kind the game reticle table answers to
+local RET_KIND = 422
 local RET_CAP = 36
 local WATCH_GAP_TICKS = 32
-local RET_POLL_TICKS = 32
+local RET_POLL_TICKS = 8
 
 local function enqueue(what, fn)
   local d = S.draw
@@ -41,15 +43,6 @@ local function ret_show(row, target, tier, value)
   f = f ~= nil and f.ret or nil
   if f == nil then return end
   f(row, target, tier, value)
-end
-
--- the client own reticle kind
-local function ret_kind()
-  local f = fn_of(rawget(_G, "Challenge"), "GetAEKindID")
-  if f == nil then return nil, "no Challenge.GetAEKindID in this VM" end
-  local ok, v = pcall(f, "ae_kind_reticle")
-  if not ok or v == nil then return nil, "Challenge.GetAEKindID refused ae_kind_reticle" end
-  return tonumber(v), nil
 end
 
 -- the reticle own tier list three ways
@@ -136,14 +129,6 @@ local function ret_rows()
     log("reticle rows - " .. s.why)
     return
   end
-  local kind, why = ret_kind()
-  if kind == nil then
-    s.built = true
-    s.why = why
-    log("reticle rows - " .. tostring(why) .. " - no reticle card this match")
-    return
-  end
-  s.kind = kind
   local mode = S.camo.mode
   local token = nil
   if mode == 2 then
@@ -190,7 +175,17 @@ local function ret_rows()
     src = all
     sn = an
   end
-  table.sort(src, function(a, b) return a.id < b.id end)
+  -- the rows carrying the most stored progress first
+  local val = {}
+  for j = 1, sn do
+    val[src[j]] = rec_value(S.record(src[j].id), CAMO_FIELDS) or 0
+  end
+  table.sort(src, function(a, b)
+    if val[a] ~= val[b] then return val[a] > val[b] end
+    return a.id < b.id
+  end)
+  local kind = RET_KIND
+  s.kind = kind
   local i = 1
   local sample, samplen = {}, 0
   while i <= sn and s.n < RET_CAP do

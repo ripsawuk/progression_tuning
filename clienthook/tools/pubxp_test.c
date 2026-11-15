@@ -110,8 +110,7 @@ static int self(void)
 
     // ---- 3b. idempotence: the same boundary delivered twice is one boundary ---------------------------
     //
-    // Two paths can see ev=109 - the payment's wrapper (before the client's log gate) and the ae_events reader
-    // (only when log_events 1) - and the DLL gives the boundary exactly one owner. The ledger itself is built to
+    // The boundary has one source - the payment's wrapper, before the client's log gate. The ledger is built to
     // make a duplicate harmless anyway: with no per-match base set there is nothing to drop.
     {
         PXP_LEDGER A, B;

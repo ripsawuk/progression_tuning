@@ -6,7 +6,7 @@
 // 20..48 levels and stops: there is no master track.
 //
 // This file adds one: after the client's own pass, for a kind-398 record whose prestige byte is >= 2 and whose
-// XP is past the record's last threshold, level = count + floor((xp - last) / step), capped at 249. Only the
+// XP is past the record's last threshold, level = count + floor((xp - last) / step), capped at 250. Only the
 // level byte is written; the status byte rec+0x56d is left at the client's own answer (3 in that band), which
 // is what keeps the client from logging a bogus "tier done" and from paying a completion bonus.
 //
@@ -17,7 +17,7 @@
 // normal compiled function with its own .pdata. Nothing else in the image references the function.
 //
 // The step is a setting, not a constant: %TEMP%\progression-tuning\master_step.txt, one integer, read once at
-// install (the thunk does no file I/O - it runs on the client's own XP path). Absent or out of range = 2,500.
+// install (the thunk does no file I/O - it runs on the client's own XP path). Absent or out of range = 1,800.
 // The hook itself can be left off without a rebuild: if %TEMP%\progression-tuning\master_off.txt exists,
 // master_install does nothing and logs "master: disabled by file". Same mechanism as nativepay's kill switch.
 
@@ -27,9 +27,9 @@
 #include <windows.h>
 
 #define MASTER_PRESTIGE_MIN 2
-#define MASTER_LEVEL_CAP 249
+#define MASTER_LEVEL_CAP 250
 #define MASTER_THRESHOLDS_MAX 64        // the record's hard ceiling: field 5 starts at +0x15C = 0x5C + 64*4
-#define MASTER_STEP_DEFAULT 2500        // flat, 2,500 XP a master level
+#define MASTER_STEP_DEFAULT 1800        // flat, 1,800 XP a master level
 #define MASTER_STEP_MIN 1
 #define MASTER_STEP_MAX 1000000
 
@@ -83,7 +83,7 @@ int master_off_present(const wchar_t *tempdir);
 unsigned master_client_level(unsigned long long xp, int count, const unsigned *thr);
 
 // The level to write for one record, or -1 when this build must not touch it (prestige < 2, a count outside
-// 0..64, or a step below 1). In the band (xp > last) it is count + (xp - last)/step, capped at 249; below the
+// 0..64, or a step below 1). In the band (xp > last) it is count + (xp - last)/step, capped at 250; below the
 // band it is the client's own answer, which is what makes the two sides agree at the boundary and above it.
 int master_level(unsigned long long xp, int count, const unsigned *thr, int prestige, int step);
 

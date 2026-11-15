@@ -113,7 +113,7 @@ void nativepay_set_match_reset_hook(np_reset_fn fn);
 void nativepay_set_install_gate(void *mutex);
 
 // 1 = the wrapper is installed and will see every event (the boundary included), 0 = it is not (the kill switch,
-// a refusal, or not installed yet). The ae_events reader asks this to keep one boundary to one reset.
+// a refusal, or not installed yet).
 int nativepay_hook_live(void);
 
 // --- seams for the offline driver only (the install path never calls these) -----------------------------

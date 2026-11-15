@@ -39,9 +39,9 @@ local function gensureWrapped(...) return A.door_retry(...) end
 local GNTYPE = "gettypeforid"
 local GTYPES = "itemTypes"
 local GDOOR_CAP = 24
-local GTYPE_A, GTYPE_C = nil, nil
+local GTYPE_A, GTYPE_C, GTYPE_R = nil, nil, nil
 
--- the client own attachment and camo types
+-- the game own attachment camo and reticle types
 local function gtypepair()
   if GTYPE_A ~= nil then return true end
   local lo = rawget(_G, "LOOT")
@@ -50,9 +50,10 @@ local function gtypepair()
   if type(it) ~= "table" then return false end
   local _, a = member(it, "ATTACHMENT")
   local _, c = member(it, "CAMO")
+  local _, r = member(it, "RETICLE")
   local na, nc = tonumber(a), tonumber(c)
   if na == nil or nc == nil then return false end
-  GTYPE_A, GTYPE_C = na, nc
+  GTYPE_A, GTYPE_C, GTYPE_R = na, nc, tonumber(r)
   return true
 end
 
@@ -638,6 +639,11 @@ local function gcarried(n)
   return true
 end
 
+-- is this id one the game ships by default
+local function gdefault(n)
+  return call(rawget(_G, "LOOT"), "isitemdefault", n) == true
+end
+
 -- is this item locked by us
 local function glocked(id)
   gensureWrapped()
@@ -660,8 +666,9 @@ local function glocked(id)
   elseif t == GTYPE_C then
     if gcamo(n) then return true end
   end
-  local locked = (bit == 1 and (t == GTYPE_A or t == GTYPE_C) and not gcarried(n))
-  if t == GTYPE_C and glogging() then gdoor(n, t, bit, locked) end
+  local locked = (bit == 1 and (t == GTYPE_A or t == GTYPE_C or (t == GTYPE_R and not gdefault(n)))
+    and not gcarried(n))
+  if (t == GTYPE_C or t == GTYPE_R) and glogging() then gdoor(n, t, bit, locked) end
   return locked
 end
 

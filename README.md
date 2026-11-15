@@ -82,7 +82,6 @@ The hook's offline proof is in `clienthook\tools\`, and each driver compiles the
     python -I clienthook\tools\test_g11.py
     python -I clienthook\tools\test_master.py
     python -I clienthook\tools\test_detour.py
-    python -I clienthook\tools\test_aexp.py       -> skips without an event log / KRONOS_GAME_DIR
     python -I clienthook\tools\test_resolve.py    -> skips without KRONOS_GAME_DIR
 
 Nothing in the tests installs, launches or writes anything in the game folder; with no game folder set they run
@@ -92,12 +91,13 @@ on what the build holds, or skip with a `SKIP` line.
 
     mod\progression_tuning\      the mod: mod.json and eight Lua parts, the diag part included as source
     data\challenges.tsv          the weapon level ladder the release installs (see data\README.md)
-    clienthook\src\              the hook: nine sources, seven headers, the export definition
+    clienthook\src\              the hook: eight sources, six headers, the export definition
     clienthook\build.cmd         build the DLL
     clienthook\install.cmd       install it, and rollback.cmd / rollback_watch.cmd to undo it
     clienthook\tools\            the offline proof, and the read-only PE readers
     tests\                       the mod's replay
     RELEASE-NOTES-rc1.0.md       what is proven, what is not, and what is not done
+    RELEASE-NOTES-rc1.1.md       the same for rc1.1, with what the rc11-test launch settled
 
 Two things are deliberately **not** in this repository: any copy of a game file or a table derived from one, and
 any client binary other than the release's own DLL. The one exception is `data\challenges.tsv` - the weapon level

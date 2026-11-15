@@ -1255,6 +1255,31 @@ local function rc1diag_b()
     put("QB11 id=" .. tostring(cid) .. " k398=" .. rc1d_txt(call(CHF, "GetAmount", cid, KIND_WEAPON, 0))
       .. " k400=" .. rc1d_txt(call(CHF, "GetAmount", cid, 400, 0)) .. " our=" .. rc1d_txt(our))
   end
+  -- the weekly switch and a control dvar
+  local WK = "lui_weekly_challenge_menu_enabled"
+  put("QB12 bool=" .. type(fn_of(rawget(_G, "Dvar"), "GetDvarBool")) .. " wk=" .. tostring(A.dv(WK))
+    .. " ctl=" .. tostring(A.dv("lui_use_gl_splash")))
+  -- the reticle kind route and its two lookups
+  local XH = rawget(_G, "xhash")
+  local function p13(f, fmt, ...)
+    if f == nil then return "absent" end
+    local ok, v = pcall(f, ...)
+    if not ok then return "raised" end
+    return fmt(v)
+  end
+  local function k13(n)
+    if kbf == nil then return "absent/absent" end
+    local a = p13(kbf, rc1d_txt, n)
+    local okh, h = pcall(XH, n)
+    if not okh or h == nil then return a .. "/absent" end
+    return a .. "/" .. p13(kbf, rc1d_txt, h)
+  end
+  local ssf = fn_of(CHF, "shouldshowcompletionsplash")
+  local ftf = fn_of(CHF, "GetFileTableByType")
+  put("QB13 aek=" .. k13("ae_kind_reticle") .. " cer=" .. k13("ae_kind_reticle_cer")
+    .. " show422=" .. p13(ssf, rc1d_txt, { kind = 422, id = 66938, controller = 0 })
+    .. " show315=" .. p13(ssf, rc1d_txt, { kind = 315, id = 66938, controller = 0 })
+    .. " tbl422=" .. p13(ftf, type, 422, 66938) .. " tbl315=" .. p13(ftf, type, 315, 66938))
   if full then
     put("cap=" .. RB_CAP .. " reached - the rest of the block is not printed")
   end

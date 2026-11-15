@@ -8,9 +8,9 @@
 //   * the real DLL is resolved from the Windows system directory at run time: `GetSystemDirectoryW` then
 //     `LoadLibraryExW(<that>\version.dll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32)`. There is no `version_orig.dll`
 //     beside it - the build is ONE file in the game folder.
-//   * `DllMain` starts the frame (ch_frame_start: the install gate, the ae_events reader, the attachment-lock
-//     payload, the published weapon XP) and THEN nativepay_start - in that order, because the frame is what
-//     hands nativepay its paid hook and the shared install gate.
+//   * `DllMain` starts the frame (ch_frame_start: the install gate, the lock payload, the published weapon XP)
+//     and THEN nativepay_start - in that order, because the frame is what hands nativepay its paid hook and the
+//     shared install gate.
 //
 // THE HOST GUARD. The game is not the only process that loads this file. `codCrashHandler.exe` reaches
 // version.dll through the api-ms-win-core-version API set that shell32 imports, and in that process there is no
@@ -449,7 +449,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         // one-line writer (this file) and nativepay's buffered writer. Interleaving per line is expected.
         // The banner is measured, not estimated: 402 chars, so the formatted line is 19 + 2 + 402 + 2 = 425
         // bytes, 87 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
-        log_line("proxy attached (version.dll build 28: one file - the original is loaded from the Windows system "
+        log_line("proxy attached (version.dll build 29: one file - the original is loaded from the Windows system "
                  "directory at run time; the client addresses are resolved from its own code, the award call site "
                  "pays field 45 on ev=95, ptsplash_paid is published per payment, zm_g11_* carries the lock bitmap, "
                  "master.c extends the level byte, one branch of the ops check is forced on and the state is "

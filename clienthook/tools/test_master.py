@@ -8,7 +8,7 @@ written (the client file is read, exactly as `test_g11.py` and `test_ladder.py` 
 
 What it proves:
   * the C unit driver passes: the client's own threshold walk, prestige 0/1 left completely alone, the band's
-    boundaries (+2,499 / +2,500), the 249 cap, the step setting, the record shapes that must be refused, the
+    boundaries (+1,799 / +1,800), the 250 cap, the step setting, the record shapes that must be refused, the
     setting's parser, and the 17-byte signature (53 checks);
   * the C formula equals an independent Python model at EVERY point of four whole curves (counts 19, 20, 47,
     48; 0 .. 700,000 XP; three step settings), so the two agree everywhere, not just at the boundaries;
@@ -64,9 +64,9 @@ CLIENT = game("XINPUT9_1_0.dll")
 PROLOGUE_RVA = 0x96680
 PROLOGUE_LEN = 17
 
-STEPS = (2500, 1000, 5000)
+STEPS = (1800, 1000, 5000)
 COUNTS = (19, 20, 47, 48)
-SWEEP = (0, 700000, 250)      # every 250 XP: the step's own granularity, so every boundary in the band is hit
+SWEEP = (0, 700000, 200)      # every 200 XP: it divides the 1,800 step, so every boundary in the band is hit
 
 passes, failures, infos = [], [], []
 
@@ -119,7 +119,7 @@ def master_level(xp, count, thr, prestige, step):
     last = thr[count - 1]
     if xp <= last:
         return client_level(xp, count, thr)
-    return min(249, count + (xp - last) // step)
+    return min(250, count + (xp - last) // step)
 
 
 # --- a minimal PE reader: rva -> file bytes -----------------------------------------------------------
@@ -205,9 +205,9 @@ def main():
     out = proc.stdout or ""
     for want in ("prestige 0 and 1: untouched at every XP (the client's own behaviour)",
                  "band: at the last threshold -> count (47)",
-                 "band: +2,499 -> the same level (47)",
-                 "band: +2,500 -> one more (48)",
-                 "band: far past the end -> capped at 249",
+                 "band: +1,799 -> the same level (47)",
+                 "band: +1,800 -> one more (48)",
+                 "band: far past the end -> capped at 250",
                  "step 1,000: +2,500 -> two levels",
                  "step 5,000: +2,500 -> no level yet",
                  "signature: it ends with `sub rsp,0x28`, not on its first three bytes"):
@@ -218,13 +218,13 @@ def main():
     count = 47
     last = thresholds(count)[-1]
     cases = [
-        (count, 2500, last, (0, 47)),
-        (count, 2500, last + 2499, (0, 47)),
-        (count, 2500, last + 2500, (1, 48)),
-        (count, 2500, last + 202 * 2500, (2, 249)),
-        (count, 2500, last + 202 * 2500 + 1000000, (2, 249)),
-        (count, 1000, last + 2500, (1, 49)),
-        (count, 5000, last + 2500, (1, 47)),
+        (count, 1800, last, (0, 47)),
+        (count, 1800, last + 1799, (0, 47)),
+        (count, 1800, last + 1800, (1, 48)),
+        (count, 1800, last + 203 * 1800, (2, 250)),
+        (count, 1800, last + 203 * 1800 + 1000000, (2, 250)),
+        (count, 1000, last + 1800, (1, 48)),
+        (count, 5000, last + 1800, (1, 47)),
         (count, 5000, last + 5000, (1, 48)),
     ]
     for c, step, xp, (expect_ge, expect) in cases:
@@ -256,7 +256,7 @@ def main():
                   ("first: xp %d got %s want %s" % bad[0]) if bad else "every point")
 
     # one point per value of the setting, so "the setting is honoured" is not only the unit driver's word
-    proc = run(["sweep", "47", "2500", str(last), str(last + 5000), "2500"])
+    proc = run(["sweep", "47", "1800", str(last), str(last + 3600), "1800"])
     check("sweep: the default step's own granularity is a level a step",
           [ln.split()[3] for ln in (proc.stdout or "").strip().split("\n")] == ["47", "48", "49"],
           (proc.stdout or "").replace("\n", " | ").strip())
@@ -326,7 +326,7 @@ def main():
     for s in ("master: %d call sites hooked (", "master: the level function at ", "master: %s prestige ",
               "master: disabled by file", "master: refused - %d call sites to 0x%08lX, expected %d - off"):
         check("version.dll carries %r" % s, s in text)
-    check("version.dll carries this build's attach line", "version.dll build 28" in text)
+    check("version.dll carries this build's attach line", "version.dll build 29" in text)
     check("version.dll no longer carries build 16's prologue hook",
           "prologue ok, relay 0x%08lX" not in text and "master: hook at " not in text)
     info("version.dll %d B / %s" % (len(raw), hashlib.sha256(raw).hexdigest()[:16].upper()))
@@ -335,8 +335,8 @@ def main():
     print("")
     h = open(MASTER_H, "r", encoding="utf-8", errors="replace").read()
     src = open(MASTER_C, "r", encoding="utf-8", errors="replace").read()
-    for name, value in (("MASTER_PRESTIGE_MIN", 2), ("MASTER_LEVEL_CAP", 249),
-                        ("MASTER_THRESHOLDS_MAX", 64), ("MASTER_STEP_DEFAULT", 2500),
+    for name, value in (("MASTER_PRESTIGE_MIN", 2), ("MASTER_LEVEL_CAP", 250),
+                        ("MASTER_THRESHOLDS_MAX", 64), ("MASTER_STEP_DEFAULT", 1800),
                         ("MASTER_RVA", 0x96680), ("MASTER_RESUME_RVA", 0x96691),
                         ("MASTER_RECS_RVA", 0x3DD288), ("MASTER_COUNT_RVA", 0x3DD290),
                         ("MASTER_STRIDE", 0x578), ("MASTER_REC_COUNT", 0x58),
@@ -367,7 +367,7 @@ def main():
             print("  FAILED: " + f)
         return 1
     print("OK - the formula matches the model point for point, prestige 0/1 is untouched, the band caps at "
-          "249, the step is the setting, and the signature is the installed client's own bytes.")
+          "250, the step is the setting, and the signature is the installed client's own bytes.")
     return 0
 
 

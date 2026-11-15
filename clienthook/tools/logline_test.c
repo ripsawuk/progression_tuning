@@ -1,8 +1,8 @@
-// logline_test - the offline proof of clienthook build 28's bounded log line (a worker task's check).
+// logline_test - the offline proof of clienthook build 29's bounded log line (a worker task's check).
 //
 // WHY IT EXISTS. Build 27 died inside DllMain because `log_line` formatted a 513-byte line into a 512-byte
 // stack buffer with `wsprintfA`, which has no bound, and the two spare bytes landed on the /GS cookie
-// (docs\B27-NOLAUNCH.md 3.3). Build 28 formats with `_snprintf_s` + `_TRUNCATE` instead. That claim is only
+// (docs\B27-NOLAUNCH.md 3.3). This build formats with `_snprintf_s` + `_TRUNCATE` instead. That claim is only
 // worth what a measurement makes it worth, so this driver makes it: it calls the SHIPPED `log_line` -
 // compiled from `src\proxy_main.c` itself, not a copy - with texts of exactly 488 and 489 characters and with
 // a 2,000-character text, then reads back the file the function wrote and checks the byte lengths.

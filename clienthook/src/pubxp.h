@@ -10,7 +10,7 @@
 //                mid-match - the level byte is derived from it and the store writer copies it - so a reader
 //                needs no base, no delta and no boundary.
 //   thisMatch  = total minus the same record's value captured BEFORE the first payment of the level, i.e. since
-//                the last `ev=109` (the boundary is the event frame.c's ae_on_rec acts on).
+//                the last `ev=109` (the boundary is the payment's own `ev=109`, wired at the award call site).
 //                It is recomputed from the two absolutes, never accumulated, so it cannot double count.
 //
 // THE RECORD, and how each offset is used by the client:

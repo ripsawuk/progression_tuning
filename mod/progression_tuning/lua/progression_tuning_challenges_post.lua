@@ -514,17 +514,33 @@ local function chal_sweep()
       end
     end
     table.sort(gone)
+    -- a vanished row still needs the game to agree
+    local gate = fn_of(ch, "IsChallengeComplete")
+    if gate == nil and said("weekgate") then
+      log("chal week gate - no Challenge.IsChallengeComplete in this VM, the vanished row is carded")
+    end
     local gi = 1
     while gi <= gn do
       local id = gone[gi]
       local was = prev[id]
+      local complete = "unknown"
+      if gate ~= nil then
+        local ok, ans = pcall(gate, 0, id)
+        if ok and ans == true then
+          complete = "true"
+        elseif ok and ans == false and S.record(id) ~= nil then
+          complete = "false"
+        end
+      end
       local t = was.t
       if t == nil then t = was.v end
       if t == nil then t = 0 end
       s.crossN = s.crossN + 1
       log("chal week cross id=" .. tostring(id) .. " ref=" .. clip(tostring(was.ref or "-"), 34)
-        .. " was=1 now=gone v=" .. tostring(t) .. "/" .. tostring(t))
-      chal_card({ id = id, ref = was.ref or "-", kind = was.k or KIND_WEEKLY }, t, 1, t)
+        .. " was=1 now=gone v=" .. tostring(t) .. "/" .. tostring(t) .. " complete=" .. complete)
+      if complete ~= "false" then
+        chal_card({ id = id, ref = was.ref or "-", kind = was.k or KIND_WEEKLY }, t, 1, t)
+      end
       gi = gi + 1
     end
   end

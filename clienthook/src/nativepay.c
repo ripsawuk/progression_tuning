@@ -869,8 +869,8 @@ static volatile LONG NP_STATE = 0;   // 0 untried, 1 hooked, 2 refused, 3 off by
 static int NP_FROZEN_LOG = 0;
 static void *NP_TRAMP = NULL;
 
-// 1 only while the wrapper is installed: the ae_events reader uses this to leave the boundary to this call site,
-// so one match start resets the published figures once (and never twice).
+// 1 only while the wrapper is installed: the publish note in frame.c asks this, so a reader of the log is told
+// that no paid ev=95 exists in this session.
 int nativepay_hook_live(void)
 {
     return InterlockedCompareExchange(&NP_STATE, 0, 0) == 1 ? 1 : 0;

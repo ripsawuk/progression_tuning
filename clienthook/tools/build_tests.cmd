@@ -42,7 +42,6 @@ del /q "%~dp0..\build\clienthook.log" 2>nul
 
 set RC=0
 
-call :build aexp_test "%~dp0aexp_test.c" "%~dp0..\src\aexp.c"
 call :build g11_test "%~dp0g11_test.c" "%~dp0..\src\g11.c"
 rem build 25: master.c and nativepay.c ask the resolver where the client's addresses are, so both drivers carry
 rem the SHIPPED src\resolve.c beside their own unit.
@@ -57,7 +56,7 @@ rem guard_test.exe carries the SHIPPED src\proxy_main.c, so the arm decision und
 rem built from; its three stubbed entry points are in the driver itself.
 rem ch_passthru_host.exe is the host the pass-through test loads the DLL into (its name is the point).
 call :build guard_test "%~dp0guard_test.c" "%~dp0..\src\proxy_main.c"
-rem logline_test.exe includes the SHIPPED src\proxy_main.c outright (its own comment says why): build 28's
+rem logline_test.exe includes the SHIPPED src\proxy_main.c outright (its own comment says why): this build's
 rem bounded log_line is static, so the only way to call it with an over-long text is from its own translation unit.
 call :build logline_test "%~dp0logline_test.c"
 call :build ch_passthru_host "%~dp0passthru_host.c"

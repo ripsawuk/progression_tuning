@@ -1,4 +1,4 @@
-"""Offline proof of clienthook build 28 - the forced publish, the native payment and the bounded log. Read-only
+"""Offline proof of clienthook build 29 - the forced publish, the native payment and the bounded log. Read-only
 with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
 (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
 
@@ -7,7 +7,7 @@ with respect to the game: nothing is installed, nothing is launched, and nothing
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 28.
+general offline proof and the banner it checks is the current one, build 29.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -25,7 +25,7 @@ of only at a mode boundary.
                            at 0x930D3 and its kill switch, ptsplash_paid, the g11 lock payload, master.c's five
                            call sites, the ev=109 boundary and the install gate.
 
-WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (nine sources, where each guard
+WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (eight sources, where each guard
 sits, the two triggers' placement); the image's strings - what it carries and what it does not; the personal-path
 and identifier scan the release package uses; the client's own bytes; and every offline driver, with its count.
 """
@@ -109,6 +109,7 @@ DROPPED = [
     "io: observer armed",
     "nativepay: sums",
     "ae window",
+    "frame: reader armed",
     "clienthook_ladder_scale.txt",
     "clienthook_g10_off.txt",
 ]
@@ -120,7 +121,6 @@ KEPT = [
     "master: %d call sites hooked",
     "nativepay: hook installed",
     "nativepay: ev=95 loot=%u f45=%d",
-    "frame: reader armed",
     "pubxp: armed",
     "g11: armed",
     "init: version.dll resolved from ",
@@ -138,14 +138,14 @@ KEPT_SOURCE = [
     ("src\\nativepay.c", "if (id == NP_EVENT_MATCH_START)"),
     ("src\\nativepay.c", "int nativepay_hook_live(void)"),
     ("src\\frame.c", "nativepay_set_match_reset_hook(pubxp_match_reset);"),
-    ("src\\frame.c", "if (nativepay_hook_live())"),
+    ("src\\frame.c", "!nativepay_hook_live() && !said_nopay"),
     ("src\\nativepay.h", "typedef void (*np_reset_fn)(void);"),
 ]
 
-# The files this tree ships under src\, and the only ones any scan here reads: the nine sources build.cmd names,
-# their seven headers, and the export definition. A file that is not on this list is not part of the build.
-SHIPPED_SRC = ["aexp.c", "frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c", "pubxp.c",
-               "resolve.c", "aexp.h", "g11.h", "master.h", "nativepay.h", "publish.h", "pubxp.h", "resolve.h",
+# The files this tree ships under src\, and the only ones any scan here reads: the eight sources build.cmd names,
+# their six headers, and the export definition. A file that is not on this list is not part of the build.
+SHIPPED_SRC = ["frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c", "pubxp.c",
+               "resolve.c", "g11.h", "master.h", "nativepay.h", "publish.h", "pubxp.h", "resolve.h",
                "version_proxy.def"]
 
 passes = []
@@ -257,7 +257,7 @@ def build_once():
 
 
 def main():
-    print("clienthook build 28 - the forced publish, the native payment, the bounded log - " + ROOT)
+    print("clienthook build 29 - the forced publish, the native payment, the bounded log - " + ROOT)
     print("")
     if not CLIENT:
         print("NOTE  KRONOS_GAME_DIR is not set and no --game was given - the client file cannot be read, so the "
@@ -285,7 +285,7 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 28", "version.dll build 28" in text)
+    check("the banner says build 29", "version.dll build 29" in text)
     for gone in ("version.dll build 25", "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
@@ -313,13 +313,14 @@ def main():
     build_cmd = read(os.path.join(ROOT, "build.cmd"))
     cl_text = "\n".join(l for l in build_cmd.replace("^", " ").split("\n") if l.strip().startswith("cl "))
     sources = sorted(set(re.findall(r"([a-z0-9_]+\.c)", cl_text)))
-    check("build.cmd compiles exactly the nine sources",
-          sources == ["aexp.c", "frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c",
+    check("build.cmd compiles exactly the eight sources",
+          sources == ["frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c",
                       "pubxp.c", "resolve.c"], ", ".join(sources))
-    for gone in ("io_probe.c", "ladder.c", "ladder.h", "g10seed.c", "g10seed.h", "pay.c", "pay.h"):
+    for gone in ("io_probe.c", "ladder.c", "ladder.h", "g10seed.c", "g10seed.h", "pay.c", "pay.h", "aexp.c",
+                 "aexp.h"):
         check("src\\%s is gone from the tree" % gone, not os.path.isfile(os.path.join(SRC, gone)))
-    for kept in ("frame.c", "proxy_main.c", "nativepay.c", "pubxp.c", "g11.c", "aexp.c", "master.c",
-                 "publish.c", "nativepay.h", "pubxp.h", "g11.h", "aexp.h", "master.h", "publish.h",
+    for kept in ("frame.c", "proxy_main.c", "nativepay.c", "pubxp.c", "g11.c", "master.c",
+                 "publish.c", "nativepay.h", "pubxp.h", "g11.h", "master.h", "publish.h",
                  "version_proxy.def"):
         check("src\\%s is there" % kept, os.path.isfile(os.path.join(SRC, kept)))
 
@@ -360,16 +361,15 @@ def main():
           frame.count("= CreateThread(NULL, 0, publish_thread, NULL, 0, NULL)") == 1)
     check("the publish gate is initialised before any thread can raise or honour a want",
           frame.index("pub_init(&PUB);") < frame.index("CreateThread(NULL, 0, publish_thread"))
-    check("the frame patches four import slots and nothing else",
-          all(s in frame for s in ('strcmp(fn, "CreateFileW")', 'strcmp(fn, "CreateFileA")',
-                                   'strcmp(fn, "WriteFile")', 'strcmp(fn, "WriteFileEx")'))
-          and frame.count("repl = (void *)hook_") == 4)
+    check("the frame patches no import slot at all (there is no reader)",
+          "patch_module" not in frame and "patch_one" not in frame and "strcmp(fn, " not in frame
+          and "hook_write_file" not in frame)
     check("the frame creates the install gate and hands it to both patchers",
           "master_set_install_gate(gate);" in frame and "nativepay_set_install_gate(gate);" in frame)
     check("the frame sets the paid hook before anything can call it",
           "nativepay_set_paid_hook(pubxp_on_paid);" in frame)
-    check("ev=109 is the one event the ae reader acts on (the match boundary)",
-          "r->ev != 109" in frame and "pubxp_match_reset();" in frame)
+    check("the frame holds no event reader (no aexp, no ae_ stream state)",
+          "aexp" not in frame and "ae_on_rec" not in frame and "ae_events" not in frame)
     check("the frame installs master.c's hook at the first sight of the client",
           "master_install(client);" in frame)
 
@@ -390,7 +390,7 @@ def main():
           reset.index("pub_match_live(&PUB);") < reset.index("if (PXP_OFF || !PXP_ARMED)"),
           "the flag does not depend on the paid channel having armed")
     thread = frame[frame.index("static DWORD WINAPI publish_thread(LPVOID unused)"):frame.index(
-        "// --- import-table patching")]
+        "// --- the ops check patch")]
     check("the thread checks the kill switch before it arms", thread.index("pub_off_present(NULL)")
           < thread.index('ch_logf("publish: armed'))
     check("a present kill switch latches the feature off and stops the thread",
@@ -449,10 +449,10 @@ def main():
     np_src = read(os.path.join(SRC, "nativepay.c"))
     check("master.c's site table is the five recorded call sites, in order",
           "{0x93DFF, 0x96212, 0x9723D, 0x97626, 0x976AC}" in master)
-    check("master.c's formula is the build 21 one, unchanged",
+    check("master.c's formula is the build 21 one, with the client's own step and cap",
           "(unsigned long long)count + (xp - last) / (unsigned long long)step" in master
-          and "#define MASTER_STEP_DEFAULT 2500" in read(os.path.join(SRC, "master.h"))
-          and "#define MASTER_LEVEL_CAP 249" in read(os.path.join(SRC, "master.h")))
+          and "#define MASTER_STEP_DEFAULT 1800" in read(os.path.join(SRC, "master.h"))
+          and "#define MASTER_LEVEL_CAP 250" in read(os.path.join(SRC, "master.h")))
     check("nativepay.c still names its one call site 0x930D3", "0x930D3" in np_src)
     check("nativepay.c keeps its kill switch", "nativepay_off.txt" in np_src)
     check("nativepay.c's log cap is the first 3 then every 20th",
@@ -518,9 +518,9 @@ def main():
     check("the ev=95 path cannot reach it: the branch is inside the non-95 early return",
           wrapper.index("if (id != NP_EVENT_XP_ID)") < wrapper.index("if (id == NP_EVENT_MATCH_START)")
           < wrapper.index("np_event e;"))
-    ae = frame[frame.index("static void ae_on_rec"):frame.index("static void ae_absorb")]
-    check("the ae reader defers to the wrapper when the wrapper is live (one boundary, one reset)",
-          ae.index("nativepay_hook_live()") < ae.index("pubxp_match_reset();"))
+    check("the boundary is wired once, from the payment's own call site",
+          frame.count("nativepay_set_match_reset_hook(pubxp_match_reset);") == 1
+          and "pub_match_live(&PUB);" in frame)
     pubxp_c = read(os.path.join(SRC, "pubxp.c"))
     reset_fn = pubxp_c[pubxp_c.index("int pxp_reset_match"):pubxp_c.index("int pxp_render")]
     check("the reset itself is a no-op when no gun has a per-match base (idempotent)",
@@ -599,29 +599,15 @@ def main():
     drive(os.path.join(BUILD, "master_test.exe"), ["self"], 53, "master_test self")
     drive(os.path.join(BUILD, "detour_test.exe"), ["self"], 19, "detour_test self")
 
-    # aexp: a synthetic stream, delivered in one-byte writes, must parse to exactly the records it holds
-    d = scratch("aexp")
-    stream = os.path.join(d, "ae_events.log")
-    lines = [
-        "1767225600\tev=95\t0=100\t31=20\t44=125186\t45=13",
-        "1767225601\tev=123\t44=125186",
-        "1767225602\tev=109\t0=1",
-        "1767225603\tev=780\t234=4",
-        "1767225604\tev=95\t0=120\t31=24\t44=98753\t45=20",
-    ]
-    with open(stream, "w", encoding="ascii", newline="") as fh:
-        fh.write("\r\n".join(lines) + "\r\n")
-    r = subprocess.run([os.path.join(BUILD, "aexp_test.exe"), stream, "7", "1"], capture_output=True, text=True,
-                       timeout=300)
-    got = [l.split() for l in (r.stdout or "").strip().split("\n") if l.strip()]
-    want = [["1767225600", "95", "100", "20", "125186", "13", "-1"],
-            ["1767225601", "123", "-1", "-1", "125186", "-1", "-1"],
-            ["1767225602", "109", "1", "-1", "-1", "-1", "-1"],
-            ["1767225603", "780", "-1", "-1", "-1", "-1", "4"],
-            ["1767225604", "95", "120", "24", "98753", "20", "-1"]]
-    check("aexp_test parses a one-byte-at-a-time stream into exactly five records", r.returncode == 0
-          and len(got) == 5, "%d records" % len(got))
-    check("and every field of every record is the one in the stream", got == want, str(got[-1]) if got else "none")
+    # the reader is gone: no shipped source names its symbols, and no kernel32 file call is taken
+    reader_hits = []
+    for f in SHIPPED_SRC:
+        t = read(os.path.join(SRC, f))
+        for needle in ("aexp", "ae_on_rec", "ae_sniff", "ae_adopt", "ae_absorb", "AE_REJECT",
+                       "hook_write_file", "hook_create_file", "patch_module"):
+            if needle in t:
+                reader_hits.append("%s: %s" % (f, needle))
+    check("no source under src\\ names the event reader", not reader_hits, ", ".join(reader_hits[:6]))
 
     # ---- 7. a foreign process, and the game's own name ----------------------------------------------
     print("")
@@ -667,7 +653,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 28's banner", "version.dll build 28" in armed_log)
+    check("the log carries build 29's banner", "version.dll build 29" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):
@@ -708,7 +694,7 @@ def main():
         for f in failures:
             print("  FAILED: " + f)
         return 1
-    print("OK - one tree, nine sources, two identical builds, the kept features armed, the forced publish back")
+    print("OK - one tree, eight sources, two identical builds, the kept features armed, the forced publish back")
     print("     with its guard, its window and its kill switch, and every offline driver passing.")
     return 0
 

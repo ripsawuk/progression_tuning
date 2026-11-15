@@ -96,7 +96,7 @@ int master_level(unsigned long long xp, int count, const unsigned *thr, int pres
     }
 }
 
-// %TEMP%\progression-tuning\master_step.txt: "2500", "2500\n", " 5000 ". Out of range or not a number = default.
+// %TEMP%\progression-tuning\master_step.txt: "1800", "1800\n", " 5000 ". Out of range or not a number = default.
 int master_step_parse(const char *text, int len)
 {
     if (text == NULL || len <= 0)

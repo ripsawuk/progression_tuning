@@ -190,7 +190,7 @@ def rva_to_file(data, rva):
 
 
 def main():
-    print("clienthook build 28 - the resolver, over a file on disk - " + ROOT)
+    print("clienthook build 29 - the resolver, over a file on disk - " + ROOT)
     print("")
     if not os.path.isfile(EXE):
         print("STOP: %s is missing - run clienthook\\tools\\build_tests.cmd." % EXE)

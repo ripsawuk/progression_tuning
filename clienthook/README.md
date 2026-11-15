@@ -18,8 +18,9 @@ through `zm_g11_32`). The mod reads those and asks the client's own item type be
 boundary. The hook asks for the same serialisation during a match, so a card drawn from a live crossing has real
 data behind it instead of a stale snapshot.
 
-**It keeps the master-prestige level honest.** The client's level function is taken at its own call sites so the
-level on screen is the one the record holds.
+**It extends a prestige-2 weapon past its last rung.** The client's level function is taken at its own call sites;
+for a weapon at prestige 2 whose XP is past its last threshold, the level continues one step per 1,800 XP, up to
+250.
 
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the
@@ -66,11 +67,10 @@ or skip with a `SKIP` line.
 ## The files
 
     src\proxy_main.c        the 17 exports, the system-DLL resolve, the host guard, DllMain, the log
-    src\frame.c             the identification pass, the event reader, the lock payload, the forced publish
+    src\frame.c             the identification pass, the lock payload, the forced publish
     src\resolve.c           every client address, found at run time; the per-feature gate; one summary line
     src\publish.c           the forced publish's pure half: the page check, the guard, the window, the kill switch
     src\g11.c               the lock payload's pure half: hex, split, header, name hash, canary
-    src\aexp.c              the client's event-log line parser
     src\master.c            the master-prestige level byte, at its call sites
     src\nativepay.c         the five bytes at the award's call site
     src\pubxp.c             the paid-XP text, the per-gun ledger and the record lookup

@@ -81,7 +81,7 @@ static int self_checks(void)
 
     // 2. prestige 0 and 1: this build writes nothing at all (-1), at every XP
     {
-        const unsigned long long xps[] = {0, last - 1, last, last + 2499, last + 2500, 1000000};
+        const unsigned long long xps[] = {0, last - 1, last, last + 1799, last + 1800, 1000000};
         int bad = 0;
         for (size_t i = 0; i < sizeof(xps) / sizeof(xps[0]); i++)
         {
@@ -91,30 +91,30 @@ static int self_checks(void)
                 bad++;
         }
         ok(bad == 0, "prestige 0 and 1: untouched at every XP (the client's own behaviour)");
-        ok(master_level(last + 2500, N47, THR47, 2, 0) == -1, "prestige 2 with step 0: refused, not divided");
+        ok(master_level(last + 1800, N47, THR47, 2, 0) == -1, "prestige 2 with step 0: refused, not divided");
     }
 
-    // 3. the master band, at the boundaries D16.2 names
+    // 3. the master band, at the boundaries the client's own step gives
     {
         ok(master_level(0, N47, THR47, 2, MASTER_STEP_DEFAULT) == 0, "band: 0 XP at prestige 2 -> 0");
         ok((int)master_level(last - 1, N47, THR47, 2, MASTER_STEP_DEFAULT) == 46,
            "band: one XP short of the last -> 46 (still the client's own)");
         ok((int)master_level(last, N47, THR47, 2, MASTER_STEP_DEFAULT) == count,
            "band: at the last threshold -> count (47)");
-        ok((int)master_level(last + 2499, N47, THR47, 2, MASTER_STEP_DEFAULT) == count,
-           "band: +2,499 -> the same level (47)");
-        ok((int)master_level(last + 2500, N47, THR47, 2, MASTER_STEP_DEFAULT) == count + 1,
-           "band: +2,500 -> one more (48)");
+        ok((int)master_level(last + 1799, N47, THR47, 2, MASTER_STEP_DEFAULT) == count,
+           "band: +1,799 -> the same level (47)");
+        ok((int)master_level(last + 1800, N47, THR47, 2, MASTER_STEP_DEFAULT) == count + 1,
+           "band: +1,800 -> one more (48)");
         ok((int)master_level(last + 5000, N47, THR47, 2, MASTER_STEP_DEFAULT) == count + 2,
            "band: +5,000 -> two more (49)");
         ok((int)master_level(1000000ULL, N47, THR47, 2, MASTER_STEP_DEFAULT) == MASTER_LEVEL_CAP,
-           "band: far past the end -> capped at 249");
-        ok((int)master_level(last + 202ULL * 2500ULL, N47, THR47, 2, MASTER_STEP_DEFAULT) == MASTER_LEVEL_CAP,
-           "band: the first XP that reaches 249 (47 + 202)");
-        ok((int)master_level(last + 201ULL * 2500ULL + 2499ULL, N47, THR47, 2, MASTER_STEP_DEFAULT) ==
+           "band: far past the end -> capped at 250");
+        ok((int)master_level(last + 203ULL * 1800ULL, N47, THR47, 2, MASTER_STEP_DEFAULT) == MASTER_LEVEL_CAP,
+           "band: the first XP that reaches 250 (47 + 203)");
+        ok((int)master_level(last + 202ULL * 1800ULL + 1799ULL, N47, THR47, 2, MASTER_STEP_DEFAULT) ==
                MASTER_LEVEL_CAP - 1,
-           "band: one step short of it is 248");
-        ok((int)master_level(last + 2500, N47, THR47, 3, MASTER_STEP_DEFAULT) == count + 1,
+           "band: one step short of it is 249");
+        ok((int)master_level(last + 1800, N47, THR47, 3, MASTER_STEP_DEFAULT) == count + 1,
            "band: prestige 3 behaves as 2 (the band is prestige >= 2)");
         ok((int)master_level(0xFFFFFFFFFFFFULL, N47, THR47, 2, MASTER_STEP_DEFAULT) == MASTER_LEVEL_CAP,
            "band: no overflow at 2^48 XP");
@@ -143,8 +143,8 @@ static int self_checks(void)
 
     // 6. the setting's parser
     {
-        ok(master_step_parse(NULL, 0) == MASTER_STEP_DEFAULT, "step: absent -> 2,500");
-        ok(master_step_parse("", 0) == MASTER_STEP_DEFAULT, "step: empty -> 2,500");
+        ok(master_step_parse(NULL, 0) == MASTER_STEP_DEFAULT, "step: absent -> 1,800");
+        ok(master_step_parse("", 0) == MASTER_STEP_DEFAULT, "step: empty -> 1,800");
         ok(master_step_parse("2500", 4) == 2500, "step: \"2500\" -> 2500");
         ok(master_step_parse("2500\r\n", 6) == 2500, "step: a CRLF file -> 2500");
         ok(master_step_parse("  5000  ", 8) == 5000, "step: surrounding spaces -> 5000");

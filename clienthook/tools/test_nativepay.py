@@ -15,7 +15,7 @@ suite still runs there against its own DLL):
     this build, so the same two slots assert that the artefact under test is not build 19's bytes and not its size;
   * the "build 17 is not in the image" section, which was the PoC's whole point: build 20 IS build 17's frame plus
     this payment, so the twenty-odd checks there now assert the union instead - build 17's lines present, build 14's
-    lever write absent, and build.cmd compiling the ten sources.
+    lever write absent, and build.cmd compiling the eight sources.
 
 Everything else - the 60 unit checks, the four sites against the client file, the real installer against the client
 mapped read-only, the kill switch, the 17-name export table, the one-file proxy proof - is build 19's and is
@@ -461,7 +461,7 @@ def main():
                    "nativepay: refused - %s", "nativepay_off.txt"):
         check("version.dll carries %r" % marker, marker in text)
     # the frame's own evidence must be in this image too - the payment is only half of it
-    for present in ("frame: reader armed", "master: %d call sites hooked", "g11: armed",
+    for present in ("master: %d call sites hooked", "g11: armed",
                     "ptsplash_paid", "pubxp: armed", "publish: challenge state re-published live (#%ld)"):
         check("version.dll carries %r" % present, present in text)
     # and what v1.0 dropped is gone from the image, not merely disabled (the forced publish came back in build 24)
@@ -472,8 +472,8 @@ def main():
     build = open(os.path.join(ROOT, "build.cmd"), "r", encoding="utf-8", errors="replace").read()
     cl_text = "\n".join(l for l in build.replace("^", " ").split("\n") if l.strip().startswith("cl "))
     sources = set(re.findall(r"([a-z0-9_]+\.c)", cl_text))
-    check("build.cmd's link line builds the nine sources",
-          sources == {"proxy_main.c", "frame.c", "resolve.c", "publish.c", "aexp.c", "g11.c", "master.c",
+    check("build.cmd's link line builds the eight sources",
+          sources == {"proxy_main.c", "frame.c", "resolve.c", "publish.c", "g11.c", "master.c",
                       "nativepay.c", "pubxp.c"},
           ", ".join(sorted(sources)))
     check("build.cmd compiles src\\nativepay.c (this driver's own source)", "nativepay.c" in sources)
