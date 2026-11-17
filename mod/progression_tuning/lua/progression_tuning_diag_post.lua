@@ -825,7 +825,6 @@ local function rc1diag_run()
   if G.hex ~= nil then serial = tostring(G.serial) end
   log(RC1D .. ": 1 block vm=" .. (S.front and "menu" or "match") .. " pt_diag="
     .. (on and "on" or "off") .. ":" .. tostring(how) .. " payload=" .. serial
-    .. " locks=" .. tostring(G.locks) .. " inscope=" .. tostring(G.inScope)
     .. " scope=" .. (G.scopeAll and "all-retired" or "locksmith") .. " cap=" .. RC1D_CAP)
   local k = 1
   while k <= n do
@@ -991,6 +990,14 @@ local function rc1d_weekrows()
     end
   end)
   return out, n
+end
+
+-- one native answer as a field
+local function qbf(name, f, ...)
+  if type(f) ~= "function" then return " " .. name .. "=absent" end
+  local ok, v = pcall(f, ...)
+  if not ok then return " " .. name .. "=raised" end
+  return " " .. name .. "=" .. rc1d_txt(v)
 end
 
 -- the second block its own switch and prefix
@@ -1280,6 +1287,145 @@ local function rc1diag_b()
     .. " show422=" .. p13(ssf, rc1d_txt, { kind = 422, id = 66938, controller = 0 })
     .. " show315=" .. p13(ssf, rc1d_txt, { kind = 315, id = 66938, controller = 0 })
     .. " tbl422=" .. p13(ftf, type, 422, 66938) .. " tbl315=" .. p13(ftf, type, 315, 66938))
+  -- the rewards payload and one operator skin
+  local shex, sn = A.gset()
+  local function bits(id) return (A.bit(id) and 1 or 0), (A.greward(id) and 1 or 0) end
+  local b14, r14 = bits(92066)
+  put("QB14 g12 set=" .. (shex ~= nil and 1 or 0) .. " n=" .. rc1d_txt(sn)
+    .. " r92066=" .. r14 .. " l92066=" .. b14)
+  -- three calling cards asked three ways
+  local uf = fn_of(LOOTT, "IsUnlocked")
+  local wf = fn_of(LOOTT, "isunlockedwithid")
+  local function cardline(name, id, ref)
+    local b, r = bits(id)
+    put("QB15 " .. name .. "3=" .. p13(uf, rc1d_txt, 0, 11, ref) .. " " .. name .. "2="
+      .. p13(wf, rc1d_txt, 0, id) .. " lock=" .. b .. " reward=" .. r)
+  end
+  cardline("card", 104846, "sat_ui_playercard_044")
+  cardline("dark", 104916, "sat_ui_playercard_173")
+  cardline("store", 6015, "ui_playercard_869")
+  -- one operator skin and its item type
+  local b16, r16 = bits(92066)
+  put("QB16 skin=" .. p13(wf, rc1d_txt, 0, 92066) .. " lock=" .. b16 .. " reward=" .. r16
+    .. " type=" .. p13(fn_of(LOOTT, "gettypeforid"), rc1d_txt, 92066))
+  -- the sticker book kind and its row
+  local fkf = fn_of(rawget(_G, "OnlineChallenges"), "getchallengesprogressforkind")
+    or fn_of(CHF, "getchallengesprogressforkind")
+  local n429, st429 = "none", "nil"
+  local okf, t429 = false, nil
+  if fkf ~= nil then okf, t429 = pcall(fkf, 0, 429) end
+  if okf and type(t429) == "table" then
+    n429 = 0
+    for _ in pairs(t429) do n429 = n429 + 1 end
+    st429 = rc1d_txt(rc1d_field(rc1d_get(t429, 52508), "status"))
+  end
+  put("QB17 show429=" .. p13(ssf, rc1d_txt, { kind = 429, id = 52508, controller = 0 })
+    .. " sticker=" .. p13(fn_of(CHF, "getstickerbookchallengedata"), rc1d_txt, 0, 52508)
+    .. " fork429=" .. n429 .. " st=" .. st429)
+  -- the default reticle guard
+  local b18, r18 = bits(109917)
+  put("QB18 ret=" .. p13(wf, rc1d_txt, 0, 109917) .. " lock=" .. b18 .. " reward=" .. r18
+    .. " default=" .. p13(fn_of(LOOTT, "isitemdefault"), rc1d_txt, 109917))
+  -- the overview percent one line per game mode
+  local af = A.answer
+  if af == nil and S.locks ~= nil then af = S.locks.answer end
+  local gsd = fn_of(rawget(_G, "CallingCardUtils"), "getstickerbookchallengesdata")
+  local cumf = fn_of(LOOTT, "GetCumulatedProgressNormalized")
+  local QMODES = { { "OB", 3 }, { "BR", 4 }, { "ZM", 5 } }
+  local QCHILD_CAP = 12
+  local qkids = 0
+  local function qfirst(s)
+    if type(s) ~= "string" then return "" end
+    local p = string.find(s, "|", 1, true)
+    if p == nil then return s end
+    return string.sub(s, 1, p - 1)
+  end
+  local mi = 1
+  while mi <= #QMODES do
+    local mname, mid = QMODES[mi][1], QMODES[mi][2]
+    local row = nil
+    if gsd ~= nil then
+      local okm, list = pcall(gsd, 0, mid)
+      if okm and type(list) == "table" then row = list[1] end
+    end
+    local ref, kids = "absent", nil
+    if type(row) == "table" then
+      ref = rc1d_field(row, "categoryType")
+      if type(ref) ~= "string" or ref == "" then ref = rc1d_field(row, "challengeImage") end
+      if type(ref) ~= "string" or ref == "" then ref = rc1d_field(row, "id") end
+      ref = rc1d_txt(ref)
+      kids = rc1d_field(row, "subChallenges")
+    end
+    local den, fnum, emp, nbit, nrew, nopen, num = 0, 0, 0, 0, 0, 0, 0
+    local qline = {}
+    if type(kids) == "table" then den = #kids end
+    local j = 1
+    while j <= den do
+      local kid = kids[j]
+      local s1 = qfirst(rc1d_field(kid, "loot"))
+      local id1 = tonumber(s1)
+      local b, r, d, a = 0, 0, "absent", "absent"
+      if id1 == nil then
+        emp = emp + 1
+      else
+        id1 = math.floor(id1)
+        fnum = fnum + 1
+        if A.bit(id1) then b = 1 nbit = nbit + 1 end
+        if A.greward(id1) then r = 1 nrew = nrew + 1 end
+        if type(af) == "function" then
+          local okd, v = pcall(af, id1)
+          if okd then
+            d = rc1d_txt(v)
+            if v ~= true then nopen = nopen + 1 end
+          else
+            d = "raised"
+          end
+        end
+        if type(wf) == "function" then
+          local oka, v = pcall(wf, 0, id1)
+          if oka then
+            a = rc1d_txt(v)
+            if v then num = num + 1 end
+          else
+            a = "raised"
+          end
+        end
+      end
+      if qkids < QCHILD_CAP then
+        qkids = qkids + 1
+        qline[#qline + 1] = "QB20 " .. mname .. " child " .. rc1d_txt(rc1d_field(kid, "id"))
+          .. " split1=" .. s1 .. " bit=" .. b .. " reward=" .. r .. " door=" .. d .. " ans=" .. a
+      end
+      j = j + 1
+    end
+    local pct = "none"
+    if den > 0 then pct = string.format("%d", math.floor(num * 100 / den + 0.5)) end
+    local nat, cum = "none", "absent"
+    if type(row) == "table" then
+      local pv = rc1d_field(row, "progress")
+      if pv ~= nil then nat = rc1d_txt(pv) end
+      if cumf ~= nil then
+        local okc, rf = pcall(cumf, row)
+        if not okc then
+          cum = "raised"
+        elseif type(rf) ~= "function" then
+          cum = "none"
+        else
+          local okv, v = pcall(rf, 0)
+          if okv then cum = rc1d_txt(v) else cum = "raised" end
+        end
+      end
+    end
+    put("QB20 " .. mname .. " " .. ref .. " children=" .. den .. " firstNum=" .. fnum
+      .. " empty=" .. emp .. " bit=" .. nbit .. " reward=" .. nrew .. " open=" .. nopen
+      .. " num=" .. num .. " den=" .. den .. " pct=" .. pct .. " native=" .. nat .. " cum=" .. cum)
+    local qi = 1
+    while qi <= #qline do
+      put(qline[qi])
+      qi = qi + 1
+    end
+    mi = mi + 1
+  end
   if full then
     put("cap=" .. RB_CAP .. " reached - the rest of the block is not printed")
   end
@@ -1291,6 +1437,36 @@ local function rc1diag_b()
     k = k + 1
   end
   log(RB .. ": end (" .. (n + 2) .. " lines)")
+end
+
+-- the five cards once the tables answer
+local QB19_IDS = { 117486, 126988, 112409, 104861, 6015 }
+local QB19_ON = false
+
+local function rc1d_qb19()
+  if QB19_ON then return end
+  local cf = A.cards
+  if type(cf) ~= "function" then return end
+  local ok, k, total = pcall(cf)
+  if not ok or type(k) ~= "number" or type(total) ~= "number" or total <= 0 then return end
+  if k < total then return end
+  QB19_ON = true
+  local LOOTT = rawget(_G, "LOOT")
+  local wf = fn_of(LOOTT, "isunlockedwithid")
+  local tf = fn_of(LOOTT, "gettypeforid")
+  local af = A.answer
+  if af == nil and S.locks ~= nil then af = S.locks.answer end
+  log("QB19 cards=" .. k .. "/" .. total)
+  local j = 1
+  while j <= #QB19_IDS do
+    local id = QB19_IDS[j]
+    local b, r = 0, 0
+    if A.bit(id) then b = 1 end
+    if A.greward(id) then r = 1 end
+    log("QB19 " .. id .. " lock=" .. b .. " reward=" .. r .. qbf("type", tf, id)
+      .. qbf("ans", af, id) .. qbf("native", wf, 0, id))
+    j = j + 1
+  end
 end
 
 -- a type entry as priority and override
@@ -1484,10 +1660,13 @@ end
 
 -- the check first then the switch
 local function rc1diag_chain()
-  if diag_off() then return end
+  if diag_off() then
+    return
+  end
   pcall(ck_poll)
   rc1diag_poll()
   local don = toggle("pt_diag", false)
+  if don then pcall(rc1d_qb19) end
   local bot = don and toggle("pt_diagb", false)
   if bot and RB_ON ~= true then pcall(rc1diag_b) end
   RB_ON = bot

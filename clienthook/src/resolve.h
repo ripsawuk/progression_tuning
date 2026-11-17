@@ -103,7 +103,7 @@ unsigned rs_rva(const RS_TABLE *t, RS_SYM s); // 0 = unresolved
 int rs_ok(const RS_TABLE *t, RS_SYM s);
 int rs_resolved(const RS_TABLE *t);           // how many of the 21 are resolved
 
-// The six features, each owning the symbols it actually reads. A feature is on only when every one of its
+// The seven features, each owning the symbols it actually reads. A feature is on only when every one of its
 // symbols is resolved; the first missing one is named in the refusal line.
 typedef enum
 {
@@ -113,6 +113,7 @@ typedef enum
     RS_F_G11,           // the payload channel's six data slots and its one function pointer
     RS_F_PUBXP,         // the paid-XP text: the dvar machinery and the record array
     RS_F_BOUNDARY,      // the record array alone - the match-live scan and the record lookup
+    RS_F_G12,           // the reward set: the record array, the dvar machinery, nothing else
     RS_F_COUNT
 } RS_FEATURE;
 

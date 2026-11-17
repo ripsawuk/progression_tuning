@@ -1,9 +1,10 @@
 // g11_test - the offline driver for clienthook build 15's G11 payload channel (tools\test_g11.py runs it).
 //
-// It links src\g11.c and nothing else: no client address, no game, no install. Four commands:
+// It links src\g11.c and nothing else: no game address, no game, no install. Five commands:
 //
 //   g11_test.exe self                            the unit checks, then `g11: OK - <n> checks`
 //   g11_test.exe encode <bitmap.bin>            32,768 B in, 33 lines out on stdout (2,000 x 32 + 1,536)
+//   g11_test.exe collect <array.bin>            n records of 0x578 B in, RECORDS/REWARD/HEADER + 33 lines out
 //   g11_test.exe hash <salt16hex> <name>          the client's FUN_1800b8420 port, one 16-hex line
 //   g11_test.exe sha256 <file>                    the image gate's hash path, one 64-hex line
 //
@@ -13,8 +14,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "../src/g11.h"
+#include "../src/master.h"
 
 static int CHECKS = 0;
 static int FAILS = 0;
@@ -487,6 +490,77 @@ static int self_checks(const char *saltfile)
         fake_free(&f);
     }
 
+    // 10. the reward set's walk (build 30): the row's own tier count is the bound, three ids a tier, and the
+    //     game's own id guard (id - 1 < 0x3FFFF) drops 0 and 0x40000
+    {
+        static unsigned char recs[2 * MASTER_STRIDE];
+        static unsigned char set[G11_BITMAP_BYTES];
+        memset(recs, 0, sizeof(recs));
+        // record 0, two tiers: {0, 1, 0x3FFFF} then {0x40000, 0, 0} - two ids survive the guard
+        *(int *)(recs + MASTER_REC_COUNT) = 2;
+        {
+            unsigned *a = (unsigned *)(recs + MASTER_REC_TIER_LOOT);
+            a[0] = 0;
+            a[1] = 1;
+            a[2] = (unsigned)G11_MAX_ID;
+            a[3] = 0x40000;
+        }
+        // record 1, no tiers - and a first block full of ids the walk must never reach
+        *(int *)(recs + MASTER_STRIDE + MASTER_REC_COUNT) = 0;
+        {
+            unsigned *b = (unsigned *)(recs + MASTER_STRIDE + MASTER_REC_TIER_LOOT);
+            b[0] = 2;
+            b[1] = 3;
+            b[2] = 4;
+        }
+        int n = g12_collect(recs, 2, set);
+        ok(n == 2 && bitmap_get(set, 1) == 1 && bitmap_get(set, (unsigned long)G11_MAX_ID) == 1 &&
+               bitmap_get(set, 0) == 0 && bitmap_get(set, 2) == 0 && bitmap_get(set, 0x40000) == 0,
+           "g12: the walk keeps 1..0x3FFFF, drops 0 and 0x40000, and stops at the row's own tier count");
+
+        // and a row with no tiers at all contributes nothing
+        *(int *)(recs + MASTER_REC_COUNT) = 0;
+        ok(g12_collect(recs, 2, set) == 0, "g12: a row with no tiers contributes nothing");
+
+        // the kill switch: absent in a clean directory, present once its own file is there. The scratch lives
+        // beside the driver (its own directory is writable), not in %TEMP% - the function takes the directory.
+        {
+            wchar_t dir[MAX_PATH];
+            wchar_t sub[MAX_PATH];
+            wchar_t probe[MAX_PATH];
+            wchar_t f[MAX_PATH];
+            int sw = 0;
+            if (GetModuleFileNameW(NULL, dir, MAX_PATH) > 0)
+            {
+                wchar_t *slash = wcsrchr(dir, L'\\');
+                if (slash != NULL)
+                {
+                    slash[1] = L'\0';
+                    _snwprintf_s(sub, MAX_PATH, _TRUNCATE, L"%sg11test-%lu", dir,
+                                 (unsigned long)GetCurrentProcessId());
+                    CreateDirectoryW(sub, NULL);
+                    // the switch takes a directory that ends in a separator, the shape GetTempPathW hands back
+                    _snwprintf_s(probe, MAX_PATH, _TRUNCATE, L"%s\\", sub);
+                    sw = (g12_off_present(probe) == 0);
+                    _snwprintf_s(f, MAX_PATH, _TRUNCATE, L"%s\\progression-tuning", sub);
+                    CreateDirectoryW(f, NULL);
+                    _snwprintf_s(f, MAX_PATH, _TRUNCATE, L"%s\\progression-tuning\\rewards_off.txt", sub);
+                    HANDLE h = CreateFileW(f, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                    if (h != INVALID_HANDLE_VALUE)
+                    {
+                        CloseHandle(h);
+                    }
+                    sw = sw && (g12_off_present(probe) == 1);
+                    DeleteFileW(f);
+                    _snwprintf_s(f, MAX_PATH, _TRUNCATE, L"%s\\progression-tuning", sub);
+                    RemoveDirectoryW(f);
+                    RemoveDirectoryW(sub);
+                }
+            }
+            ok(sw == 1, "g12: the kill switch reads absent in a clean directory and present with its own file");
+        }
+    }
+
     printf("\n%d checks, %d failed\n", CHECKS, FAILS);
     if (FAILS == 0)
     {
@@ -521,6 +595,69 @@ static int cmd_encode(const char *inpath)
         size_t off = g11_part_offset(i) / 2;
         size_t len = g11_part_chars(i) / 2;
         g11_hex(bm + off, len, line);
+        printf("%s\n", line);
+    }
+    fflush(stdout);
+    return 0;
+}
+
+// The reward set's walk over a staged record array: n = filesize / MASTER_STRIDE records, straight out of
+// g12_collect. RECORDS/REWARD/HEADER first (the header through the shipped g11_ver, so the count, the 33 parts
+// and the 65,536 hex chars are the shipped numbers), then the 33 parts.
+static int cmd_collect(const char *inpath)
+{
+    FILE *f = fopen(inpath, "rb");
+    if (f == NULL)
+    {
+        printf("g11: cannot open %s\n", inpath);
+        return 2;
+    }
+    if (fseek(f, 0, SEEK_END) != 0)
+    {
+        fclose(f);
+        printf("g11: cannot size %s\n", inpath);
+        return 2;
+    }
+    long sz = ftell(f);
+    if (sz <= 0 || (sz % MASTER_STRIDE) != 0)
+    {
+        fclose(f);
+        printf("g11: %s holds %ld B, not a multiple of %d\n", inpath, sz, MASTER_STRIDE);
+        return 2;
+    }
+    rewind(f);
+    int n = (int)(sz / MASTER_STRIDE);
+    unsigned char *recs = (unsigned char *)malloc((size_t)sz);
+    if (recs == NULL)
+    {
+        fclose(f);
+        printf("g11: no memory for %ld B\n", sz);
+        return 2;
+    }
+    size_t got = fread(recs, 1, (size_t)sz, f);
+    fclose(f);
+    if (got != (size_t)sz)
+    {
+        free(recs);
+        printf("g11: %s gave %lu B of %ld\n", inpath, (unsigned long)got, sz);
+        return 2;
+    }
+    static unsigned char set[G11_BITMAP_BYTES];
+    int count = g12_collect(recs, n, set);
+    free(recs);
+    printf("RECORDS %d\n", n);
+    printf("REWARD %d\n", count);
+    char ver[G11_VER_CAP];
+    if (g11_ver(ver, sizeof(ver), (unsigned)count, G11_PARTS, G11_HEX) > 0)
+    {
+        printf("HEADER %s\n", ver);
+    }
+    for (int i = 0; i < G11_PARTS; i++)
+    {
+        static char line[G11_PART_CHARS + 1];
+        size_t off = g11_part_offset(i) / 2;
+        size_t len = g11_part_chars(i) / 2;
+        g11_hex(set + off, len, line);
         printf("%s\n", line);
     }
     fflush(stdout);
@@ -580,6 +717,10 @@ int main(int argc, char **argv)
     {
         return cmd_encode(argv[2]);
     }
+    if (argc >= 3 && strcmp(argv[1], "collect") == 0)
+    {
+        return cmd_collect(argv[2]);
+    }
     if (argc >= 4 && strcmp(argv[1], "hash") == 0)
     {
         return cmd_hash(argv[2], argv[3]);
@@ -588,6 +729,7 @@ int main(int argc, char **argv)
     {
         return cmd_sha256(argv[2]);
     }
-    printf("usage: g11_test.exe self | encode <in.bin> | hash <salt32hex> <name> | sha256 <file>\n");
+    printf("usage: g11_test.exe self | encode <in.bin> | collect <array.bin> | hash <salt32hex> <name> | "
+           "sha256 <file>\n");
     return 2;
 }

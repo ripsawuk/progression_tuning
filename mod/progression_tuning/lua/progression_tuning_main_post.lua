@@ -1,4 +1,4 @@
-local VERSION = "v1.1"
+local VERSION = "v1.2"
 local PREFIX = "progression_tuning: "
 
 local TICK_MS = 250
@@ -157,6 +157,22 @@ local function call(tbl, name, ...)
   return nil
 end
 
+local FC = {}
+-- a member looked up once
+local function fcache(tbl, name)
+  if type(tbl) ~= "table" then return nil end
+  local m = FC[tbl]
+  if m == nil then m = {}; FC[tbl] = m end
+  local f = m[name]
+  if f ~= nil then return f end
+  local _, v = member(tbl, name)
+  if type(v) == "function" then
+    m[name] = v
+    return v
+  end
+  return nil
+end
+
 local DGET, PLAIN = nil, {}
 -- reads a dvar string by hashed name
 local function dv(name)
@@ -307,11 +323,11 @@ end
 -- the csv file handle the table carries
 local function csv_file(tbl)
   local file = tbl.file
+  if file ~= nil and file ~= "" then return file end
   local getfile = fn_of(tbl, "GetFile")
-  if getfile ~= nil then
-    local ok, v = pcall(getfile, tbl)
-    if ok and v ~= nil then file = v end
-  end
+  if getfile == nil then return file end
+  local ok, v = pcall(getfile, tbl)
+  if ok and v ~= nil then return v end
   return file
 end
 
@@ -469,7 +485,10 @@ local function flush()
   if f ~= nil then f() end
 end
 
+local gloadcard, gcardboot, gcinstall
 local function gtick()
+  if gcardboot ~= nil then pcall(gcardboot) end
+  if gcinstall ~= nil then pcall(gcinstall) end
   local f = S.hooks.locks
   if f ~= nil then f() end
 end
@@ -513,8 +532,14 @@ local GSUMMARY_TICKS = 240
 local GN_GET = "GetDvarString"
 local GN_UNLOCKED = "isunlockedwithid"
 local GN_ARM, GN_VER, GN_SCOPE = "zm_g11_arm", "zm_g11_ver", "kronos_g11_scope"
-local GN_PART = {}
-for i = 0, 32 do GN_PART[i + 1] = string.format("zm_g11_%d", i) end
+local GN_RVER = "zm_g12_ver"
+-- the thirty three part names under a prefix
+local function gnames(prefix)
+  local t = {}
+  for i = 0, 32 do t[i + 1] = string.format(prefix .. "%d", i) end
+  return t
+end
+local GN_PART, GN_RPART = gnames("zm_g11_"), gnames("zm_g12_")
 local GUNLOCK = { "zm_unlock_all", "zm_unlock_attachments" }
 
 -- the 4203 id fallback scope thats fucking huge
@@ -810,8 +835,6 @@ local GD = {
   hex = nil,
   parts = nil,
   serial = nil,
-  locks = 0,
-  inScope = 0,
   scopeAll = false,
   unlock = nil,
   wrappers = 0,
@@ -821,6 +844,7 @@ local GD = {
   saidArm = false,
   saidSlot = {},
   gen = 0,
+  epoch = 0,
   ready = 0,
   lastSum = 0,
   skips = 0,
@@ -833,6 +857,7 @@ local GD = {
   bundles = {},
   camoref = {},
   pcamo = {},
+  pcamoAt = {},
   camomap = nil,
   camoEmpty = {},
   camoTry = nil,
@@ -857,11 +882,10 @@ for i = 1, 16 do
   GNIB[string.byte("0123456789abcdef", i)] = i - 1
   GNIB[string.byte("0123456789ABCDEF", i)] = i - 1
 end
-local GBITS = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 }
 
 -- a g11 (testing shit) dvar by hashed name
 local function gstr(name)
-  local get = fn_of(rawget(_G, "Dvar"), GN_GET)
+  local get = fcache(rawget(_G, "Dvar"), GN_GET)
   if type(get) ~= "function" then return nil end
   local okh, key = pcall(HD, name)
   if not okh or key == nil then key = name end
@@ -874,19 +898,8 @@ local function gstr(name)
   return nil
 end
 
--- how many bits the payload holds
-local function gcountLocks(hex)
-  local n = 0
-  for i = 1, GHEXLEN do
-    local v = GNIB[string.byte(hex, i)]
-    if v ~= nil then n = n + GBITS[v + 1] end
-  end
-  return n
-end
-
--- is this id bit set
-local function glockedNow(id)
-  local hex = G.hex
+-- is this id bit set in one payload
+local function gbit(hex, id)
   if hex == nil then return false end
   if id < 1 or id > GMAXID then return false end
   local b = math.floor(id / 8)
@@ -897,13 +910,217 @@ local function glockedNow(id)
   return math.floor(nib / 2 ^ (r % 4)) % 2 == 1
 end
 
--- how many scope ids are locked
-local function gcountScope()
-  local n = 0
-  for id in pairs(GLOCKSMITH) do
-    if glockedNow(id) then n = n + 1 end
+-- is this id bit set in the lock bitmap
+local function glockedNow(id) return gbit(G.hex, id) end
+
+-- is this id in the reward set
+local function greward(id)
+  if G.gset2 ~= nil and G.gset2[id] == true then return true end
+  return gbit(G.sethex, id)
+end
+
+-- the three tables that pay a reward
+local GCARDS = {
+  { key = "ret", name = "reticleChallenges",
+    path = "ae/sat_ae_autogen_reticle_challenges.csv",
+    cols = { id = 0, ref = 1, name = 2, desc = 3, amount = 4, loot = 5, XPReward = 6,
+             category = 7, order = 8, children = 9, image = 10, detailDesc = 11,
+             customSplashRef = 12, featuredLootItem = 13, gameModeMask = 14, itemRef = 15,
+             feature = 16 } },
+  { key = "sea", name = "seasonalChallenges",
+    path = "ae/sat_ae_autogen_seasonal_challenges.csv",
+    cols = { id = 0, ref = 1, name = 2, desc = 3, amount = 4, xp = 5, loot = 6,
+             blackcell_loot = 7, image = 8, category = 9, order = 10, children = 11, season = 12,
+             progressStart = 13, progressEnd = 14, customSplashRef = 15, featuredLootItem = 16,
+             feature = 17, gameMode = 18, instanceLootIDs = 19, rawTierProgressStart = 20,
+             rawTierProgressEnd = 21, activationFeeItems = 22, activationFeeQuantity = 23,
+             activationFeeCP = 24, premiumOnlyLoot = 25, activationIds = 26,
+             isBitfieldProgress = 27 } },
+  { key = "gs", name = "gunsmithChallenges",
+    path = "ae/sat_gs_challenges.csv",
+    cols = { id = 0, ref = 1, name = 2, desc = 3, amount = 4, loot = 5, XPReward = 6,
+             detailDesc = 7, customSplashRef = 8, featuredLootItem = 9, activatorRef = 10,
+             children = 11, customData = 12 } },
+}
+
+-- the prestige table read at boot for its map
+local GCARDP = { name = "callingCardPrestigeChallenges",
+  path = "ae/sat_ae_autogen_prestige_challenges.csv",
+  cols = { id = 0, prestige = 14 } }
+
+-- a csv table by name or hash
+local function gcardtbl(name)
+  local _, t = member(rawget(_G, "CSV"), name)
+  if type(t) == "table" then return t end
+  return nil
+end
+
+-- the file a table reads through handle first
+local function gcardfile(c, col)
+  local tbl = gcardtbl(c.name)
+  local file, src = nil, "handle"
+  if type(tbl) == "table" and type(tbl.cols) == "table" and tbl.cols[col] ~= nil then
+    file = csv_file(tbl)
+  end
+  if file == nil or file == "" then
+    file, src = c.path, "path"
+  end
+  return file, src
+end
+
+-- the column reader once it is there
+local function gcardcol()
+  return fn_of(rawget(_G, "StringTable"), "tablelookupentirecolumnbynum")
+end
+
+-- one loot cell split on bar then plus
+local function gcardcell(cell, set, n)
+  if type(cell) ~= "string" then return n end
+  for part in string.gmatch(cell, "[^|]+") do
+    for tok in string.gmatch(part, "[^+]+") do
+      local id = tonumber(tok)
+      if id ~= nil then
+        id = math.floor(id)
+        if id >= 1 and id <= GMAXID and set[id] == nil then
+          set[id] = true
+          n = n + 1
+        end
+      end
+    end
   end
   return n
+end
+
+-- the prestige set rule by row
+local GC = { map = {}, lvl = nil, said = nil, off = false, tick = nil, retry = 0, armed = false }
+local GCSTATE, GCSW = "getchallengestate", { "zm_unlock_cards", "zm_unlock_all" }
+local GS_ON, GS_DONE, GS_OFF = 1, 3, 4
+
+-- the player prestige and the unlock switches once a tick
+local function gpsets()
+  if GC.tick == S.tick then return GC.lvl, GC.off end
+  GC.tick = S.tick
+  local p, src = nil, "prestige"
+  local f = fcache(rawget(_G, "PRESTIGE"), "getplayerprestigelevel")
+  if f ~= nil then
+    local ok, v = pcall(f, 0)
+    if ok and type(v) == "number" then p = math.floor(v) end
+  end
+  if p == nil then
+    local v = dvi("zm_local_prestige")
+    if v == nil then v = tonumber(dv("zm_local_prestige")) end
+    if v ~= nil then p, src = math.floor(v), "dvar" end
+  end
+  GC.lvl, GC.off = p, false
+  for i = 1, #GCSW do
+    local v = dv(GCSW[i])
+    if v ~= nil and v ~= "" and v ~= "0" then GC.off = true end
+  end
+  local k = 0
+  for _, lv in pairs(GC.map) do
+    if p ~= nil and lv <= p then k = k + 1 end
+  end
+  if p ~= nil and GC.said ~= p .. src .. k then
+    GC.said = p .. src .. k
+    log(string.format("prestige sets: player prestige %s from %s, %s sets open", p, src, k))
+  end
+  return p, GC.off
+end
+
+-- a set the player has reached reads in progress
+local function gcstate(orig)
+  return function(c, id, ...)
+    local n = tonumber(id)
+    if n == nil then return orig(c, id, ...) end
+    local lv = GC.map[math.floor(n)]
+    if lv == nil then return orig(c, id, ...) end
+    local p, off = gpsets()
+    if off or p == nil then return orig(c, id, ...) end
+    if lv > p then return GS_OFF end
+    local st = orig(c, id, ...)
+    if st == GS_DONE then return st end
+    return GS_ON
+  end
+end
+
+-- wraps the state reader once
+gcinstall = function()
+  if GC.armed then return true end
+  GC.retry = GC.retry + 1
+  if GC.retry % 32 ~= 1 then return false end
+  local OC = rawget(_G, "OnlineChallenges")
+  if type(OC) ~= "table" then return false end
+  local k, o = member(OC, GCSTATE)
+  if type(o) ~= "function" then return false end
+  OC[k] = gcstate(o)
+  GC.armed = true
+  return true
+end
+
+-- one table reward column read now
+local function gcardread(c)
+  local colf = gcardcol()
+  if colf == nil then return nil end
+  local file, src = gcardfile(c, "loot")
+  local ok, col = pcall(colf, file, c.cols.loot)
+  if ok and type(col) == "table" then
+    local set, m, r = {}, 0, 0
+    for _, cell in pairs(col) do
+      r = r + 1
+      m = gcardcell(cell, set, m)
+    end
+    return set, m, r, src
+  end
+  if not c.said then
+    c.said = true
+    log("card table " .. c.name .. " why=" .. clip(ok and "no rows" or col, 200)
+      .. " file=" .. type(file) .. " col=" .. tostring(c.cols.loot))
+  end
+  return nil
+end
+
+-- loads one table now once
+gloadcard = function(key)
+  local i = 1
+  while i <= #GCARDS do
+    local c = GCARDS[i]
+    if c.key == key then
+      if c.ok then return true end
+      local set, m, r, src = gcardread(c)
+      if set == nil then return false end
+      c.ok = true
+      G.gset2 = G.gset2 or {}
+      for id in pairs(set) do G.gset2[id] = true end
+      G.cardK = (G.cardK or 0) + 1
+      G.epoch = G.epoch + 1
+      log("card table " .. c.name .. " rows=" .. r .. " ids=" .. m .. " src=" .. src)
+      return true
+    end
+    i = i + 1
+  end
+  return false
+end
+
+-- the prestige map read at boot
+gcardboot = function()
+  if GC.prow then return end
+  local colf = gcardcol()
+  if colf == nil then return end
+  local file, src = gcardfile(GCARDP, "id")
+  local okp, ids = pcall(colf, file, GCARDP.cols.id)
+  local okq, lvs = pcall(colf, file, GCARDP.cols.prestige)
+  if not okp or not okq or type(ids) ~= "table" or type(lvs) ~= "table" then return end
+  GC.prow = true
+  local r, m = 0, 0
+  for j, idv in pairs(ids) do
+    local id, p = tonumber(idv), tonumber(lvs[j])
+    if id ~= nil and p ~= nil then
+      GC.map[math.floor(id)] = math.floor(p)
+      m = m + 1
+    end
+    r = r + 1
+  end
+  log("card table " .. GCARDP.name .. " rows=" .. r .. " ids=" .. m .. " src=" .. src)
 end
 
 -- follows the retired scope switch
@@ -933,6 +1150,7 @@ local function greadUnlock()
   end
   if on ~= G.unlock then
     G.unlock = on
+    G.epoch = G.epoch + 1
     if on == nil then
       log("g11 debug unlock off - the lock door applies again")
     else
@@ -942,10 +1160,34 @@ local function greadUnlock()
   return on
 end
 
+-- reads the reward set once its header agrees
+local function greadset()
+  if G.sethex ~= nil then return end
+  if G.setTick == S.tick then return end
+  G.setTick = S.tick
+  local v = gstr(GN_RVER)
+  if v == nil or v == "" or v == "g12" then return end
+  local serial, n, len = string.match(v, "^(%d+):(%d+):(%d+)$")
+  if serial == nil or tonumber(n) ~= GPARTS or tonumber(len) ~= GHEXLEN then return end
+  local parts = {}
+  for i = 1, GPARTS do
+    local p = gstr(GN_RPART[i])
+    if p == nil or string.len(p) == 0 then return end
+    parts[i] = p
+  end
+  if gstr(GN_RVER) ~= v then return end
+  local hex = table.concat(parts)
+  if string.len(hex) ~= GHEXLEN then return end
+  G.sethex, G.setn = hex, tonumber(serial)
+  G.epoch = G.epoch + 1
+  log("g12 rewards " .. G.setn .. " ids (header " .. v .. ")")
+end
+
 -- rebuilds the lock bitmap when the serial moves
 local function grefresh()
   local v = gstr(GN_VER)
   greadScope()
+  greadset()
   greadUnlock()
   if v == nil or v == "" or v == "g11" then
     if not G.saidArm then
@@ -994,16 +1236,14 @@ local function grefresh()
     return
   end
   G.ver, G.hex, G.serial, G.parts = v, hex, tonumber(serial), parts
-  G.locks = gcountLocks(hex)
-  G.inScope = gcountScope()
+  G.epoch = G.epoch + 1
   G.doorSaid, G.doorN = {}, 0
-  G.bundles, G.camoref, G.pcamo, G.psaid, G.psaidN = {}, {}, {}, {}, 0
-  G.camomap = nil
-  G.camoTry, G.camoMapSaid, G.camoMissSaid = nil, 0, 0
+  G.psaid, G.psaidN = {}, 0
+  G.camoMapSaid, G.camoMissSaid = 0, 0
   G.askSeen, G.passSeen, G.passAt, G.passSaid = {}, {}, nil, 0
   if S.tracker ~= nil then S.tracker.drops, S.tracker.inN, S.tracker.outN = {}, 0, 0 end
   G.badver = nil
-  log("g11 rebuilt from serial " .. G.serial .. " (locks " .. G.locks .. ", " .. G.inScope .. " in scope)"
+  log("g11 rebuilt from serial " .. G.serial
     .. (typepair() and " types=attachment,camo,reticle" or " types=scope-fallback"))
 end
 
@@ -1118,6 +1358,11 @@ local function gwrap(T, name)
       local rule = S.locks ~= nil and S.locks.answer or nil
       local ok, answer = pcall(rule, id)
       if ok and answer then return false end
+      local open = S.locks ~= nil and S.locks.open or nil
+      if open ~= nil then
+        local okO, yes = pcall(open, id)
+        if okO and yes then return true end
+      end
     end
     return o(c, id, ...)
   end
@@ -1180,6 +1425,7 @@ end
 local A = S.api
 A.log, A.clip, A.said, A.norm = log, clip, said, norm
 A.member, A.fn_of, A.call = member, fn_of, call
+A.fcache = fcache
 A.family, A.ours = family, ours
 A.dv, A.dvi, A.toggle, A.want, A.vlog = dv, dvi, toggle, want, vlog
 A.empty, A.engine_mark, A.in_frontend, A.vm_mark = empty, engine_mark, in_frontend, vm_mark
@@ -1189,8 +1435,11 @@ A.cell_pick, A.gun_tries, A.resolve_gun = cell_pick, gun_tries, resolve_gun
 A.rec_value, A.rec_fields = rec_value, rec_fields
 A.note_cross, A.amounts_of = note_cross, amounts_of
 A.poll = LIVE_POLL_TICKS
-A.gstr, A.bit, A.count, A.scope, A.scopeN = gstr, glockedNow, gcountScope, GLOCKSMITH, GSCOPE_N
+A.gstr, A.bit, A.scope, A.scopeN = gstr, glockedNow, GLOCKSMITH, GSCOPE_N
+A.greward, A.gset = greward, function() return G.sethex, G.setn end
+A.cards = function() return G.cardK, #GCARDS end
 A.gmaxid, A.refresh, A.sum = GMAXID, grefresh, gsummary
+A.loadcard = gloadcard
 A.door_install, A.door_missing, A.door_retry = ginstall, gmissing, gensureWrapped
 A.door0 = { pr = fn_of(rawget(_G, "PROGRESSION"), GN_UNLOCKED),
             lo = fn_of(rawget(_G, "LOOT"), GN_UNLOCKED) }
@@ -1212,7 +1461,6 @@ local function heartbeat()
   end
   log(line .. " " .. vm_mark())
 end
-
 
 -- the match own tick
 local function tick_match()

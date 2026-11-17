@@ -93,7 +93,7 @@ KNOWN = {
 PATTERN_SYMBOLS = ["award", "site", "load_a", "load_b", "kill", "crit", "pub", "master", "site0", "site1",
                    "site2", "site3", "site4", "recs", "count", "serial", "bitmap", "rfn", "salt"]
 CONSTANT_SYMBOLS = ["chver", "slot"]
-FEATURES = ["nativepay", "publish", "master", "g11", "pubxp", "boundary"]
+FEATURES = ["nativepay", "publish", "master", "g11", "pubxp", "boundary", "g12"]
 
 passes = []
 failures = []
@@ -190,7 +190,7 @@ def rva_to_file(data, rva):
 
 
 def main():
-    print("clienthook build 29 - the resolver, over a file on disk - " + ROOT)
+    print("clienthook build 30 - the resolver, over a file on disk - " + ROOT)
     print("")
     if not os.path.isfile(EXE):
         print("STOP: %s is missing - run clienthook\\tools\\build_tests.cmd." % EXE)
@@ -275,13 +275,14 @@ def main():
               "resolve: 19/21 symbols (chver, slot)" in out2)
         feats2 = feature_states(out2)
         for f in FEATURES:
-            want_off = f in ("g11", "pubxp")
+            want_off = f in ("g11", "pubxp", "g12")
             check("%s is %s without the verdict" % (f, "off" if want_off else "on"),
                   feats2.get(f, "").startswith("off") if want_off else feats2.get(f) == "on",
                   feats2.get(f, "absent"))
         check("the refusal names the symbol each feature needs",
-              feats2.get("g11", "").endswith("chver") and feats2.get("pubxp", "").endswith("chver"),
-              "%s / %s" % (feats2.get("g11"), feats2.get("pubxp")))
+              feats2.get("g11", "").endswith("chver") and feats2.get("pubxp", "").endswith("chver")
+              and feats2.get("g12", "").endswith("chver"),
+              "%s / %s / %s" % (feats2.get("g11"), feats2.get("pubxp"), feats2.get("g12")))
 
     # ---- 3b. the DLL's own order: the verdict BEFORE the first scan ----------------------------------
     # frame_identify gives rs_set_known_build its verdict and only then asks rs_for for the addresses, and a scan

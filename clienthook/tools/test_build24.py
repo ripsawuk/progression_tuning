@@ -1,4 +1,4 @@
-"""Offline proof of clienthook build 29 - the forced publish, the native payment and the bounded log. Read-only
+"""Offline proof of clienthook build 30 - the forced publish, the native payment and the bounded log. Read-only
 with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
 (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
 
@@ -7,7 +7,7 @@ with respect to the game: nothing is installed, nothing is launched, and nothing
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 29.
+general offline proof and the banner it checks is the current one, build 30.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -257,7 +257,7 @@ def build_once():
 
 
 def main():
-    print("clienthook build 29 - the forced publish, the native payment, the bounded log - " + ROOT)
+    print("clienthook build 30 - the forced publish, the native payment, the bounded log - " + ROOT)
     print("")
     if not CLIENT:
         print("NOTE  KRONOS_GAME_DIR is not set and no --game was given - the client file cannot be read, so the "
@@ -285,7 +285,7 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 29", "version.dll build 29" in text)
+    check("the banner says build 30", "version.dll build 30" in text)
     for gone in ("version.dll build 25", "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
@@ -355,7 +355,7 @@ def main():
           ", ".join(sorted(set(os.listdir(SRC)) ^ set(SHIPPED_SRC))) or "same set")
 
     frame = read(FRAME)
-    check("the frame creates its four threads and no more", frame.count("= CreateThread(NULL, 0, ") == 4,
+    check("the frame creates its five threads and no more", frame.count("= CreateThread(NULL, 0, ") == 5,
           "%d CreateThread in frame.c" % frame.count("= CreateThread(NULL, 0, "))
     check("the fourth one is the forced publish's",
           frame.count("= CreateThread(NULL, 0, publish_thread, NULL, 0, NULL)") == 1)
@@ -595,7 +595,7 @@ def main():
           (r.stdout or "").strip())
 
     drive(os.path.join(BUILD, "pubxp_test.exe"), ["self"], 45, "pubxp_test self")
-    drive(os.path.join(BUILD, "g11_test.exe"), ["self"], 48, "g11_test self")
+    drive(os.path.join(BUILD, "g11_test.exe"), ["self"], 51, "g11_test self")
     drive(os.path.join(BUILD, "master_test.exe"), ["self"], 53, "master_test self")
     drive(os.path.join(BUILD, "detour_test.exe"), ["self"], 19, "detour_test self")
 
@@ -653,7 +653,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 29's banner", "version.dll build 29" in armed_log)
+    check("the log carries build 30's banner", "version.dll build 30" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):

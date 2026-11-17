@@ -641,6 +641,7 @@ static const struct
     {"g11", {RS_SERIAL, RS_BITMAP, RS_RFN, RS_SALT, RS_CHVER, RS_SLOT, RS_SYM_COUNT}, 6},
     {"pubxp", {RS_RECS, RS_COUNT, RS_RFN, RS_SALT, RS_CHVER, RS_SLOT, RS_SYM_COUNT}, 6},
     {"boundary", {RS_RECS, RS_COUNT, RS_SYM_COUNT, RS_SYM_COUNT, RS_SYM_COUNT, RS_SYM_COUNT, RS_SYM_COUNT}, 2},
+    {"g12", {RS_RECS, RS_COUNT, RS_RFN, RS_SALT, RS_CHVER, RS_SLOT, RS_SYM_COUNT}, 6},
 };
 
 const char *rs_feature_name(RS_FEATURE f)

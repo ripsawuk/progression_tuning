@@ -9,8 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "g11.h"
+#include "master.h"
 
 // --- the latch -------------------------------------------------------------------------------------
 
@@ -362,4 +364,81 @@ int g11_sha256_file(const wchar_t *path, unsigned char out[32])
 void g11_hex32(const unsigned char in[32], char out[65])
 {
     g11_hex(in, 32, out);
+}
+
+// --- the static reward set (g12) ---------------------------------------------------------------------
+//
+// The walk is the game's own (180092070): a row is MASTER_STRIDE bytes, its tier count is an int at +0x58, and
+// tier k's ids are three uint32 at +0x15C + k*0xC, read only while k is under that count. The three slots a tier
+// are the record's own capacity - 1800950d0:83-95 fills exactly three and drops a fourth. The game's builder
+// stops at the number of COMPLETED tiers because it wants what has been earned; this one walks the row's whole
+// ladder, which is what "every reward it can pay" means - so the bound here is the row's own tier count, never
+// the completed one, and a row that holds ids past that count cannot inflate the set.
+//
+// The set is a union: a row and its wrapper can name the same id, so the return value is the bitmap's popcount,
+// not the number of slots walked.
+
+int g12_collect(const unsigned char *recs, int n, unsigned char *out)
+{
+    if (recs == NULL || out == NULL || n <= 0 || n > G12_REC_MAX)
+    {
+        return 0;
+    }
+    memset(out, 0, G11_BITMAP_BYTES);
+    for (int r = 0; r < n; r++)
+    {
+        const unsigned char *rec = recs + (size_t)r * MASTER_STRIDE;
+        int tiers = *(const int *)(rec + MASTER_REC_COUNT);
+        if (tiers < 0)
+        {
+            tiers = 0;
+        }
+        if (tiers > MASTER_TIER_LOOT / 3)
+        {
+            tiers = MASTER_TIER_LOOT / 3; // 64, the block array's own ceiling
+        }
+        for (int k = 0; k < tiers; k++)
+        {
+            const unsigned *ids = (const unsigned *)(rec + MASTER_REC_TIER_LOOT + k * 0xC);
+            for (int j = 0; j < 3; j++)
+            {
+                unsigned id = ids[j];
+                if (id < 1 || id > G11_MAX_ID)
+                {
+                    continue; // the game's own guard: id - 1 < 0x3FFFF
+                }
+                out[id >> 3] = (unsigned char)(out[id >> 3] | (1u << (id & 7)));
+            }
+        }
+    }
+    int count = 0;
+    for (int i = 0; i < G11_BITMAP_BYTES; i++)
+    {
+        unsigned v = out[i];
+        v = v - ((v >> 1) & 0x55u);
+        v = (v & 0x33u) + ((v >> 2) & 0x33u);
+        count += (int)((v + (v >> 4)) & 0x0Fu);
+    }
+    return count;
+}
+
+int g12_off_present(const wchar_t *tempdir)
+{
+    wchar_t dir[MAX_PATH];
+    wchar_t path[MAX_PATH];
+    if (tempdir == NULL)
+    {
+        DWORD n = GetTempPathW(MAX_PATH, dir);
+        if (n == 0 || n >= MAX_PATH)
+        {
+            return 0;
+        }
+        tempdir = dir;
+    }
+    if (_snwprintf_s(path, MAX_PATH, _TRUNCATE, L"%sprogression-tuning\\rewards_off.txt", tempdir) < 0)
+    {
+        return 0;
+    }
+    DWORD a = GetFileAttributesW(path);
+    return (a != INVALID_FILE_ATTRIBUTES && a != 0xFFFFFFFFu) ? 1 : 0;
 }

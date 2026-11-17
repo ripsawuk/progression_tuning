@@ -130,6 +130,29 @@ REMOVED = [
     "g11_locks", "e3_armory", "g10_armory", "Armory", "armory",
 ]
 
+# the game's own card tables, read by name - not residue of a removed feature
+CARD_TABLES = ["reticleChallenges", "seasonalChallenges", "gunsmithChallenges",
+               "callingCardPrestigeChallenges"]
+# their stringtable paths, which the loader falls back to - the same reason
+CARD_PATHS = ["ae/sat_ae_autogen_reticle_challenges.csv",
+              "ae/sat_ae_autogen_seasonal_challenges.csv",
+              "ae/sat_gs_challenges.csv",
+              "ae/sat_ae_autogen_prestige_challenges.csv"]
+# the four card tables the reward set no longer reads
+DROPPED_CARDS = ["callingCardMasterChallenges", "playlistchallenges",
+                 "leagueplayChallengeAchievements", "masteryBadgeAchievements"]
+DROPPED_PATHS = ["ae/sat_ae_autogen_sticker_book_challenges.csv",
+                 "ae/sat_ae_autogen_playlist_challenges.csv",
+                 "ae/sat_leagueplay_challenge_achievements.csv",
+                 "ae/sat_ae_autogen_masterybadge_challenges.csv"]
+# the game's own unlock dvars, which carry no residue of a removed feature
+UNLOCK_DVARS = ["zm_unlock_attachments", "zm_unlock_camos", "zm_unlock_reticles", "zm_unlock_cards",
+                "zm_unlock_emblems", "zm_unlock_operators", "zm_unlock_finishers", "zm_unlock_charms",
+                "zm_unlock_stickers", "zm_unlock_sprays", "zm_unlock_emotes",
+                "zm_unlock_loadingscreens", "zm_unlock_perks", "zm_unlock_equipment",
+                "zm_unlock_scorestreaks", "zm_unlock_fieldupgrades", "zm_unlock_wildcards",
+                "zm_unlock_ammomods"]
+
 passes, failures, infos = [], [], []
 
 
@@ -261,15 +284,47 @@ CSV.weaponProgressionAchievements = { file = "wp",
   cols = { weaponRef = "weaponRef", weaponProgressionAchievementID = "weaponProgressionAchievementID",
            amount = "amount", loot = "loot" },
   [xhash("GetFile")] = function(t) return "wp" end }
-CSV.gunsmithChallenges = { file = "gs", cols = { id = "id", ref = "ref", loot = "loot", amount = "amount" } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, ref = 1, loot = 5, amount = 4 } }
 CELLS = {}
 ROWS = {}
+ROWCOLS = {}
 StringTable = {}
 StringTable[xhash("tablelookup")] = function(file, kc, kv, oc)
   return CELLS[tostring(file) .. "|" .. tostring(kc) .. "|" .. tostring(kv) .. "|" .. tostring(oc)]
 end
-StringTable[xhash("tablereadallrows")] = function(file)
+StringTable[xhash("tablereadallrows")] = function(file, cols)
+  ROWCOLS[tostring(file)] = cols
   return ROWS[tostring(file)]
+end
+COLNUM = {}
+COLCOLS = {}
+StringTable[xhash("tablelookupentirecolumnbynum")] = function(file, n)
+  local f = tostring(file)
+  COLNUM[f] = COLNUM[f] or {}
+  COLNUM[f][#COLNUM[f] + 1] = n
+  local rows, cols = ROWS[f], COLCOLS[f]
+  if cols == nil then
+    for _, t in pairs(CSV) do
+      if type(t) == "table" and type(t.cols) == "table" and tostring(t.file) == f then
+        cols = t.cols
+      end
+    end
+  end
+  if rows == nil or cols == nil then return nil end
+  local name = nil
+  for k, v in pairs(cols) do
+    if type(v) == "number" and v == n then name = k end
+  end
+  if name == nil then return nil end
+  local keys = {}
+  for k in pairs(rows) do keys[#keys + 1] = k end
+  table.sort(keys, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+  local out = {}
+  for i = 1, #keys do
+    local r = rows[keys[i]]
+    if type(r) == "table" then out[i] = r[name] end
+  end
+  return out
 end
 function CELL(file, kc, kv, oc, v)
   CELLS[tostring(file) .. "|" .. tostring(kc) .. "|" .. tostring(kv) .. "|" .. tostring(oc)] = v
@@ -387,8 +442,9 @@ LOOT[xhash("gettypeforid")] = function(id)
 end
 LOOT.itemTypes = { ATTACHMENT = 7, CAMO = 13, RETICLE = 14, WEAPON = 2, PLAYERCARD = 11 }
 DEFID = {}
+DEFCALLS = 0
 function SET_DEFAULT(id) DEFID[tostring(id)] = true end
-LOOT[xhash("isitemdefault")] = function(id) return DEFID[tostring(id)] == true end
+LOOT[xhash("isitemdefault")] = function(id) DEFCALLS = DEFCALLS + 1; return DEFID[tostring(id)] == true end
 LOOT[xhash("isunlockedwithid")] = function(c, id) LCALLS = LCALLS + 1; return OWNED end
 
 ATTACHMENT = {}
@@ -491,9 +547,24 @@ function CLEAR_G11()
 end
 function SET_SCOPE(v) SET_DVAR("kronos_g11_scope", v) end
 function CLEAR_SCOPE() CLR_DVAR("kronos_g11_scope") end
+R_SLABS = {}
+function SET_RPARTS() for i = 0, 32 do DVARS[xhashdvar("zm_g12_" .. i)] = R_SLABS[i + 1] end end
+function SET_G12(serial)
+  SET_RPARTS()
+  DVARS[xhashdvar("zm_g12_arm")] = "g11"
+  DVARS[xhashdvar("zm_g12_ver")] = tostring(serial) .. ":33:65536"
+end
+function SET_RVER(v) DVARS[xhashdvar("zm_g12_ver")] = v end
+function SET_RPART(i, v) DVARS[xhashdvar("zm_g12_" .. i)] = v end
+function CLEAR_G12()
+  CLR_DVAR("zm_g12_ver")
+  for i = 0, 32 do CLR_DVAR("zm_g12_" .. i) end
+end
 function TORN_NEXT(n) TORN = n end
 function ASK_P(id) return PROGRESSION[xhash("isunlockedwithid")](0, id) end
 function ASK_L(id) return LOOT[xhash("isunlockedwithid")](0, id) end
+function LOAD_CARD(k) return ProgressionTuning.api.loadcard(k) end
+function LOAD_ALL() LOAD_CARD('ret') LOAD_CARD('sea') LOAD_CARD('gs') end
 function G11(name)
   local s = rawget(_G, "ProgressionTuning")
   if type(s) ~= "table" or type(s.g11) ~= "table" then return nil end
@@ -635,15 +706,19 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 160400
-SHIP_LUA_SHA = "1AFCC286B2FDF079932E3E17F4F968819ABD0BD406500B59DAF4EFC6B84AE041"
-LITERAL_SHA = "5238D6B85C132CCDEC40F39F986D8966F00DD40B633AF9AA221604142FE03F84"
+SHIP_LUA_LEN = 181584
+SHIP_LUA_SHA = "4DCAE56785C0D0C0F0A0EB1FA684EAC9A9301C3621C393FB2909A981657B7443"
+LITERAL_SHA = "31CA1377ED9B19A4AFC50AC36AC919340D228F6C312071C3C180CABE1C155DE0"
 LITERAL_REMOVED = [
+    " (locks ",
     " ah=",
     " err=",
     " gi=",
+    " in scope)",
+    " inscope=",
     " isp=",
     " len=",
+    " locks=",
     " playing=",
     "Challenge.GetAEKindID refused ae_kind_reticle",
     "GetSoundLengthMS",
@@ -663,193 +738,146 @@ LITERAL_REMOVED = [
 LITERAL_ADDED = [
     " - not one of ours, so no row is read for it",
     " - the camo map is truncated and",
-    " belongs to ",
-    " complete=",
-    " computed and it keeps the client's own answer",
-    " is ",
-    " is ",
-    " is a prestige reward for ",
-    " is not one of ours - not bound",
-    " left as the client answers it",
-    " mwcf=",
-    " names ",
-    " not kept",
-    "#x37dc362a78cf1d3d3",
-    "A",
-    "B",
-    "ChallengeComplete",
-    "CamoChallenge",
-    "DailyChallengeNotification",
-    "DataSources",
-    "EmptySplashRef",
-    "GetValue",
-    "HaveActiveSplashScreens",
-    "HudManager",
-    "MP",
-    "Medal",
-    "MessageType",
-    "SplashManager",
-    "SplashTrapSubheader",
-    "SplashUtils",
-    "WEEKLY CHALLENGE COMPLETE",
-    "WeeklyChallengeSplashNotification",
-    "WeaponLevel",
-    "a",
-    "absent",
-    "absent/absent",
-    "acarry:",
-    "ae_kind_reticle_cer",
-    "b",
-    "c",
-    "camo bundles ",
-    "camo:extra:",
-    "camo:watch:",
-    "camoA",
-    "camoB",
-    "camos",
-    ": cards capped at ",
-    "carried:",
-    "carry-forward: pack=unknown dvar=",
-    "chalD",
-    "chalWB",
-    "chal week gate - no Challenge.IsChallengeComplete in this VM, the vanished row is carded",
-    "challenges",
-    "challenge/jup_ch_weekly_challenge_completed",
-    "core absent - no part ",
-    "currentSplash",
-    "dailyNotification",
-    "diag",
-    "empty_splash_ref",
-    "foreign ref",
-    "gcamo:carried:",
-    "getdesclocalizedbyid",
-    "getrewards",
-    "glock:carried:",
-    "groupId",
-    " head=",
-    "inGame",
-    "iw9",
-    "iw9_",
-    "jup",
-    "jup_",
-    "kronos_cfwd",
-    "matchobjectivetext",
-    "mwcf_box_pools",
-    " names ",
-    " none",
-    "nil",
-    "nosplash",
-    "part main armed ",
-    "prestige lock: the weapon list is longer than ",
-    "prison",
-    "progression_tuning: part camos armed",
-    "progression_tuning: part challenges armed",
-    "progression_tuning: part diag armed",
-    "progression_tuning: part prison armed",
-    "progression_tuning: part reticles armed",
-    "progression_tuning: part splash armed",
-    "progression_tuning: part weaponxp armed",
-    "raised",
-    "ret",
-    "reticles",
-    " route=",
-    " route=B",
-    "sat",
-    "sat_",
-    "setText",
-    "shouldOverride",
-    "splash",
-    "splash absent - no card is drawn",
-    "splashck",
-    "splashes",
-    "splashes/daily_challenge_completed",
-    "t10",
-    "t10_",
-    "weaponxp",
-    "weaponProgression",
-    "weekgate",
-    "weekly body=",
-    "weekly body=empty",
-    "weekly card id=",
-    "weekly header native=",
-    "weekly header=none",
-    "weekly xp id=",
-    "widget",
-    "widgetMap",
-    "^#x%x+$",
-    "^%x+$",
-    "0x%x%x%x%x%x%x%x%x",
-    "0x7dc362a78cf1d3d3",
-    " aliases=",
-    " opacity=",
-    " side card refused",
-    " sound=",
-    ": snd ",
-    ": snd capped at ",
-    "GetMilliseconds",
-    "SOUND_SETS",
-    "_DataSources",
-    "challengeComplete",
-    "challengeSplash",
-    "displayLocation",
-    "err:side",
-    "error side card: ",
-    "gamer_profile",
-    "generalChallenge",
-    "insertTime",
-    "notification_feed_opacity",
-    "options",
-    "settings",
-    "sound",
-    "uin_jup_challenge_camo_unlock",
-    "uin_jup_challenge_complete",
-    "unread",
-    "weaponLevel",
-    "diag off",
-    "pt_diag_off",
     " 101644 b=",
     " 131708 b=",
     " agree=",
+    " aliases=",
+    " belongs to ",
     " bit0=",
     " bit1=",
     " bundle=",
     " bundleType=",
+    " buy=",
     " cat=",
     " cer=",
+    " child ",
+    " children=",
+    " col=",
+    " complete=",
     " complete=false progress=",
     " complete=true progress=",
-    " ctl=",
+    " computed and it keeps the client's own answer",
     " csv=",
+    " ctl=",
+    " cum=",
+    "card lock: ",
+    "card lock: purchasable probe missing ",
+    "cardbuy",
+    " default=",
+    " den=",
     " diff=",
+    " door=",
+    " empty=",
+    " file=",
+    " firstNum=",
+    " fork429=",
+    " head=",
     " hex=",
+    " ids (header ",
+    " ids=",
+    " is ",
+    " is a prestige reward for ",
+    " is not one of ours - not bound",
     " isComplete=",
     " k398=",
     " k400=",
+    " l92066=",
+    " left as the client answers it",
     " live=",
+    " lock=",
     " lvl=",
     " lvl=1 reward=",
     " max=",
+    " mwcf=",
+    " names ",
+    " native=",
+    " none",
+    " not kept",
+    " num=",
+    " opacity=",
+    " open=",
     " our=",
+    " pct=",
     " prestigeRef=",
+    " r92066=",
     " ranks=",
+    " reward=",
     " rewardData=",
+    " route=",
+    " route=B",
+    " rows=",
     " show315=",
     " show422=",
+    " side card refused",
+    " sound=",
+    " split1=",
     " src=",
+    " st=",
+    " sticker=",
+    " store ids by type: ",
     " tbl315=",
     " tbl422=",
+    " types=attachment,camo,reticle",
+    " why=",
     " wkhead=",
     " wlevel=",
     " x=",
+    "#x37dc362a78cf1d3d3",
+    "%d",
     "/absent",
+    "0x%x%x%x%x%x%x%x%x",
+    "0x7dc362a78cf1d3d3",
+    "2=",
     "3",
+    "3=",
     "7C6F4A53654BFFDF",
+    ": cards capped at ",
+    ": snd ",
+    ": snd capped at ",
+    "A",
+    "AMMOMOD",
+    "ATTACHMENT",
+    "B",
+    "BATTLEMAP.",
+    "BR",
+    "Bundles",
+    "CHARM",
+    "CallingCardUtils",
+    "CamoChallenge",
+    "ChallengeComplete",
+    "DailyChallengeNotification",
+    "DataSources",
     "Dvar",
     "E1A4D0E8679C1CCB",
+    "EMBLEM",
+    "EMOTE",
+    "EQUIPMENT",
+    "EmptySplashRef",
     "GetAmount",
+    "GetCumulatedProgressNormalized",
     "GetFileTableByType",
+    "GetFirstBundleWithLootId",
+    "GetMilliseconds",
     "GetRewardDataUnlockedAtWeaponLevel",
+    "GetUnlockDescription",
+    "GetValue",
+    "HaveActiveSplashScreens",
+    "HudManager",
     "IsChallengeComplete",
+    "IsLootUseableOnCurrentPlatform",
+    "IsReward",
+    "IsUnlocked",
+    "LOAD_SCREEN",
+    "MP",
+    "Medal",
+    "MessageType",
+    "OB",
+    "OPERATOR",
+    "OPERATOR_EXECUTION",
+    "OPERATOR_SKIN",
+    "PAGEDBATTLEPASS.",
+    "PERK",
+    "PLAYERCARD",
     "QB1 ",
     "QB1 done=none",
     "QB10 ref=",
@@ -857,8 +885,16 @@ LITERAL_ADDED = [
     "QB11 row=none",
     "QB12 bool=",
     "QB13 aek=",
+    "QB14 g12 set=",
+    "QB15 ",
+    "QB16 skin=",
+    "QB17 show429=",
+    "QB18 ret=",
+    "QB19 ",
+    "QB19 cards=",
     "QB2 ",
     "QB2 api=",
+    "QB20 ",
     "QB3 hash=",
     "QB4 ",
     "QB5 anchor 126605 b=",
@@ -868,28 +904,195 @@ LITERAL_ADDED = [
     "QB7 ",
     "QB8 prestige0=",
     "QB9 ref=",
+    "RETICLE",
+    "SOUND_SETS",
+    "SPRAYS",
+    "STICKER",
+    "STORE",
+    "STORE.Bundles.",
+    "STREAK",
+    "SUPER",
+    "SplashManager",
+    "SplashTrapSubheader",
+    "SplashUtils",
+    "WEEKLY CHALLENGE COMPLETE",
+    "WILDCARD",
+    "WeaponLevel",
+    "WeeklyChallengeSplashNotification",
+    "ZM",
+    "^#x%x+$",
+    "^%x+$",
+    "^zm_unlock_",
+    "_DataSources",
+    "a",
+    "absent",
+    "absent/absent",
+    "acarry:",
+    "ae/sat_ae_autogen_prestige_challenges.csv",
+    "ae/sat_ae_autogen_reticle_challenges.csv",
+    "ae/sat_ae_autogen_seasonal_challenges.csv",
+    "ae/sat_gs_challenges.csv",
+    "ae_kind_reticle_cer",
+    "ans",
+    "b",
+    "c",
+    "callingCardPrestigeChallenges",
+    "camo bundles ",
+    "camo:extra:",
+    "camo:watch:",
+    "camoA",
+    "camoB",
+    "camos",
+    "card",
+    "card table ",
+    "carried:",
+    "carry-forward: pack=unknown dvar=",
     "category",
+    "chal week gate - no Challenge.IsChallengeComplete in this VM, the vanished row is carded",
+    "chalD",
+    "chalWB",
+    "challenge/jup_ch_weekly_challenge_completed",
+    "challengeComplete",
+    "challengeSplash",
+    "challenges",
+    "core absent - no part ",
+    "currentSplash",
+    "dailyNotification",
+    "dark",
+    "diag",
+    "diag off",
+    "displayLocation",
+    "empty_splash_ref",
+    "err:side",
+    "error side card: ",
     "false",
+    "foreign ref",
+    "g12",
+    "g12 rewards ",
+    "gamer_profile",
+    "gcamo:carried:",
+    "generalChallenge",
     "getactiveweaponranktablebundle",
     "getactiveweaponranktableranklist",
     "getaekindfromid",
+    "getchallengestate",
+    "getdesclocalizedbyid",
     "getlootiteminfofromid",
+    "getplayerprestigelevel",
     "getprimaryprojectfromref",
+    "getrewards",
+    "getstickerbookchallengedata",
+    "getstickerbookchallengesdata",
+    "glock:carried:",
+    "gopen:platform",
+    "groupId",
+    "gunsmithChallenges",
+    "handle",
     "hash_7dc362a78cf1d3d3",
     "id315",
+    "inGame",
+    "insertTime",
     "isComplete",
+    "isbattlepassreward",
+    "isblackcellreward",
+    "iw9",
+    "iw9_",
+    "jup",
+    "jup_",
+    "kronos_cfwd",
     "levelUnlock",
     "lui_use_gl_splash",
     "lui_weekly_challenge_menu_enabled",
+    "matchobjectivetext",
+    "mwcf_box_pools",
+    "native",
+    "nil",
+    "no rows",
+    "nosplash",
+    "notification_feed_opacity",
+    "open ",
+    "options",
+    "part main armed ",
+    "path",
+    "prestige lock: the weapon list is longer than ",
+    "prestige sets: player prestige %s from %s, %s sets open",
+    "prison",
+    "progression_tuning: part camos armed",
+    "progression_tuning: part challenges armed",
+    "progression_tuning: part diag armed",
+    "progression_tuning: part prison armed",
+    "progression_tuning: part reticles armed",
+    "progression_tuning: part splash armed",
+    "progression_tuning: part weaponxp armed",
+    "pt_diag_off",
     "pt_diagb",
+    "raised",
     "rbdiag",
+    "ret",
     "reticle",
-    "RETICLE",
-    " types=attachment,camo,reticle",
+    "reticleChallenges",
+    "reticles",
+    "sat",
+    "sat_",
+    "sat_ui_playercard_044",
+    "sat_ui_playercard_173",
+    "seasonalChallenges",
+    "setText",
+    "settings",
+    "shouldOverride",
+    "sound",
+    "splash",
+    "splash absent - no card is drawn",
+    "splashck",
+    "splashes",
+    "splashes/daily_challenge_completed",
+    "store",
+    "store open: no STORE.Bundles.IsLootUseableOnCurrentPlatform in this VM - a store id keeps the client's",
+    "t10",
+    "t10_",
     "t10_me_p55_bgloves",
+    "tablelookupentirecolumnbynum",
     "true",
     "type",
+    "ui_playercard_869",
+    "uin_jup_challenge_camo_unlock",
+    "uin_jup_challenge_complete",
+    "unlock dvars: ",
+    "unread",
+    "weaponLevel",
+    "weaponProgression",
+    "weaponxp",
+    "weekgate",
+    "weekly body=",
+    "weekly body=empty",
+    "weekly card id=",
+    "weekly header native=",
+    "weekly header=none",
+    "weekly xp id=",
+    "widget",
+    "widgetMap",
     "xhashdvar",
+    "zm_g11_",
+    "zm_g12_",
+    "zm_g12_ver",
+    "zm_local_prestige",
+    "zm_unlock_ammomods",
+    "zm_unlock_camos",
+    "zm_unlock_cards",
+    "zm_unlock_charms",
+    "zm_unlock_emblems",
+    "zm_unlock_emotes",
+    "zm_unlock_equipment",
+    "zm_unlock_fieldupgrades",
+    "zm_unlock_finishers",
+    "zm_unlock_loadingscreens",
+    "zm_unlock_operators",
+    "zm_unlock_perks",
+    "zm_unlock_reticles",
+    "zm_unlock_scorestreaks",
+    "zm_unlock_sprays",
+    "zm_unlock_stickers",
+    "zm_unlock_wildcards",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
@@ -903,6 +1106,12 @@ def load(rt):
 def where(needle):
     """The parts that carry a needle."""
     return [n for n in LUA_FILES if needle in LUA_TEXT[n]]
+
+
+def rebuild_block():
+    """The lines the serial rebuild resets, from the door tally to the tracker."""
+    m = re.search(r"  G\.doorSaid, G\.doorN = \{\}, 0\n(.*?)\n  if S\.tracker", SRC, re.S)
+    return m.group(0) if m else ""
 
 
 def literals(text):
@@ -932,6 +1141,19 @@ def shipping():
     return "".join(LUA_TEXT[n] for n in SHIP_FILES)
 
 
+def diag_quarantine():
+    """The diagnostic part with its quarantined span left out."""
+    lines, start, end = diag_span()
+    if start is None or end is None:
+        return LUA_TEXT[DIAG]
+    return "\n".join(lines[:start] + lines[end + 1:])
+
+
+def door_owners(texts):
+    """The parts that name the ownership door, from a part-to-text map."""
+    return [n for n in LUA_FILES if '"isunlockedwithid"' in texts.get(n, "")]
+
+
 
 def bitmap_of(ids):
     bm = bytearray(32768)
@@ -949,6 +1171,11 @@ def slabs_of(ids):
 def lua_slabs(rt, slabs):
     rt.execute("SLABS = {" + ",".join('"%s"' % s for s in slabs) + "}")
     rt.execute("SET_PARTS()")
+
+
+def lua_rslabs(rt, slabs):
+    rt.execute("R_SLABS = {" + ",".join('"%s"' % s for s in slabs) + "}")
+    rt.execute("SET_RPARTS()")
 
 
 def new_rt(lua51, frontend=False, pre="", fixture=True, log=True, src=True):
@@ -1033,7 +1260,7 @@ def static_checks():
 
     check("mod.json: name", mod["name"] == "Progression Tuning", mod.get("name"))
     check("mod.json: author", mod["author"] == "ripsawuk", mod.get("author"))
-    check("mod.json: version 1.1", mod["version"] == "1.1", mod.get("version"))
+    check("mod.json: version 1.2", mod["version"] == "1.2", mod.get("version"))
     check("mod.json: type names the ui and the script", mod["type"] == "ui,script", mod.get("type"))
     check("mod.json: requires is empty", mod["requires"] == [])
     check("mod.json: the keys are the installed mods' six, in order",
@@ -1093,7 +1320,7 @@ def static_checks():
     check("diag: the card line is one bounded line and only the diag part names it",
           "local CK_CARD_CAP = 60" in SRC and "if CK_CARDS >= CK_CARD_CAP then" in SRC
           and '": cards capped at "' in SRC and "S.hooks.card = ck_card" in SRC
-          and "splashck" not in ship and "ck_card" not in ship and "CK_CARD" not in ship)
+          and "splashck" not in ship and not re.search(r"\bck_card\b", ship) and "CK_CARD" not in ship)
     check("lua: the splash part paces on the main part's own timer step",
           "local TICK_MS = 250" in LUA_TEXT[SPLASH] and "local TICK_MS = 250" in LUA_TEXT[MAIN])
     check("lua: the weekly subtitle is one plain line - the number is never marked",
@@ -1108,7 +1335,21 @@ def static_checks():
           and LOAD_ORDERS["harness"] != LOAD_ORDERS["reversed"]
           and len(set(tuple(v) for v in LOAD_ORDERS.values())) == 3)
 
-    found = [k for k in REMOVED if k in ship.replace('"RETICLE"', "")]
+    scan = ship.replace('"RETICLE"', "")
+    for name in CARD_TABLES + CARD_PATHS + UNLOCK_DVARS:
+        scan = scan.replace('"%s"' % name, "")
+    found = [k for k in REMOVED if k in scan]
+    drop = [k for k in DROPPED_CARDS + DROPPED_PATHS if k in ship]
+    check("lua: the four dropped card tables are named nowhere in the shipped parts",
+          drop == [], " | ".join(drop))
+    gone = [k for k in ("GCARD_SLOW", "cardTry", "cardDone", "cardIdx", "cardst",
+                        "cardTick", "cardSaid", "card rewards ", "gloadcards")
+            if k in LUA_TEXT[MAIN]]
+    check("lua: the round robin is gone - no per tick index, no slow retry, no union line",
+          gone == [] and 'A.loadcard = gloadcard' in LUA_TEXT[MAIN], " | ".join(gone))
+    check("lua: the loader holds the three reward tables and their short keys",
+          LUA_TEXT[MAIN].count('{ key = "') == 3
+          and all('key = "%s"' % k in LUA_TEXT[MAIN] for k in ("ret", "sea", "gs")))
     have = literals(SRC)
     gone = sorted(set(LITERAL_REMOVED) & have)
     dig = hashlib.sha256(("\n".join(sorted(have)) + "\n").encode()).hexdigest().upper()
@@ -1124,9 +1365,19 @@ def static_checks():
                        ("debug.", "debug library")):
         check("lua: no %r (%s)" % (token, why), token not in SRC)
 
+    texts = {n: LUA_TEXT[n] for n in LUA_FILES}
+    texts[DIAG] = diag_quarantine()
     check("lua: one ownership door, one name - isunlockedwithid appears once",
-          ship.count('"isunlockedwithid"') == 1 and where('"isunlockedwithid"') == [MAIN],
-          "%d in %s" % (ship.count('"isunlockedwithid"'), where('"isunlockedwithid"')))
+          ship.count('"isunlockedwithid"') == 1 and door_owners(texts) == [MAIN],
+          "%d in %s" % (ship.count('"isunlockedwithid"'), door_owners(texts)))
+    check("lua: the ownership-door guard still flags a part that names it",
+          door_owners({MAIN: LUA_TEXT[MAIN],
+                       PRISON: 'local w = fn_of(L, "isunlockedwithid")'}) == [MAIN, PRISON]
+          and door_owners({DIAG: 'local w = fn_of(L, "isunlockedwithid")'}) == [DIAG],
+          "shipped=%s unquarantined=%s"
+          % (door_owners({MAIN: LUA_TEXT[MAIN],
+                          PRISON: 'local w = fn_of(L, "isunlockedwithid")'}),
+             door_owners({DIAG: 'local w = fn_of(L, "isunlockedwithid")'})))
     check("lua: one wrapper per getter - the ownership door, the value door, the token id reader",
           SRC.count("T[k] = w") == 1 and SRC.count("lo[k] = w") == 1
           and SRC.count("pre[k] = w") == 1
@@ -1139,7 +1390,9 @@ def static_checks():
           "local function gattach(n)" in SRC and "local function gcamo(n)" in SRC
           and SRC.count("if gattach(n) then return true end") == 1
           and SRC.count("if gcamo(n) then return true end") == 1)
-    check("lua: the door reads the client's own item type on every ask, because a prestige reward has no bit",
+    check("lua: the unlock camos toggle stands the prestige band aside",
+          '{ "CAMO", "zm_unlock_camos" }' in SRC and "if gtoggle(GTYPE_C) then return false end" in SRC)
+    check("lua: the door reads the client's own item type, because a prestige reward has no bit",
           "local t = gtype(n)" in SRC and "if bit == 1 or glogging() then" not in SRC)
     check("lua: the value door is keyed by the client's own metadata and its own token accessor",
           "local function gvalinstall()" in SRC and '"getprogressionitemmetadata"' in SRC
@@ -1147,8 +1400,16 @@ def static_checks():
           and "if gsent()[n] == true then ans = 0" in SRC
           and "elseif GTOK ~= nil and GTOK[n] == true then ans = 0 end" in SRC
           and "      v = f(c, id, ...)" in SRC)
-    check("lua: the prestige caches are cleared on the same rebuild as the bitmap",
-          "G.bundles, G.camoref, G.pcamo, G.psaid, G.psaidN = {}, {}, {}, {}, 0" in SRC)
+    blk = rebuild_block()
+    check("lua: the rebuild keeps the static caches and clears only the tallies",
+          "G.psaid, G.psaidN = {}, 0" in blk
+          and "G.camoMapSaid, G.camoMissSaid = 0, 0" in blk
+          and not re.search(r"G\.(?:bundles|camoref|pcamo|camomap|camoTry)\b", blk)
+          and "G.doorSaid, G.doorN = {}, 0" in blk,
+          " | ".join(ln.strip() for ln in blk.split("\n"))[:200])
+    check("lua: no reader walks the 65536-char payload to count it",
+          "gcountLocks" not in SRC and "gcountScope" not in SRC and "GBITS" not in SRC
+          and "for i = 1, GHEXLEN" not in SRC)
     check("lua: no new timer and no new dispatcher",
           SRC.count(":Wait(") == 2 and "CreateEventTimer" not in SRC
           and where(":Wait(") == [MAIN] and SRC.count("local function fire(") == 1
@@ -1172,19 +1433,18 @@ def static_checks():
     check("lua: reads Dvar.GetDvarString by name", '"GetDvarString"' in SRC)
     check("lua: names the arm/ver/scope dvars as the hook spells them",
           all('"%s"' % n in SRC for n in ("zm_g11_arm", "zm_g11_ver", "kronos_g11_scope")))
-    check("lua: builds the 33 part names with the hook's zm_g11_<i>",
-          '"zm_g11_%d"' in SRC and "for i = 0, 32" in SRC)
+    check("lua: builds the 33 part names under both payload prefixes",
+          'gnames("zm_g11_")' in SRC and 'gnames("zm_g12_")' in SRC
+          and "for i = 0, 32" in SRC and 'prefix .. "%d"' in SRC)
     check("lua: checks the header shape <serial>:33:65536",
           '"^(%d+):(%d+):(%d+)$"' in SRC and "GPARTS" in SRC and "GHEXLEN" in SRC)
     check("lua: refuses a payload whose length is not 65,536",
           "local GHEXLEN = 65536" in SRC and "refused, keeping the previous payload" in SRC)
-    check("lua: the answer needs the bit AND the client's own item type",
+    check("lua: the answer needs the bit AND the reward set AND the client's own item type",
           "glockedNow(n)" in SRC and "GTYPE_A" in SRC and "GTYPE_C" in SRC and "GTYPE_R" in SRC
-          and "local locked = (bit == 1 and (t == GTYPE_A or t == GTYPE_C"
-                  " or (t == GTYPE_R and not gdefault(n)))" in SRC
-          and "    and not gcarried(n))" in SRC)
-    check("lua: a locked answer is refused when the id's own ref is carried",
-          "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 1)
+          and "locked = bit == 1 and greward(n) and not gdefault(n) and not gcarried(n)" in SRC)
+    check("lua: a locked answer is refused when the id's own ref is carried, on both rules",
+          "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 2)
     check("lua: types come from the client's own constants and its own getter",
           '"gettypeforid"' in SRC and '"itemTypes"' in SRC and '"ATTACHMENT"' in SRC
           and '"CAMO"' in SRC and '"RETICLE"' in SRC and "GTYPE_A, GTYPE_C, GTYPE_R = na, nc, tonumber(r)" in SRC)
@@ -1415,24 +1675,27 @@ def g11_reader(lua51, ls):
 
     rt = new_rt(lua51, frontend=True, src=False)
     lua_slabs(rt, slabs)
+    lua_rslabs(rt, slabs_of(eight + ids[:64]))
     rt.execute("SET_G11(17)")
+    rt.execute("SET_G12(%d)" % len(eight + ids[:64]))
     load(rt)
     pump(rt, 1)
     lines = lines_of(rt)
 
     check("g11: the menu context arms the reader",
-          has_line(lines, "armed v1.1 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
+          has_line(lines, "armed v1.2 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
           " | ".join(lines[:6]))
     check("g11: both ownership doors are wrapped",
           has_line(lines, "g11 isunlockedwithid wrapped (2 of 2: PROGRESSION, LOOT)"), " | ".join(lines[:8]))
-    want = "g11 rebuilt from serial 17 (locks %d, %d in scope)" % (len(lit), len(ls & set(lit)))
-    check("g11: the rebuild line names the payload's locks, the serial and the in-scope count",
+    want = "g11 rebuilt from serial 17 types=attachment,camo,reticle"
+    check("g11: the rebuild line names the serial and the type route it will use",
           has_line(lines, want), " | ".join(lines[:10]))
     check("g11: the arm line comes before the rebuild line",
           [i for i, ln in enumerate(lines) if ln.startswith("progression_tuning: g11 armed")][0]
           < [i for i, ln in enumerate(lines) if "rebuilt from serial" in ln][0])
-    check("g11: the decoded lock count is the bitmap's own", int(rt.eval("G11('locks')")) == len(lit),
-          str(rt.eval("G11('locks')")))
+    check("g11: the rebuild keeps no lock count of its own - the dll's own log carries it",
+          rt.eval("G11('locks')") is None and rt.eval("G11('inScope')") is None,
+          "%s / %s" % (rt.eval("G11('locks')"), rt.eval("G11('inScope')")))
     check("g11: the scope size is the generated table's", int(rt.eval("G11('scopeCount')")) == LS_COUNT,
           str(rt.eval("G11('scopeCount')")))
 
@@ -1462,6 +1725,7 @@ def g11_reader(lua51, ls):
           rt.eval("ASK_P(262144)") is True)
 
     rt.execute('SET_SCOPE("all")')
+    pump(rt, 8)
     check("g11: scope 'all' is retired - a weapon id with a bit still reads unchanged",
           rt.eval("ASK_P(2)") is True and rt.eval("ASK_L(2)") is True)
     check("g11: and the retirement says so once",
@@ -1474,6 +1738,7 @@ def g11_reader(lua51, ls):
         check("g11: scope %r is not 'all', and the door answers by type either way" % value,
               rt.eval("ASK_P(2)") is True)
     rt.execute("CLEAR_SCOPE()")
+    pump(rt, 8)
     check("g11: an absent scope dvar changes nothing", rt.eval("ASK_P(2)") is True)
     check("g11: going back to locksmith says so once",
           count_line(lines_of(rt), "g11 scope locksmith - 4203 ids") == 1)
@@ -1481,6 +1746,7 @@ def g11_reader(lua51, ls):
           all(rt.eval("ASK_P(%d)" % i) is False for i in eight))
 
     rt.execute('SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 8)
     check("g11: zm_unlock_all stands every lock this file adds down",
           all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in eight))
     check("g11: the stand-down is logged once, naming the toggle",
@@ -1488,11 +1754,14 @@ def g11_reader(lua51, ls):
                      "g11 debug unlock zm_unlock_all is on - every lock this file adds is stepped aside") == 1,
           " | ".join([ln for ln in lines_of(rt) if "debug unlock" in ln]))
     rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 8)
     check("g11: '0' is not on, so the locks come back", all(rt.eval("ASK_P(%d)" % i) is False for i in eight))
     rt.execute('SET_DVAR("zm_unlock_attachments", "2")')
+    pump(rt, 8)
     check("g11: the client's own rule - any non-zero value is on",
           all(rt.eval("ASK_P(%d)" % i) is True for i in eight))
     rt.execute('SET_DVAR("zm_unlock_attachments", "")')
+    pump(rt, 8)
     check("g11: an empty toggle value is not on", all(rt.eval("ASK_P(%d)" % i) is False for i in eight))
     rt.execute("CLR_DVAR('zm_unlock_attachments')")
 
@@ -1512,7 +1781,9 @@ def g11_payload(lua51, ls):
 
     rt = new_rt(lua51, frontend=True, src=False)
     lua_slabs(rt, slabs)
+    lua_rslabs(rt, slabs_of(lit))
     rt.execute("SET_G11(5)")
+    rt.execute("SET_G12(%d)" % len(lit))
     load(rt)
     pump(rt, 1)
 
@@ -1528,10 +1799,10 @@ def g11_payload(lua51, ls):
     lua_slabs(rt, slabs_of([i for i in lit if i not in cleared]))
     rt.execute('SET_VER("7:33:65536")')
     rt.execute("PUMP(8)")
-    check("g11 payload: a changed bitmap is rebuilt once, with the new counts",
+    check("g11 payload: a changed bitmap is rebuilt once, on the new serial",
           str(rt.eval("G11('ver')")) == "7:33:65536"
-          and int(rt.eval("G11('locks')")) == len(lit) - len(cleared),
-          "%s locks=%s" % (rt.eval("G11('ver')"), rt.eval("G11('locks')")))
+          and int(rt.eval("G11('skips')")) == 1,
+          "%s skips=%s" % (rt.eval("G11('ver')"), rt.eval("G11('skips')")))
     check("g11 payload: the cleared ids read unlocked", all(rt.eval("ASK_P(%d)" % i) is True for i in cleared))
     check("g11 payload: the ids still in the bitmap stay locked",
           all(rt.eval("ASK_P(%d)" % i) is False for i in ACCEPT[3:]))
@@ -1547,11 +1818,13 @@ def g11_payload(lua51, ls):
     rt.execute("SET_PART(5, SLABS[6])")
 
     rt.execute('SET_VER("bad")')
+    pump(rt, 8)
     check("g11 payload: a header that is not <serial>:33:65536 is refused",
           (rt.eval("ASK_P(%d)" % ACCEPT[3]) is False)
           and has_line(lines_of(rt), "g11 header bad is not <serial>:33:65536 - refused, keeping the previous payload"))
 
     rt.execute('SET_VER("9:32:65536")')
+    pump(rt, 8)
     rt.execute("ASK_P(%d)" % ACCEPT[3])
     check("g11 payload: a header claiming 32 parts is refused too",
           has_line(lines_of(rt), "g11 header 9:32:65536 is not <serial>:33:65536"))
@@ -1588,7 +1861,8 @@ def g11_absent(lua51):
     check("g11 absent: the previous function answers every ask", int(rt.eval("PCALLS")) >= 8,
           str(rt.eval("PCALLS")))
     check("g11 absent: nothing is decoded, so nothing can be locked",
-          int(rt.eval("G11('locks')")) == 0 and int(rt.eval("G11('inScope')")) == 0)
+          rt.eval("G11('hex')") is None and rt.eval("G11('serial')") is None
+          and rt.eval("G11('locks')") is None)
     check("g11 absent: the reader is still armed, add-only, and answers nothing it cannot prove",
           has_line(l, "g11 isunlockedwithid wrapped (2 of 2: PROGRESSION, LOOT)"))
 
@@ -1637,6 +1911,7 @@ def g11_order_and_cap(lua51, ls):
     check("g11 order: the wrap wait is capped at 480 ticks", fired == 480, "%d ticks" % fired)
     check("g11 order: the wait is announced once, then the cap",
           count_line(l3, "g11 waiting for PROGRESSION / LOOT") == 1
+          and count_line(l3, "card table ") == 0
           and count_line(l3, "g11 gave up wrapping - PROGRESSION / LOOT") == 1, " | ".join(l3))
     check("g11 order: the timer keeps running after the cap (the display half needs it)",
           int(rt2.eval("QUEUED()")) == 1, str(rt2.eval("QUEUED()")))
@@ -1648,7 +1923,9 @@ def g11_order_and_cap(lua51, ls):
     rt3.execute("FRONTEND = true")
     rt3.execute(FIXTURE)
     lua_slabs(rt3, slabs)
+    lua_rslabs(rt3, slabs)
     rt3.execute("SET_G11(4)")
+    rt3.execute("SET_G12(%d)" % len(lit))
     rt3.execute(SCANKEY)
     load(rt3)
     l4 = lines_of(rt3)
@@ -1678,26 +1955,29 @@ def s1_door(lua51, ls):
     inscope = ids[:20]
     outside = [150001, 150002]
     camo = [131708, 131545]
+    camo_r = [131546]
     attach = [126608, 140701]
     plain = [(125186, 2), (200000, 11)]
     nobit = [150010, 150011]
-    lit = inscope + outside + camo + attach + [i for i, _t in plain]
+    lit = inscope + outside + camo + camo_r + attach + [i for i, _t in plain]
+    rewards = inscope + outside + camo_r + attach
     slabs = slabs_of(lit)
 
     rt = new_rt(lua51, frontend=True, src=False)
     lua_slabs(rt, slabs)
+    lua_rslabs(rt, slabs_of(rewards))
     rt.execute("SET_TYPE(125186, 2)")
     rt.execute("SET_TYPE(200000, 11)")
-    for i in camo:
+    for i in camo + camo_r:
         rt.execute("SET_TYPE(%d, 13)" % i)
     rt.execute("SET_G11(31)")
+    rt.execute("SET_G12(%d)" % len(rewards))
     load(rt)
     pump(rt, 1)
     lines = lines_of(rt)
 
     check("s1: the rebuild line names the type route the door will use",
-          has_line(lines, "g11 rebuilt from serial 31 (locks %d, %d in scope) types=attachment,camo,reticle"
-                           % (len(lit), len(ls & set(lit)))),
+          has_line(lines, "g11 rebuilt from serial 31 types=attachment,camo,reticle"),
           " | ".join([ln for ln in lines if "rebuilt" in ln]))
 
     check("s1: an attachment id in the shipped scope reads locked on both doors",
@@ -1705,13 +1985,20 @@ def s1_door(lua51, ls):
     check("s1: an attachment id with a bit but OUTSIDE the scope reads locked - the S1 win",
           all(rt.eval("ASK_L(%d)" % i) is False for i in outside),
           str([rt.eval("ASK_L(%d)" % i) for i in outside]))
-    check("s1: a camo id with a bit reads locked on both doors",
-          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in camo))
+    check("s1: a camo id with a bit and no reward reads open on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in camo),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in camo]))
+    check("s1: a camo the challenge set pays reads locked on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in camo_r),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in camo_r]))
     check("s1: an attachment with a bit still reads locked, as RC 1.0 answered",
           all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in attach))
-    check("s1: a weapon id and a calling card with a bit keep the client's own answer",
-          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i, _t in plain),
-          str([(i, rt.eval("ASK_L(%d)" % i)) for i, _t in plain]))
+    check("s1: a weapon id with a bit keeps the client's own answer",
+          rt.eval("ASK_P(%d)" % plain[0][0]) is True and rt.eval("ASK_L(%d)" % plain[0][0]) is True,
+          str(rt.eval("ASK_L(%d)" % plain[0][0])))
+    check("s1: a calling card with a bit and no paying table reads locked on both doors",
+          rt.eval("ASK_P(%d)" % plain[1][0]) is False and rt.eval("ASK_L(%d)" % plain[1][0]) is False,
+          str(rt.eval("ASK_L(%d)" % plain[1][0])))
     before = int(rt.eval("LCALLS"))
     rt.eval("ASK_L(125186)")
     check("s1: and that answer is the previous function's, not a false close",
@@ -1736,11 +2023,11 @@ def s1_door(lua51, ls):
 
     l = lines_of(rt)
     check("s1: a camo decision is logged as door id/type/bit/answer",
-          has_line(l, "door id=131708 type=13 bit=1 answer=locked"),
+          has_line(l, "door id=131708 type=13 bit=1 answer=pass"),
           " | ".join([ln for ln in l if "door id=" in ln][:4]))
     check("s1: a weapon id is a door decision too, but the line is for camo ids only",
           not has_line(l, "door id=125186"), " | ".join([ln for ln in l if "door id=" in ln][:8]))
-    check("s1: and a camo id with a bit answers locked exactly once in the log",
+    check("s1: and a camo id with a bit answers once in the log",
           count_line(l, "door id=131708") == 1, str(count_line(l, "door id=131708")))
 
     rt.execute('SET_TOGGLE("pt_on", 0)')
@@ -1751,7 +2038,8 @@ def s1_door(lua51, ls):
     rt.execute('SET_TOGGLE("pt_on", 1)')
     pump(rt, 8)
     check("s1: and back on again without a reload",
-          all(rt.eval("ASK_L(%d)" % i) is False for i in inscope + camo))
+          all(rt.eval("ASK_L(%d)" % i) is False for i in inscope)
+          and all(rt.eval("ASK_L(%d)" % i) is True for i in camo))
 
     many = [130001 + i for i in range(40)]
     lua_slabs(rt, slabs_of(lit + many))
@@ -1792,8 +2080,131 @@ def s1_door(lua51, ls):
           int(quiet.eval("TYPECALLS")) == tq, str(int(quiet.eval("TYPECALLS")) - tq))
 
 
+def g12_door(lua51, ls):
+    card = [200000, 200001]
+    store = [6015]
+    dflt = [104846]
+    camo = [131708]
+    attach = [126608]
+    ret = [129198]
+    lit = card + store + dflt + camo + attach + ret
+    rewards = card + dflt
+
+    rt = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt, slabs_of(lit))
+    lua_rslabs(rt, slabs_of(rewards))
+    rt.execute("SET_G11(71)")
+    rt.execute("SET_G12(%d)" % len(rewards))
+    for i in card + store + dflt:
+        rt.execute("SET_TYPE(%d, 11)" % i)
+    rt.execute("SET_DEFAULT(%d)" % dflt[0])
+    rt.execute("SET_TYPE(%d, 13)" % camo[0])
+    rt.execute("SET_TYPE(%d, 7)" % attach[0])
+    rt.execute("SET_TYPE(%d, 14)" % ret[0])
+    load(rt)
+    pump(rt, 1)
+    lines = lines_of(rt)
+
+    want = "g12 rewards %d ids (header %d:33:65536)" % (len(rewards), len(rewards))
+    check("g12: the reader says the reward set's size and its header",
+          has_line(lines, want), " | ".join([x for x in lines if "g12 " in x][:4]))
+    check("g12: and the set it kept is that payload's own",
+          int(rt.eval("G11('setn')")) == len(rewards), str(rt.eval("G11('setn')")))
+
+    check("g12: a career card that is a challenge reward reads locked on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in card),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in card]))
+    check("g12: a store card with a bit and nothing selling it reads locked on both doors",
+          rt.eval("ASK_P(%d)" % store[0]) is False and rt.eval("ASK_L(%d)" % store[0]) is False,
+          str(rt.eval("ASK_L(%d)" % store[0])))
+    check("g12: a reward the game ships by default keeps the client's own answer",
+          rt.eval("ASK_P(%d)" % dflt[0]) is True and rt.eval("ASK_L(%d)" % dflt[0]) is True,
+          str(rt.eval("ASK_L(%d)" % dflt[0])))
+    check("g12: an attachment, a camo and a reticle with a bit and no reward read open",
+          all(rt.eval("ASK_L(%d)" % i) is True for i in camo + attach + ret),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in camo + attach + ret]))
+    for i in card + store + dflt:
+        rt.eval("ASK_L(%d)" % i)
+        rt.eval("ASK_P(%d)" % i)
+    check("g12: the reward line is printed once, not per ask",
+          count_line(lines_of(rt), "g12 rewards") == 1,
+          str(count_line(lines_of(rt), "g12 rewards")))
+
+    rt2 = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt2, slabs_of([150900]))
+    rt2.execute("SET_G11(72)")
+    rt2.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    rt2.execute('SET_LEVEL("sat_pi_alcor", 2)')
+    rt2.execute('SET_CAMODATA(107478, "sat_pi_alcor")')
+    rt2.execute("SET_TYPE(107478, 13)")
+    rt2.execute(PRESTIGE_CAMO_FN)
+    load(rt2)
+    pump(rt2, 1)
+    check("g12: a camo with no bit below its band is locked with the toggle off",
+          rt2.eval("ASK_L(107478)") is False, str(rt2.eval("ASK_L(107478)")))
+    rt2.execute('SET_DVAR("zm_unlock_camos", "1")')
+    pump(rt2, 1)
+    check("g12: and unlock camos steps the band aside, bit or no bit",
+          rt2.eval("ASK_L(107478)") is True, str(rt2.eval("ASK_L(107478)")))
+    band = count_line(lines_of(rt2), "prestige camo id=107478")
+    for _ in range(3):
+        rt2.eval("ASK_L(107478)")
+    check("g12: with the toggle on the band computes no band at all",
+          count_line(lines_of(rt2), "prestige camo id=107478") == band,
+          " | ".join([x for x in lines_of(rt2) if "prestige camo" in x][:2]))
+    rt2.execute('SET_DVAR("zm_unlock_camos", "0")')
+    pump(rt2, 1)
+    check("g12: and off again locks it back in the same vm",
+          rt2.eval("ASK_L(107478)") is False, str(rt2.eval("ASK_L(107478)")))
+
+    rt3 = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt3, slabs_of([200000]))
+    rt3.execute("SET_G11(73)")
+    rt3.execute("SET_TYPE(200000, 12)")
+    load(rt3)
+    pump(rt3, 1)
+    check("g12: with no reward payload a career emblem keeps today's answer",
+          rt3.eval("ASK_P(200000)") is True and rt3.eval("ASK_L(200000)") is True,
+          str(rt3.eval("ASK_L(200000)")))
+    check("g12: and no reward line is printed", not has_line(lines_of(rt3), "g12 rewards"),
+          " | ".join([x for x in lines_of(rt3) if "g12" in x][:2]))
+
+    rt4 = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt4, slabs_of([200000]))
+    lua_rslabs(rt4, slabs_of([200000]))
+    rt4.execute("SET_G11(74)")
+    rt4.execute('SET_RVER("2:33:65536")')
+    rt4.execute("SET_TYPE(200000, 12)")
+    load(rt4)
+    pump(rt4, 4)
+    check("g12: the count is the header's own, and the 33 parts latch the set",
+          int(rt4.eval("G11('setn')")) == 2 and rt4.eval("ASK_L(200000)") is False,
+          "%s / %s" % (rt4.eval("G11('setn')"), rt4.eval("ASK_L(200000)")))
+    lua_rslabs(rt4, slabs_of([200000, 200001]))
+    pump(rt4, 1)
+    ask = rt4.eval("ASK_L(200000)")
+    check("g12: a later read of the static set changes nothing",
+          int(rt4.eval("G11('setn')")) == 2 and ask is False,
+          "%s / %s" % (rt4.eval("G11('setn')"), ask))
+    check("g12: and the latch is said once", count_line(lines_of(rt4), "g12 rewards 2 ids") == 1,
+          str(count_line(lines_of(rt4), "g12 rewards")))
+
+    rt5 = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt5, slabs_of([200000]))
+    lua_rslabs(rt5, slabs_of([200000]))
+    rt5.execute("SET_G11(75)")
+    rt5.execute('SET_RVER("g12")')
+    rt5.execute("SET_TYPE(200000, 12)")
+    load(rt5)
+    pump(rt5, 1)
+    check("g12: the sentinel header the hook leaves at boot is not a payload",
+          rt5.eval("G11('sethex')") is None and rt5.eval("ASK_L(200000)") is True,
+          str(rt5.eval("G11('setn')")))
+
+
 def s1_reticle(lua51, ls):
     ret = [129198, 129199]
+    ret_r = [129199]
     dflt = [109901]
     camo = [131708]
     attach = [126608]
@@ -1804,12 +2215,14 @@ def s1_reticle(lua51, ls):
     def run(pre=""):
         rt = new_rt(lua51, frontend=True, src=False, pre=pre)
         lua_slabs(rt, slabs)
+        lua_rslabs(rt, slabs_of(ret_r))
         for i in ret + dflt:
             rt.execute("SET_TYPE(%d, 14)" % i)
         rt.execute("SET_TYPE(%d, 13)" % camo[0])
         rt.execute("SET_TYPE(%d, 7)" % attach[0])
         rt.execute("SET_DEFAULT(%d)" % dflt[0])
         rt.execute("SET_G11(51)")
+        rt.execute("SET_G12(%d)" % len(ret_r))
         load(rt)
         pump(rt, 1)
         return rt
@@ -1819,32 +2232,37 @@ def s1_reticle(lua51, ls):
     check("s1 reticle: the rebuild line names the reticle type beside the two",
           has_line(lines, "types=attachment,camo,reticle"),
           " | ".join([ln for ln in lines if "rebuilt" in ln]))
-    check("s1 reticle: a reticle id with a bit reads locked on both doors",
-          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in ret),
+    check("s1 reticle: a reticle id with a bit and no reward reads open on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in [ret[0]]),
           str([(i, rt.eval("ASK_L(%d)" % i)) for i in ret]))
+    check("s1 reticle: a reticle the challenge set pays reads locked on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in ret_r),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in ret_r]))
     check("s1 reticle: a default reticle with a bit keeps the client's own answer",
           all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in dflt),
           str([(i, rt.eval("ASK_L(%d)" % i)) for i in dflt]))
     check("s1 reticle: a reticle with no bit at all reads unchanged on both doors",
           rt.eval("ASK_P(%d)" % nobit) is True and rt.eval("ASK_L(%d)" % nobit) is True,
           str(rt.eval("ASK_L(%d)" % nobit)))
-    check("s1 reticle: an attachment and a camo with a bit still read locked beside it",
-          all(rt.eval("ASK_L(%d)" % i) is False for i in camo + attach),
+    check("s1 reticle: an attachment and a camo with a bit read open beside it",
+          all(rt.eval("ASK_L(%d)" % i) is True for i in camo + attach),
           str([(i, rt.eval("ASK_L(%d)" % i)) for i in camo + attach]))
     lines = lines_of(rt)
     check("s1 reticle: a reticle decision is logged as type 14",
-          has_line(lines, "door id=129198 type=14 bit=1 answer=locked"),
+          has_line(lines, "door id=129198 type=14 bit=1 answer=pass")
+          and has_line(lines, "door id=129199 type=14 bit=1 answer=locked"),
           " | ".join([ln for ln in lines if "door id=" in ln][:6]))
     check("s1 reticle: and the default reticle is logged as a pass",
           has_line(lines, "door id=109901 type=14 bit=1 answer=pass"),
           " | ".join([ln for ln in lines if "door id=" in ln][:6]))
 
     rt2 = run("DROP_RETICLE_TYPE()")
-    check("s1 reticle: with no RETICLE in itemTypes a reticle with a bit keeps the client's own answer",
-          all(rt2.eval("ASK_P(%d)" % i) is True and rt2.eval("ASK_L(%d)" % i) is True for i in ret),
+    check("s1 reticle: with no RETICLE in itemTypes a paid reticle still closes",
+          all(rt2.eval("ASK_P(%d)" % i) is True for i in [ret[0]])
+          and all(rt2.eval("ASK_L(%d)" % i) is False for i in ret_r),
           str([(i, rt2.eval("ASK_L(%d)" % i)) for i in ret]))
     check("s1 reticle: and the door is unchanged for an attachment and a camo with a bit",
-          all(rt2.eval("ASK_L(%d)" % i) is False for i in camo + attach),
+          all(rt2.eval("ASK_L(%d)" % i) is True for i in camo + attach),
           str([(i, rt2.eval("ASK_L(%d)" % i)) for i in camo + attach]))
     check("s1 reticle: and no reticle line is printed when the type is missing",
           not has_line(lines_of(rt2), "type=14"),
@@ -1859,7 +2277,9 @@ def s1_fallback(lua51, ls):
     def run(pre):
         rt = new_rt(lua51, frontend=True, src=False, pre=pre)
         lua_slabs(rt, slabs_of(lit))
+        lua_rslabs(rt, slabs_of(lit))
         rt.execute("SET_G11(41)")
+        rt.execute("SET_G12(%d)" % len(lit))
         load(rt)
         pump(rt, 1)
         got = {}
@@ -1927,7 +2347,9 @@ def s3_prestige(lua51, ls):
     def build(pre=""):
         rt = new_rt(lua51, frontend=True, src=False, pre=pre)
         lua_slabs(rt, slabs_of([150900]))
+        lua_rslabs(rt, slabs_of([150100]))
         rt.execute("SET_G11(51)")
+        rt.execute("SET_G12(1)")
         rt.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
         rt.execute('SET_LEVEL("sat_pi_alcor", 2)')
         rt.execute('SET_PREQ("sat_pi_alcor", 126608, 1)')
@@ -1977,13 +2399,17 @@ def s3_prestige(lua51, ls):
     check("s3: back at prestige 0 the prestige attachment is locked again",
           rt.eval("ASK_L(126608)") is False)
     rt.execute('PLAIN_BUNDLE(126608, "sat_pi_alcor")')
-    check("s3: a bundle already read is cached until the bitmap rebuilds",
+    check("s3: a bundle already read is cached",
           rt.eval("ASK_L(126608)") is False)
     lua_slabs(rt, slabs_of([150901]))
     rt.execute('SET_VER("52:33:65536")')
     pump(rt, 8)
     pump(rt, 8)
-    check("s3: and the rebuild that re-reads the bitmap re-reads the bundle too",
+    check("s3: and the rebuild that re-reads the bitmap keeps that bundle answer",
+          rt.eval("ASK_L(126608)") is False, str(rt.eval("ASK_L(126608)")))
+    rt.execute("rawget(_G, 'ProgressionTuning').g11.bundles = {}")
+    rt.execute("rawget(_G, 'ProgressionTuning').g11.rec = {}")
+    check("s3: so dropping both caches is what re-reads the bundle",
           rt.eval("ASK_L(126608)") is True, str(rt.eval("ASK_L(126608)")))
 
     rt.execute("SET_TYPE(150100, 13)")
@@ -2238,15 +2664,17 @@ def diag_menu(lua51):
     rt = new_rt(lua51, frontend=True, src=False)
     rt.execute(DIAGFIX)
     lua_slabs(rt, slabs_of([126608, 107478, 20000]))
+    lua_rslabs(rt, slabs_of([126608]))
     rt.execute("SET_TYPE(20000, 11)")
     rt.execute("SET_G11(9)")
+    rt.execute("SET_G12(1)")
     rt.execute("SET_TOGGLE('pt_diag', 1)")
     load(rt)
     lines = lines_of(rt)
     blk = rc1d_lines(lines)
 
     check("diag: the block opens with one header naming the VM, the switch and the payload",
-          has_line(blk, "rc1diag: 1 block vm=menu pt_diag=on:int=1 payload=9 locks=3 inscope=0"),
+          has_line(blk, "rc1diag: 1 block vm=menu pt_diag=on:int=1 payload=9 scope=locksmith"),
           " | ".join(blk[:2]))
     check("diag: it ends with a line that counts its own lines", rc1d_end(blk) == len(blk),
           "end=%s lines=%d" % (rc1d_end(blk), len(blk)))
@@ -2374,8 +2802,10 @@ def diag_neutral(lua51):
         touch = (int(rt.eval("PCALLS")) - pc, int(rt.eval("LCALLS")) - lc)
         events = [rt.eval("EV(%d).name" % i) for i in range(1, int(rt.eval("NEVENTS()")) + 1)]
         kept = [ln for ln in lines_of(rt)
-                if "rc1diag:" not in ln and "door id=" not in ln and "lock door:" not in ln]
-        return ask, askl, events, kept, touch
+                if "rc1diag:" not in ln and "door id=" not in ln and "lock door:" not in ln
+                and "card table " not in ln]
+        cards = sorted(ln for ln in lines_of(rt) if "card table " in ln)
+        return ask, askl, events, kept, touch, cards
 
     off = run(False)
     on = run(True)
@@ -2384,6 +2814,8 @@ def diag_neutral(lua51):
     check("diag: the events are the same, in the same order", off[2] == on[2], "%s vs %s" % (off[2], on[2]))
     check("diag: every other line is identical", off[3] == on[3],
           " | ".join(sorted(set(off[3]) ^ set(on[3]))[:3]))
+    check("diag: the same tables load, and only their first-ask line moves",
+          off[5] == on[5] and len(off[5]) >= 1, " | ".join(off[5] + on[5]))
     check("diag: a locked ask still never reaches the previous function, on or off",
           off[4] == on[4] and on[4] == (0, 0), "%s vs %s" % (off[4], on[4]))
     check("diag: a banner and its attachment card still draw with it on",
@@ -2440,7 +2872,8 @@ def rb_end(lines):
     return None
 
 
-def rb_rt(lua51, extra="", b=True, d=True, frontend=True, slabs=None, after=""):
+def rb_rt(lua51, extra="", b=True, d=True, frontend=True, slabs=None, after="", rslabs=None,
+          ticks=8):
     rt = new_rt(lua51, frontend=frontend, src=False)
     rt.execute(DIAGFIX)
     if extra:
@@ -2448,6 +2881,9 @@ def rb_rt(lua51, extra="", b=True, d=True, frontend=True, slabs=None, after=""):
     if slabs:
         lua_slabs(rt, slabs_of(slabs))
         rt.execute("SET_G11(21)")
+    if rslabs:
+        lua_rslabs(rt, slabs_of(rslabs))
+        rt.execute("SET_G12(%d)" % len(rslabs))
     if d:
         rt.execute("SET_TOGGLE('pt_diag', 1)")
     if b:
@@ -2455,7 +2891,7 @@ def rb_rt(lua51, extra="", b=True, d=True, frontend=True, slabs=None, after=""):
     load(rt)
     if after:
         rt.eval(after)
-    pump(rt, 8)
+    pump(rt, ticks)
     return rt
 
 
@@ -2660,10 +3096,1593 @@ def diag_qb_reticle(lua51):
           " | ".join([ln for ln in blk2 if "QB13 " in ln or "raised" in ln]))
 
 
+QB_STICKER = r"""
+LOOT[xhash('IsUnlocked')] = function(c, x, ref)
+  if ref == 'sat_ui_playercard_173' then return true end
+  return false
+end
+LOOT[xhash('isunlockedwithid')] = function(c, id)
+  if tonumber(id) == 109917 or tonumber(id) == 104916 then return true end
+  return false
+end
+LOOT[xhash('isitemdefault')] = function(id) return tonumber(id) == 109917 end
+Challenge[xhash('shouldshowcompletionsplash')] = function(o) return tonumber(o.kind) == 429 end
+Challenge[xhash('getstickerbookchallengedata')] = function(c, id)
+  if tonumber(id) == 52508 then return { categoryNum = 1 } end
+  return nil
+end
+OnlineChallenges[xhash('getchallengesprogressforkind')] = function(c, kind)
+  if tonumber(kind) == 429 then return { ['52508'] = { status = 3 } } end
+  return {}
+end
+SET_TYPE(92066, 11)
+SET_TYPE(109917, 14)
+SET_TYPE(104846, 11)
+SET_TYPE(6015, 11)
+"""
+
+
+def diag_qb_rewards(lua51):
+    rt = rb_rt(lua51, extra=QB_STICKER, slabs=[92066, 104846, 109917], rslabs=[92066, 104916])
+    blk = rb_lines(lines_of(rt))
+    check("diag B: QB14 - the rewards set, its count and the one id both payloads carry",
+          has_line(blk, "QB14 g12 set=1 n=2 r92066=1 l92066=1"),
+          " | ".join([ln for ln in blk if "QB14 " in ln]))
+    check("diag B: QB15 - three calling cards, each asked with a ref and with an id, beside both bits",
+          has_line(blk, "QB15 card3=false card2=false lock=1 reward=0")
+          and has_line(blk, "QB15 dark3=true dark2=true lock=0 reward=1")
+          and has_line(blk, "QB15 store3=false store2=false lock=0 reward=0"),
+          " | ".join([ln for ln in blk if "QB15 " in ln]))
+    check("diag B: QB16 - the operator skin's own answer, both bits and its item type",
+          has_line(blk, "QB16 skin=false lock=1 reward=1 type=11"),
+          " | ".join([ln for ln in blk if "QB16 " in ln]))
+    check("diag B: QB17 - the sticker book splash answer, its data, its fork count and its status",
+          has_line(blk, "QB17 show429=true sticker=table(1) fork429=1 st=3"),
+          " | ".join([ln for ln in blk if "QB17 " in ln]))
+    check("diag B: QB18 - the default reticle's answer, both bits and the default guard",
+          has_line(blk, "QB18 ret=true lock=1 reward=0 default=true"),
+          " | ".join([ln for ln in blk if "QB18 " in ln]))
+    check("diag B: the block still closes inside its cap", len(blk) <= 40, str(len(blk)))
+
+    bare = rb_rt(lua51)
+    blk2 = rb_lines(lines_of(bare))
+    check("diag B: QB14 - a vm with no rewards payload says so",
+          has_line(blk2, "QB14 g12 set=0 n=nil r92066=0 l92066=0"),
+          " | ".join([ln for ln in blk2 if "QB14 " in ln]))
+    check("diag B: QB15 - a vm with no three argument reader answers absent and raises nothing",
+          has_line(blk2, "QB15 card3=absent card2=true lock=0 reward=0")
+          and has_line(blk2, "QB15 dark3=absent dark2=true lock=0 reward=0")
+          and has_line(blk2, "QB15 store3=absent store2=true lock=0 reward=0"),
+          " | ".join([ln for ln in blk2 if "QB15 " in ln]))
+    check("diag B: QB17 - a vm with none of the sticker book natives answers absent",
+          has_line(blk2, "QB17 show429=absent sticker=absent fork429=none st=nil"),
+          " | ".join([ln for ln in blk2 if "QB17 " in ln]))
+    check("diag B: QB16 and QB18 - a vm with no rewards set still answers both",
+          has_line(blk2, "QB16 skin=true lock=0 reward=0 type=7")
+          and has_line(blk2, "QB18 ret=true lock=0 reward=0 default=false")
+          and not has_line(blk2, "raised"),
+          " | ".join([ln for ln in blk2 if "QB16 " in ln or "QB18 " in ln or "raised" in ln]))
+
+
+CARD_ROWS = r"""
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.reticleChallenges = { file = "ret", cols = { id = 0, loot = 5 },
+  [xhash("GetFile")] = function(t) return "ret" end }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["3"] = { id = "80001", prestige = "1" } }
+ROWS["ret"] = { ["1"] = { loot = "117486" },
+                ["2"] = { loot = "200010|200011+200012" } }
+ROWS["seas"] = { ["3"] = { loot = "||200020" } }
+ROWS["gs"] = { ["4"] = { loot = "112409" }, ["5"] = { loot = "126988" } }
+"""
+
+CARD_ROWS_RAISE = r"""
+GETFILECALLS = 0
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.reticleChallenges = { file = "ret", cols = { id = 0, loot = 5 },
+  [xhash("GetFile")] = function(t) GETFILECALLS = GETFILECALLS + 1; error("no file", 0) end }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["3"] = { id = "80001", prestige = "1" } }
+ROWS["ret"] = { ["1"] = { loot = "117486" } }
+ROWS["seas"] = { ["3"] = { loot = "200020" } }
+ROWS["gs"] = { ["4"] = { loot = "112409" } }
+"""
+
+CARD_ROWS_PATH = r"""
+COLCOLS["ae/sat_ae_autogen_reticle_challenges.csv"] = { id = 0, loot = 5 }
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["3"] = { id = "80001", prestige = "1" } }
+ROWS["ae/sat_ae_autogen_reticle_challenges.csv"] = { ["1"] = { loot = "117486" } }
+ROWS["seas"] = { ["3"] = { loot = "200020" } }
+ROWS["gs"] = { ["4"] = { loot = "112409" } }
+"""
+
+CARD_ROWS_MISS = r"""
+GSREFUSE = 3
+local colmiss = StringTable[xhash("tablelookupentirecolumnbynum")]
+StringTable[xhash("tablelookupentirecolumnbynum")] = function(file, n)
+  if tostring(file) == "gs" and GSREFUSE > 0 then
+    GSREFUSE = GSREFUSE - 1
+    error("gs not ready", 0)
+  end
+  return colmiss(file, n)
+end
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.reticleChallenges = { file = "ret", cols = { id = 0, loot = 5 } }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["3"] = { id = "80001", prestige = "1" } }
+ROWS["ret"] = { ["1"] = { loot = "117486" } }
+ROWS["seas"] = { ["3"] = { loot = "200020" } }
+ROWS["gs"] = { ["4"] = { loot = "112409" }, ["5"] = { loot = "126988" } }
+"""
+
+CARD_TYPES = r"""
+SET_TYPE(117486, 11)
+SET_TYPE(126988, 11)
+SET_TYPE(112409, 11)
+SET_TYPE(104861, 11)
+SET_TYPE(6015, 11)
+SET_TYPE(200011, 11)
+SET_TYPE(200012, 11)
+SET_TYPE(200020, 11)
+"""
+
+PRESTIGE_SETS = r"""
+CS = {}
+CSCALLS = 0
+function SET_CS(id, st) CS[tostring(id)] = st end
+function DROP_CS() OnlineChallenges[xhash("getchallengestate")] = nil end
+function ADD_CS()
+  OnlineChallenges[xhash("getchallengestate")] = function(c, id)
+    CSCALLS = CSCALLS + 1
+    return CS[tostring(id)]
+  end
+end
+ADD_CS()
+function ASK_CS(id) return OnlineChallenges[xhash("getchallengestate")](0, id) end
+PPLAYER = 0
+PPCALLS = 0
+function SET_PPLAYER(n) PPLAYER = n end
+function DROP_PPLAYER() PRESTIGE[xhash("getplayerprestigelevel")] = nil end
+PRESTIGE[xhash("getplayerprestigelevel")] = function(c) PPCALLS = PPCALLS + 1; return PPLAYER end
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+ROWS["ccprestige"] = {
+  ["1"] = { id = "80001", loot = "200020", prestige = "1" },
+  ["2"] = { id = "80002", loot = "200021", prestige = "3" },
+  ["3"] = { id = "80003", loot = "200022", prestige = "5" } }
+"""
+
+QB20_ROWS = r"""
+CallingCardUtils = {}
+CallingCardUtils[xhash('getstickerbookchallengesdata')] = function(c, mode)
+  if mode == 3 then
+    return { { categoryType = 'cat_wc_total', progress = 0.25,
+      subChallenges = {
+        { id = 70001, loot = '117486|70002', amounts = '20|30' },
+        { id = 70003, loot = '|70004', amounts = '|5' },
+        { id = 70005, loot = '6015', amounts = '9' } } } }
+  end
+  if mode == 4 then
+    return { { categoryType = 'cat_br_total',
+      subChallenges = { { id = 70010, loot = '126988', amounts = '4' } } } }
+  end
+  return { { categoryType = 'cat_zm_total', progress = 1,
+    subChallenges = { { id = 70020, loot = '112409', amounts = '3' },
+                      { id = 70021, loot = '112409', amounts = '3' } } } }
+end
+"""
+
+QB20_MANY = r"""
+CallingCardUtils = {}
+CallingCardUtils[xhash('getstickerbookchallengesdata')] = function(c, mode)
+  local out = {}
+  for i = 1, 14 do
+    out[i] = { id = 70100 + i, loot = '104861', amounts = '2' }
+  end
+  return { { categoryType = 'cat_many', subChallenges = out } }
+end
+"""
+
+QB20_CUM = r"""
+LOOT[xhash('GetCumulatedProgressNormalized')] = function(row)
+  if type(row) ~= 'table' then error('no row', 0) end
+  return function(c) return 0.5 end
+end
+"""
+
+
+def g32_cards(lua51):
+    def door(pre="", slabs=(), n=81, ticks=8, cards=True):
+        rt = new_rt(lua51, frontend=True, src=False)
+        if pre:
+            rt.execute(pre)
+        lua_slabs(rt, slabs_of(list(slabs)))
+        rt.execute("SET_G11(%d)" % n)
+        load(rt)
+        pump(rt, ticks)
+        if cards:
+            rt.eval("LOAD_ALL()")
+        return rt
+
+    boot = door(CARD_ROWS + CARD_TYPES + READ_COUNT,
+                [117486, 200011, 200012, 200020, 112409, 126988, 104861, 6015],
+                n=87, ticks=8, cards=False)
+    lb = lines_of(boot)
+    check("g32 cards: at boot only the prestige table is read",
+          reads(boot, "ccprestige") == 2 and reads(boot, "ret") == 0
+          and reads(boot, "seas") == 0 and reads(boot, "gs") == 0,
+          "%d / %d / %d / %d" % (reads(boot, "ccprestige"), reads(boot, "ret"),
+                                 reads(boot, "seas"), reads(boot, "gs")))
+    check("g32 cards: and the boot names that one table, with no lazy table in the log",
+          count_line(lb, "card table ") == 1
+          and has_line(lb, "card table callingCardPrestigeChallenges rows=1 ids=1 src=handle"),
+          " | ".join([x for x in lb if "card table" in x][:3]))
+    check("g32 cards: the prestige table is read for its id and prestige columns alone",
+          boot.eval("table.concat(COLNUM['ccprestige'], ',')") == "0,14",
+          str(boot.eval("table.concat(COLNUM['ccprestige'], ',')")))
+    check("g32 cards: a table no one has asked for pays nothing yet",
+          boot.eval("G11('gset2')") is None and boot.eval("ASK_L(117486)") is False,
+          str(boot.eval("ASK_L(117486)")))
+
+    rt = door(CARD_ROWS + CARD_TYPES + READ_COUNT,
+              [117486, 200011, 200012, 200020, 112409, 126988, 104861, 6015])
+    lines = lines_of(rt)
+    check("g32 cards: each lazy table is read once, on its own loot column",
+          [reads(rt, f) for f in ("ret", "seas", "gs")] == [1, 1, 1]
+          and [rt.eval("COLNUM['%s'][1]" % f) for f in ("ret", "seas", "gs")] == [5, 6, 5],
+          str([rt.eval("COLNUM['%s'][1]" % f) for f in ("ret", "seas", "gs")]))
+    check("g32 cards: no card table is ever expanded to its rows",
+          [int(rt.eval("(ROWREADS['%s'] or 0)" % f))
+           for f in ("ret", "seas", "gs", "ccprestige")] == [0] * 4,
+          str([int(rt.eval("(ROWREADS['%s'] or 0)" % f))
+               for f in ("ret", "seas", "gs", "ccprestige")]))
+    check("g32 cards: the three lazy tables name their own rows and ids",
+          count_line(lines, "card table ") == 4
+          and has_line(lines, "card table reticleChallenges rows=2 ids=4 src=handle")
+          and has_line(lines, "card table seasonalChallenges rows=1 ids=1 src=handle")
+          and has_line(lines, "card table gunsmithChallenges rows=2 ids=2 src=handle"),
+          " | ".join([x for x in lines if "card table" in x]))
+    check("g32 cards: the ids join one reward set and it counts three tables",
+          rt.eval("G11('cardK')") == 3
+          and all(rt.eval("G11('gset2')[%d]" % i) is True
+                  for i in (117486, 200010, 200011, 200012, 200020, 112409, 126988)),
+          str(rt.eval("G11('cardK')")))
+    check("g32 cards: a card one of the game tables pays is locked by its bit",
+          rt.eval("ASK_L(117486)") is False and rt.eval("ASK_P(117486)") is False,
+          str(rt.eval("ASK_L(117486)")))
+    check("g32 cards: both halves of a bar split and both halves of a plus split are in the set",
+          rt.eval("ASK_L(200011)") is False and rt.eval("ASK_L(200012)") is False,
+          "%s / %s" % (rt.eval("ASK_L(200011)"), rt.eval("ASK_L(200012)")))
+    check("g32 cards: an empty cell token adds no id and the id beside it does",
+          rt.eval("ASK_L(200020)") is False, str(rt.eval("ASK_L(200020)")))
+    check("g32 cards: both gunsmith rows lock the same way",
+          rt.eval("ASK_L(112409)") is False and rt.eval("ASK_L(126988)") is False,
+          "%s / %s" % (rt.eval("ASK_L(112409)"), rt.eval("ASK_L(126988)")))
+    check("g32 cards: a beta card no table pays locks by its bit alone",
+          rt.eval("ASK_L(104861)") is False, str(rt.eval("ASK_L(104861)")))
+    check("g32 cards: a store card with a bit and no bundle locks too",
+          rt.eval("ASK_L(6015)") is False, str(rt.eval("ASK_L(6015)")))
+
+    one = door(CARD_ROWS + CARD_TYPES + READ_COUNT, [112409], n=88, cards=False)
+    e0 = int(one.eval("G11('epoch')"))
+    first = one.eval("LOAD_CARD('gs')")
+    e1 = int(one.eval("G11('epoch')"))
+    check("g32 cards: one ask loads its own table, joins the ids and bumps the epoch",
+          first is True and reads(one, "gs") == 1 and e1 > e0
+          and one.eval("G11('gset2')[112409]") is True,
+          "%s / %d / %d" % (first, e0, e1))
+    again = one.eval("LOAD_CARD('gs')")
+    check("g32 cards: and a second ask for it reads nothing and moves nothing",
+          again is True and reads(one, "gs") == 1 and int(one.eval("G11('epoch')")) == e1
+          and count_line(lines_of(one), "card table gunsmithChallenges") == 1,
+          "%s / %d / %d" % (again, reads(one, "gs"), int(one.eval("G11('epoch')"))))
+    check("g32 cards: a key that is no table of ours loads nothing",
+          one.eval("LOAD_CARD('master')") is False and reads(one, "ret") == 0,
+          str(one.eval("LOAD_CARD('master')")))
+
+    order = door(CARD_ROWS + CARD_TYPES + READ_COUNT, [117486, 200020], n=84, cards=False)
+    check("g32 cards: nothing is loaded until an ask, and the count says so",
+          order.eval("ProgressionTuning.api.cards()") == (None, 3),
+          str(order.eval("ProgressionTuning.api.cards()")))
+    check("g32 cards: three asks load the three tables in that order, one epoch each",
+          [order.eval("LOAD_CARD('%s')" % k) for k in ("sea", "gs", "ret")] == [True, True, True]
+          and order.eval("ProgressionTuning.api.cards()") == (3, 3)
+          and int(order.eval("G11('epoch')")) > 0,
+          str(order.eval("ProgressionTuning.api.cards()")))
+    check("g32 cards: the order the tables load in does not change the set",
+          all(order.eval("G11('gset2')[%d]" % i) is True
+              for i in (117486, 200010, 200011, 200012, 200020, 112409, 126988))
+          and order.eval("ASK_L(200020)") is False,
+          str(order.eval("ASK_L(200020)")))
+    check("g32 cards: and the prestige table is read once, whatever the asks",
+          reads(order, "ccprestige") == 2 and reads(order, "ret") == 1,
+          "%d / %d" % (reads(order, "ccprestige"), reads(order, "ret")))
+
+    bare = door(CARD_ROWS + CARD_TYPES, [117486], n=85, cards=False)
+    bare.execute("StringTable[xhash('tablelookupentirecolumnbynum')] = nil")
+    check("g32 cards: with no column reader an ask answers false and raises nothing",
+          bare.eval("LOAD_CARD('ret')") is False and not has_line(lines_of(bare), "raised"),
+          str(bare.eval("LOAD_CARD('ret')")))
+
+    other = door(CARD_ROWS + CARD_TYPES, [117486], n=86, cards=False)
+    check("g32 cards: a fresh vm starts with no table loaded, whatever the last one did",
+          other.eval("G11('cardK')") is None and other.eval("G11('gset2')") is None,
+          "%s / %s" % (other.eval("G11('cardK')"), other.eval("G11('gset2')")))
+    e2 = int(other.eval("G11('epoch')"))
+    other.eval("LOAD_CARD('sea')")
+    pump(other, 20)
+    check("g32 cards: a quiet tick after a load leaves the epoch where the load left it",
+          int(other.eval("G11('epoch')")) > e2
+          and int(other.eval("G11('epoch')")) == e2 + 1,
+          "%d / %d" % (e2, int(other.eval("G11('epoch')"))))
+
+    rt2 = door(CARD_ROWS + CARD_TYPES, [104861, 6015], n=82)
+    check("g32 cards: the same table id with no bit stays open",
+          rt2.eval("ASK_L(117486)") is True, str(rt2.eval("ASK_L(117486)")))
+
+    rt3 = door(CARD_TYPES, [117486, 200011], n=83, cards=False)
+    check("g32 cards: with no card tables the set is never built and the bit alone closes the card",
+          rt3.eval("G11('gset2')") is None and rt3.eval("ASK_L(117486)") is False,
+          str(rt3.eval("ASK_L(117486)")))
+    check("g32 cards: and no table line is printed", not has_line(lines_of(rt3), "card table"),
+          " | ".join([x for x in lines_of(rt3) if "card" in x][:2]))
+
+    rt4 = rb_rt(lua51, extra=CARD_ROWS + CARD_TYPES, after="LOAD_ALL()",
+                slabs=[117486, 126988, 112409, 104861, 6015], ticks=16)
+    all4 = lines_of(rt4)
+    blk = [x for x in all4 if "QB19 " in x]
+    check("g32 cards: QB19 - the three cards the game tables pay read locked four ways",
+          has_line(blk, "QB19 117486 lock=1 reward=1 type=11 ans=true native=false")
+          and has_line(blk, "QB19 126988 lock=1 reward=1 type=11 ans=true native=false")
+          and has_line(blk, "QB19 112409 lock=1 reward=1 type=11 ans=true native=false"),
+          " | ".join(blk[:3]))
+    check("g32 cards: QB19 - the beta card and the store card carry a bit and no bundle",
+          has_line(blk, "QB19 104861 lock=1 reward=0 type=11 ans=true native=false")
+          and has_line(blk, "QB19 6015 lock=1 reward=0 type=11 ans=true native=false"),
+          " | ".join(blk[3:]))
+    check("g32 cards: QB19 - one header naming the tables that answered, then the five cards",
+          has_line(blk, "QB19 cards=3/3") and count_line(blk, "QB19 ") == 6, str(len(blk)))
+    check("g32 cards: QB19 - it prints after the card tables report, not before them",
+          [i for i, x in enumerate(all4) if "QB19 cards=" in x][0]
+          > [i for i, x in enumerate(all4) if "card table " in x][-1],
+          " | ".join([x for x in all4 if "card table " in x or "QB19 cards=" in x][-2:]))
+    check("g32 cards: QB19 - it is outside the second block and the block still closes",
+          count_line(rb_lines(all4), "QB19 ") == 0 and rb_end(rb_lines(all4)) == len(rb_lines(all4)),
+          "%d / %s" % (count_line(rb_lines(all4), "QB19 "), rb_end(rb_lines(all4))))
+    pump(rt4, 20)
+    check("g32 cards: QB19 - and prints once per vm, not once per tick",
+          count_line(lines_of(rt4), "QB19 ") == 6, str(count_line(lines_of(rt4), "QB19 ")))
+
+    rt5 = rb_rt(lua51, extra=CARD_ROWS + CARD_TYPES, after="LOAD_ALL()", slabs=[104861],
+                ticks=16)
+    blk2 = [x for x in lines_of(rt5) if "QB19 " in x]
+    check("g32 cards: QB19 - a table id with no bit reads open beside its own reward flag",
+          has_line(blk2, "QB19 117486 lock=0 reward=1 type=11 ans=false native=true"),
+          " | ".join(blk2[:2]))
+
+    rt6 = rb_rt(lua51, extra=CARD_TYPES, slabs=[117486, 104861, 6015])
+    blk3 = lines_of(rt6)
+    check("g32 cards: QB19 - with no card tables the five wait for a load that never comes",
+          count_line(blk3, "QB19 ") == 0, " | ".join([x for x in blk3 if "QB19 " in x][:3]))
+
+    rt7 = rb_rt(lua51, extra=CARD_ROWS_MISS + CARD_TYPES, after="LOAD_ALL()",
+                slabs=[117486, 112409, 126988])
+    pump(rt7, 8)
+    blk4 = [x for x in lines_of(rt7) if "QB19 " in x]
+    check("g32 cards: QB19 - a refused table keeps the five waiting and says why once",
+          count_line(blk4, "QB19 ") == 0
+          and count_line(lines_of(rt7), "card table gunsmithChallenges why=") == 1,
+          " | ".join([x for x in lines_of(rt7) if "why=" in x][:2]))
+
+
+def g32_qb20(lua51):
+    rt = rb_rt(lua51, extra=CARD_ROWS + CARD_TYPES + QB20_ROWS, after="LOAD_ALL()",
+               slabs=[117486, 126988, 112409, 104861, 6015])
+    lines = lines_of(rt)
+    blk = [x for x in lines if "QB20 " in x]
+    check("g32 qb20: the co-op tab - children, the numeric first slot and the empty one",
+          has_line(blk, "QB20 OB cat_wc_total children=3 firstNum=2 empty=1 bit=2 reward=1 open=0"
+                        " num=0 den=3 pct=0 native=0.25 cum=absent"),
+          " | ".join(blk[:2]))
+    check("g32 qb20: the warzone tab - one child, one bit and no reward",
+          has_line(blk, "QB20 BR cat_br_total children=1 firstNum=1 empty=0 bit=1 reward=1 open=0"
+                        " num=0 den=1 pct=0 native=none cum=absent"),
+          " | ".join([x for x in blk if "QB20 BR cat" in x]))
+    check("g32 qb20: the zombies tab - two children the tables pay, both locked",
+          has_line(blk, "QB20 ZM cat_zm_total children=2 firstNum=2 empty=0 bit=2 reward=2 open=0"
+                        " num=0 den=2 pct=0 native=1 cum=absent"),
+          " | ".join([x for x in blk if "QB20 ZM cat" in x]))
+    check("g32 qb20: a child names its first loot slot and all four answers",
+          has_line(blk, "QB20 OB child 70001 split1=117486 bit=1 reward=1 door=true ans=false")
+          and has_line(blk, "QB20 OB child 70005 split1=6015 bit=1 reward=0 door=true ans=false")
+          and has_line(blk, "QB20 BR child 70010 split1=126988 bit=1 reward=1 door=true ans=false")
+          and has_line(blk, "QB20 ZM child 70020 split1=112409 bit=1 reward=1 door=true ans=false"),
+          " | ".join([x for x in blk if " child " in x][:4]))
+    check("g32 qb20: an empty first slot adds no bit and no reward",
+          has_line(blk, "QB20 OB child 70003 split1= bit=0 reward=0 door=absent ans=absent"),
+          " | ".join([x for x in blk if "70003" in x]))
+    check("g32 qb20: six children across the three tabs, and the block inside its cap",
+          count_line(blk, " child ") == 6 and len(rb_lines(lines)) <= 40,
+          "%d / %d" % (count_line(blk, " child "), len(rb_lines(lines))))
+    check("g32 qb20: the three tabs print once each and the block closes",
+          count_line(blk, "QB20 OB ") == 4 and count_line(blk, "QB20 BR ") == 2
+          and count_line(blk, "QB20 ZM ") == 3 and rb_end(rb_lines(lines)) == len(rb_lines(lines)),
+          "%d / %d / %d" % (count_line(blk, "QB20 OB "), count_line(blk, "QB20 BR "),
+                            count_line(blk, "QB20 ZM ")))
+    pump(rt, 20)
+    check("g32 qb20: and once per vm, not once per tick",
+          count_line(lines_of(rt), "QB20 ") == len(blk), str(count_line(lines_of(rt), "QB20 ")))
+
+    rt2 = rb_rt(lua51, extra=CARD_ROWS + CARD_TYPES + QB20_MANY, after="LOAD_ALL()",
+                slabs=[104861])
+    blk2 = [x for x in lines_of(rt2) if "QB20 " in x]
+    check("g32 qb20: the child lines stop at twelve across the tabs",
+          count_line(blk2, " child ") == 12 and not has_line(blk2, "child 70113")
+          and not has_line(blk2, "child 70114"),
+          " | ".join([x for x in blk2 if " child " in x][-2:]))
+    check("g32 qb20: and the tab that spent them still names its own counts",
+          has_line(blk2, "QB20 OB cat_many children=14 firstNum=14 empty=0 bit=14 reward=0 open=0"
+                         " num=0 den=14 pct=0 native=none cum=absent"),
+          " | ".join([x for x in blk2 if "cat_many" in x]))
+
+    rt3 = rb_rt(lua51, extra=CARD_ROWS + CARD_TYPES + QB20_ROWS + QB20_CUM, after="LOAD_ALL()",
+                slabs=[104861])
+    blk3 = [x for x in lines_of(rt3) if "QB20 " in x]
+    check("g32 qb20: the cumulated reader is called with the tab and its answer printed",
+          has_line(blk3, "QB20 OB cat_wc_total children=3 firstNum=2 empty=1 bit=0 reward=1 open=2"
+                         " num=2 den=3 pct=67 native=0.25 cum=0.5"),
+          " | ".join([x for x in blk3 if "cat_wc_total" in x]))
+
+    rt4 = rb_rt(lua51)
+    blk4 = [x for x in lines_of(rt4) if "QB20 " in x]
+    check("g32 qb20: a vm with no calling card table answers absent on all three tabs",
+          count_line(blk4, "QB20 OB absent children=0 firstNum=0 empty=0 bit=0 reward=0 open=0"
+                           " num=0 den=0 pct=none native=none cum=absent") == 1
+          and count_line(blk4, "QB20 BR absent ") == 1
+          and count_line(blk4, "QB20 ZM absent ") == 1 and not has_line(blk4, "raised"),
+          " | ".join(blk4[:3]))
+
+
+def card_vm(lua51, pre, ids, n, ticks=8, cards=True):
+    rt = new_rt(lua51, frontend=True, src=False)
+    rt.execute(pre)
+    lua_slabs(rt, slabs_of(list(ids)))
+    rt.execute("SET_G11(%d)" % n)
+    load(rt)
+    pump(rt, ticks)
+    if cards:
+        rt.eval("LOAD_ALL()")
+    return rt
+
+
+def g32_card_files(lua51):
+    rt = card_vm(lua51, CARD_ROWS_RAISE + CARD_TYPES, [117486, 200020, 112409, 126988], 84)
+    lines = lines_of(rt)
+    calls = int(rt.eval("GETFILECALLS"))
+    check("g32 files: a table that carries its own file keeps it and its getter is never called",
+          calls == 0
+          and has_line(lines, "card table reticleChallenges rows=1 ids=1 src=handle"),
+          "getfile=%d" % calls)
+    check("g32 files: the raise behind that getter costs no table",
+          rt.eval("G11('cardK')") == 3 and count_line(lines, "card table ") == 4,
+          " | ".join([x for x in lines if "card " in x][:5]))
+    check("g32 files: each of the four tables is named once and no why is printed",
+          all(count_line(lines, "card table " + n) == 1 for n in CARD_TABLES)
+          and count_line(lines, "why=") == 0,
+          " | ".join([x for x in lines if "card " in x][:5]))
+
+
+def g32_card_path(lua51):
+    path = "ae/sat_ae_autogen_reticle_challenges.csv"
+    rt = card_vm(lua51, CARD_ROWS_PATH + CARD_TYPES, [117486, 200020, 112409, 126988], 85)
+    lines = lines_of(rt)
+    check("g32 path: a table with no handle lands on its own stringtable",
+          has_line(lines, "card table reticleChallenges rows=1 ids=1 src=path"),
+          " | ".join([x for x in lines if "card table" in x][:4]))
+    col = rt.eval("COLNUM['%s'][1]" % path)
+    check("g32 path: the path read carries that table's own loot column", col == 5, str(col))
+    n = rt.eval("#COLNUM['%s']" % path)
+    check("g32 path: and that one column is the whole read", n == 1, str(n))
+    ans = rt.eval("ASK_L(117486)")
+    check("g32 path: the set is whole and that card is locked by its bit",
+          rt.eval("G11('cardK')") == 3 and ans is False, str(ans))
+
+
+def g32_card_miss(lua51):
+    rt = card_vm(lua51, CARD_ROWS_MISS + CARD_TYPES + READ_COUNT,
+                 [117486, 200020, 112409, 126988], 86, cards=False)
+    lines = lines_of(rt)
+    check("g32 miss: at boot only the prestige table is named",
+          count_line(lines, "card table ") == 1 and count_line(lines, "why=") == 0,
+          " | ".join([x for x in lines if "card " in x][:2]))
+    check("g32 miss: a refused table answers false and names its error, type and column",
+          rt.eval("LOAD_CARD('gs')") is False
+          and count_line(lines_of(rt), "card table gunsmithChallenges why=gs not ready"
+                                       " file=string col=5") == 1,
+          " | ".join([x for x in lines_of(rt) if "why=" in x][:2]))
+    check("g32 miss: and it joins nothing",
+          rt.eval("G11('cardK')") is None and rt.eval("G11('gset2')") is None,
+          "%s / %s" % (rt.eval("G11('cardK')"), rt.eval("G11('gset2')")))
+    rt.eval("LOAD_ALL()")
+    lines = lines_of(rt)
+    check("g32 miss: the other two tables pay while it refuses, and it says why once",
+          rt.eval("G11('cardK')") == 2 and rt.eval("ASK_L(117486)") is False
+          and count_line(lines, "why=") == 1,
+          "%s / %d" % (rt.eval("G11('cardK')"), count_line(lines, "why=")))
+    check("g32 miss: and the refused table's ids are in no set",
+          rt.eval("G11('gset2')[112409]") is None and rt.eval("G11('gset2')[126988]") is None,
+          "%s / %s" % (rt.eval("G11('gset2')[112409]"), rt.eval("G11('gset2')[126988]")))
+
+    e0 = int(rt.eval("G11('epoch')"))
+    check("g32 miss: the next ask reads it again and still answers false",
+          rt.eval("LOAD_CARD('gs')") is False and reads(rt, "gs") == 3
+          and int(rt.eval("G11('epoch')")) == e0,
+          "%d / %d" % (reads(rt, "gs"), int(rt.eval("G11('epoch')"))))
+    late = rt.eval("LOAD_CARD('gs')")
+    check("g32 miss: a table that answers on a later ask joins and moves the epoch",
+          late is True and reads(rt, "gs") == 4 and int(rt.eval("G11('epoch')")) > e0
+          and rt.eval("G11('gset2')[112409]") is True and rt.eval("ASK_L(126988)") is False,
+          "%s / %d / %d" % (late, reads(rt, "gs"), int(rt.eval("G11('epoch')"))))
+    check("g32 miss: and the refusal is never said twice",
+          count_line(lines_of(rt), "why=") == 1,
+          " | ".join([x for x in lines_of(rt) if "why=" in x][:2]))
+    check("g32 miss: the two tables that answered are never read a second time",
+          [reads(rt, f) for f in ("ret", "seas", "ccprestige")] == [1, 1, 2],
+          str([reads(rt, f) for f in ("ret", "seas", "ccprestige")]))
+    check("g32 miss: the refused table stays on its handle and never asks its path",
+          reads(rt, "gs") == 4 and reads(rt, "ae/sat_gs_challenges.csv") == 0,
+          "%d / %d" % (reads(rt, "gs"), reads(rt, "ae/sat_gs_challenges.csv")))
+
+
+NEW_ROWS = r"""
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.reticleChallenges = { file = "ret", cols = { id = 0, loot = 5 } }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["1"] = { id = "80001", prestige = "1" } }
+ROWS["ret"] = { ["6"] = { loot = "240001|240002+240003" } }
+ROWS["seas"] = { ["7"] = { loot = "240010" } }
+ROWS["gs"] = { ["8"] = { loot = "240020+240021" } }
+"""
+
+NEW_TYPES = r"""
+SET_TYPE(240001, 11)
+SET_TYPE(240002, 11)
+SET_TYPE(240003, 11)
+SET_TYPE(240010, 11)
+SET_TYPE(240020, 11)
+SET_TYPE(240021, 11)
+"""
+
+READ_COUNT = r"""
+READCOUNT = {}
+ROWREADS = {}
+local colrc = StringTable[xhash("tablelookupentirecolumnbynum")]
+StringTable[xhash("tablelookupentirecolumnbynum")] = function(file, n)
+  local k = tostring(file)
+  READCOUNT[k] = (READCOUNT[k] or 0) + 1
+  return colrc(file, n)
+end
+local rowrc = StringTable[xhash("tablereadallrows")]
+StringTable[xhash("tablereadallrows")] = function(file, cols)
+  local k = tostring(file)
+  ROWREADS[k] = (ROWREADS[k] or 0) + 1
+  return rowrc(file, cols)
+end
+"""
+
+RET_FULL = r"""
+GETFILECALLS = 0
+COLCOLS["ae/sat_ae_autogen_reticle_challenges.csv"] = { id = 0, loot = 5 }
+CSV.reticleChallenges = { cols = { id = 0, ref = 1, name = 2, desc = 3, amount = 4, loot = 5,
+                                  XPReward = 6, category = 7, order = 8, children = 9,
+                                  image = 10, detailDesc = 11, customSplashRef = 12,
+                                  featuredLootItem = 13, gameModeMask = 14, itemRef = 15,
+                                  feature = 16 },
+  [xhash("GetFile")] = function(t) GETFILECALLS = GETFILECALLS + 1; error("no file", 0) end }
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["1"] = { id = "80001", prestige = "1" } }
+ROWS["ret"] = {}
+ROWS["seas"] = {}
+ROWS["gs"] = {}
+ROWS["ae/sat_ae_autogen_reticle_challenges.csv"] = { ["5"] = { loot = "126988" } }
+"""
+
+CARD_ROWS_LONG = r"""
+LONGWHY = string.rep("y", 300)
+local collw = StringTable[xhash("tablelookupentirecolumnbynum")]
+StringTable[xhash("tablelookupentirecolumnbynum")] = function(file, n)
+  if tostring(file) == "gs" then error("gs read refused " .. LONGWHY, 0) end
+  return collw(file, n)
+end
+CSV.callingCardPrestigeChallenges = { file = "ccprestige",
+  cols = { id = 0, loot = 6, prestige = 14 } }
+CSV.reticleChallenges = { file = "ret", cols = { id = 0, loot = 5 } }
+CSV.seasonalChallenges = { file = "seas", cols = { id = 0, loot = 6 } }
+CSV.gunsmithChallenges = { file = "gs", cols = { id = 0, loot = 5 } }
+ROWS["ccprestige"] = { ["1"] = { id = "80001", prestige = "1" } }
+ROWS["ret"] = { ["1"] = { loot = "117486" } }
+ROWS["seas"] = {}
+ROWS["gs"] = { ["8"] = { loot = "240020" } }
+"""
+
+FCACHE_COUNT = r"""
+RESOLVES = 0
+local dvarold = Dvar
+Dvar = setmetatable({}, { __index = function(t, k)
+  if k == xhash("GetDvarString") then RESOLVES = RESOLVES + 1 end
+  return dvarold[k]
+end })
+"""
+
+G12_READS = r"""
+R12 = 0
+local get12 = Dvar[xhash("GetDvarString")]
+Dvar[xhash("GetDvarString")] = function(key)
+  if key == xhashdvar("zm_g12_ver") then R12 = R12 + 1 end
+  return get12(key)
+end
+"""
+
+CAMO_SCAN = r"""
+PCAMOCALLS = 0
+PRESTIGE[xhash("getmaxweaponprestigelevel")] = function(ref) return 2 end
+PRESTIGE[xhash("getweaponprestigecamos")] = function(ref)
+  PCAMOCALLS = PCAMOCALLS + 1
+  local a = { { startPrestige = 0, startLevel = 0, targetPrestige = 1, targetLevel = 27,
+                camoBundle = { lootid = 107478 } } }
+  return a, {}, {}
+end
+WEAPON[xhash("enumerateweapons")] = function(cb) cb({ ref = "sat_pi_alcor" }) end
+"""
+
+
+def reads(rt, f):
+    return int(rt.eval("(READCOUNT['%s'] or 0)" % f))
+
+
+def g32_newtables(lua51):
+    rt = card_vm(lua51, NEW_ROWS + NEW_TYPES + READ_COUNT,
+                 [240001, 240003, 240010, 240020, 126988], 90)
+    lines = lines_of(rt)
+    check("w1 tables: each of the three lazy tables loads and names its own rows",
+          has_line(lines, "card table reticleChallenges rows=1 ids=3 src=handle")
+          and has_line(lines, "card table seasonalChallenges rows=1 ids=1 src=handle")
+          and has_line(lines, "card table gunsmithChallenges rows=1 ids=2 src=handle"),
+          " | ".join([x for x in lines if "card table " in x][1:]))
+    check("w1 tables: the set carries every id of the three tables",
+          rt.eval("G11('cardK')") == 3
+          and all(rt.eval("G11('gset2')[%d]" % i) is True
+                  for i in (240001, 240002, 240003, 240010, 240020, 240021)),
+          str(rt.eval("G11('cardK')")))
+    check("w1 tables: a bar split and a plus split in a new table both join",
+          rt.eval("ASK_L(240001)") is False and rt.eval("ASK_L(240003)") is False,
+          "%s / %s" % (rt.eval("ASK_L(240001)"), rt.eval("ASK_L(240003)")))
+    check("w1 tables: an id from a new table with no bit stays open",
+          rt.eval("ASK_L(240099)") is True, str(rt.eval("ASK_L(240099)")))
+
+    rt2 = card_vm(lua51, RET_FULL + CARD_TYPES, [126988], 91)
+    l2 = lines_of(rt2)
+    path = "ae/sat_ae_autogen_reticle_challenges.csv"
+    check("w1 path: the path read asks that table's own loot column",
+          has_line(l2, "card table reticleChallenges rows=1 ids=1 src=path")
+          and rt2.eval("COLNUM['%s'][1]" % path) == 5,
+          str(rt2.eval("COLNUM['%s'][1]" % path)))
+    check("w1 path: the card it pays joins the set and its table counts as loaded",
+          rt2.eval("G11('gset2')[126988]") is True and rt2.eval("G11('cardK')") == 3,
+          str(rt2.eval("G11('cardK')")))
+    check("w1 path: and its own getter was called once",
+          int(rt2.eval("GETFILECALLS")) == 1, str(rt2.eval("GETFILECALLS")))
+    check("w1 path: a table with no rows still loads, counts, and adds no id",
+          rt2.eval("G11('gset2')[240020]") is None
+          and rt2.eval("G11('gset2')[240010]") is None,
+          str(rt2.eval("G11('cardK')")))
+
+    rt3 = card_vm(lua51, CARD_ROWS_LONG + CARD_TYPES, [117486], 92)
+    why = [x for x in lines_of(rt3) if "card table gunsmithChallenges why=" in x]
+    check("w1 why: a refused table prints its whole error, not forty characters",
+          len(why) == 1 and "gs read refused yyyyyyyyyy" in why[0]
+          and why[0].endswith(" file=string col=5")
+          and len(why[0].split("why=")[1].split(" file=")[0]) == 203,
+          why[0][-40:] if why else "none")
+    pump(rt3, 8)
+    rt3.eval("LOAD_ALL()")
+    check("w1 why: and it stays one line however often it is asked",
+          count_line(lines_of(rt3), "card table gunsmithChallenges why=") == 1,
+          str(count_line(lines_of(rt3), "card table gunsmithChallenges why=")))
+
+    rt4 = card_vm(lua51, CARD_ROWS_LONG + CARD_TYPES + READ_COUNT, [117486], 93)
+    pump(rt4, 20)
+    rt4.eval("LOAD_ALL()")
+    pump(rt4, 20)
+    check("w1 read: a table that loaded is never read again, a refused one only when asked",
+          reads(rt4, "ret") == 1 and reads(rt4, "seas") == 1
+          and reads(rt4, "ccprestige") == 2 and reads(rt4, "gs") == 2,
+          "%d / %d / %d / %d" % (reads(rt4, "ret"), reads(rt4, "seas"),
+                                 reads(rt4, "ccprestige"), reads(rt4, "gs")))
+
+
+def g32_speed(lua51):
+    rt = new_rt(lua51, frontend=True, src=False, pre=FCACHE_COUNT)
+    lua_slabs(rt, slabs_of([117486]))
+    rt.execute("SET_G11(94)")
+    load(rt)
+    pump(rt, 1)
+    base = int(rt.eval("RESOLVES"))
+    for _ in range(3):
+        rt.eval("ASK_L(117486)")
+    rt.eval("ASK_P(117486)")
+    check("w1 cache: the dvar getter is resolved once and never again",
+          base <= 2 and int(rt.eval("RESOLVES")) == base,
+          "%d -> %d" % (base, int(rt.eval("RESOLVES"))))
+
+    rt2 = new_rt(lua51, frontend=True, src=False, pre=G12_READS)
+    lua_slabs(rt2, slabs_of([150901]))
+    rt2.execute("SET_G11(95)")
+    load(rt2)
+    pump(rt2, 1)
+    base = int(rt2.eval("R12"))
+    for _ in range(3):
+        rt2.eval("ASK_L(150901)")
+    check("w1 set: an absent reward payload costs at most one read a tick",
+          int(rt2.eval("R12")) - base <= 1, "%d reads for three asks" % (int(rt2.eval("R12")) - base))
+    pump(rt2, 8)
+    after = int(rt2.eval("R12"))
+    check("w1 set: and the next poll tries once more",
+          after - base == 1, "%d -> %d" % (base, after))
+
+    rt3 = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt3, slabs_of([150901]))
+    rt3.execute("SET_G11(96)")
+    load(rt3)
+    pump(rt3, 1)
+    e0 = int(rt3.eval("G11('epoch')"))
+    pump(rt3, 20)
+    check("w1 epoch: a quiet tick leaves it alone", int(rt3.eval("G11('epoch')")) == e0,
+          "%d -> %d" % (e0, int(rt3.eval("G11('epoch')"))))
+    lua_slabs(rt3, slabs_of([150902]))
+    rt3.execute('SET_VER("97:33:65536")')
+    pump(rt3, 8)
+    e1 = int(rt3.eval("G11('epoch')"))
+    check("w1 epoch: a serial change bumps it", e1 > e0, "%d -> %d" % (e0, e1))
+    rt3.execute('SET_DVAR("zm_unlock_all", "1")')
+    pump(rt3, 8)
+    e2 = int(rt3.eval("G11('epoch')"))
+    check("w1 epoch: an unlock change bumps it", e2 > e1, "%d -> %d" % (e1, e2))
+    rt3.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt3, 8)
+    check("w1 epoch: and the switch going back bumps it again",
+          int(rt3.eval("G11('epoch')")) > e2, "%d -> %d" % (e2, int(rt3.eval("G11('epoch')"))))
+
+    rt4 = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt4, slabs_of([150901]))
+    lua_rslabs(rt4, slabs_of([200000, 200001]))
+    rt4.execute("SET_G11(98)")
+    load(rt4)
+    pump(rt4, 1)
+    e3 = int(rt4.eval("G11('epoch')"))
+    rt4.execute("SET_G12(2)")
+    pump(rt4, 8)
+    check("w1 epoch: the reward set load bumps it",
+          int(rt4.eval("G11('epoch')")) > e3 and rt4.eval("G11('sethex')") is not None,
+          "%d -> %d" % (e3, int(rt4.eval("G11('epoch')"))))
+
+    rt5 = new_rt(lua51, frontend=True, src=False)
+    rt5.execute(CAMO_SCAN)
+    lua_slabs(rt5, slabs_of([150901]))
+    rt5.execute("SET_G11(99)")
+    rt5.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    rt5.execute('SET_LEVEL("sat_pi_alcor", 2)')
+    rt5.execute("SET_CAMODATA(107478, nil)")
+    rt5.execute("SET_TYPE(107478, 13)")
+    load(rt5)
+    pump(rt5, 1)
+    rt5.eval("ASK_L(107478)")
+    n0 = int(rt5.eval("PCAMOCALLS"))
+    check("w1 cache: the weapon camo map is built and kept",
+          n0 >= 1 and rt5.eval("G11('camomap')") is not None, str(n0))
+    lua_slabs(rt5, slabs_of([150902]))
+    rt5.execute('SET_VER("100:33:65536")')
+    pump(rt5, 8)
+    rt5.eval("ASK_L(107478)")
+    check("w1 cache: and a serial change does not rebuild it",
+          int(rt5.eval("PCAMOCALLS")) == n0, "%d -> %d" % (n0, int(rt5.eval("PCAMOCALLS"))))
+
+    rt6 = new_rt(lua51, frontend=True, src=False)
+    rt6.execute(r"""
+PCAMOEMPTY = 0
+PRESTIGE[xhash("getmaxweaponprestigelevel")] = function(ref) return 2 end
+PRESTIGE[xhash("getweaponprestigecamos")] = function(ref)
+  PCAMOEMPTY = PCAMOEMPTY + 1
+  return {}, {}, {}
+end
+WEAPON[xhash("enumerateweapons")] = function(cb) cb({ ref = "sat_sh_shepherd" }) end
+""")
+    lua_slabs(rt6, slabs_of([150901]))
+    rt6.execute("SET_G11(124)")
+    rt6.execute('SET_PRESTIGE("sat_sh_shepherd", 0)')
+    rt6.execute('SET_LEVEL("sat_sh_shepherd", 2)')
+    rt6.execute("SET_CAMODATA(107480, 'sat_sh_shepherd')")
+    rt6.execute("SET_TYPE(107480, 13)")
+    load(rt6)
+    pump(rt6, 1)
+    c0 = int(rt6.eval("PCAMOEMPTY"))
+    rt6.eval("ASK_L(107480)")
+    rt6.eval("ASK_L(107480)")
+    check("w1 cache: a weapon with no prestige camos has its ladder read once",
+          int(rt6.eval("PCAMOEMPTY")) - c0 == 1, str(int(rt6.eval("PCAMOEMPTY")) - c0))
+
+
+def g32_open(lua51):
+    rt = card_vm(lua51, CARD_ROWS + CARD_TYPES + BUY_FIX + "SET_BUY(104861, { lootid = 104861 })",
+                 [117486, 104861], 87)
+    rt.execute("OWNED = false")
+    ans = rt.eval("ASK_L(104861)")
+    check("g32 open: with no open rule the door's decline is the original's answer",
+          ans is False, str(ans))
+    before = int(rt.eval("LCALLS"))
+    rt.execute("ProgressionTuning.locks.open = function(id) return true end")
+    ans, calls = rt.eval("ASK_L(104861)"), int(rt.eval("LCALLS")) - before
+    check("g32 open: an open answer reads unlocked and the original is never called",
+          ans is True and calls == 0, "%s / %d" % (ans, calls))
+    ans = rt.eval("ASK_L(117486)")
+    check("g32 open: the lock rule still wins over an open answer", ans is False, str(ans))
+    rt.execute("ProgressionTuning.locks.open = function(id) return nil end")
+    ans = rt.eval("ASK_L(104861)")
+    check("g32 open: no opinion leaves the answer where it was", ans is False, str(ans))
+    rt.execute("ProgressionTuning.locks.open = nil")
+    before = int(rt.eval("LCALLS"))
+    rt.eval("ASK_L(104861)")
+    calls = int(rt.eval("LCALLS")) - before
+    check("g32 open: an absent open rule costs one original call, as before", calls == 1, str(calls))
+
+
+STORE_FIX = r"""
+STORE = { Bundles = {} }
+PLATFORM = true
+PLATCALLS = 0
+STORE.Bundles[xhash("IsLootUseableOnCurrentPlatform")] = function(c, id)
+  PLATCALLS = PLATCALLS + 1
+  return PLATFORM
+end
+function SET_PLATFORM(v) PLATFORM = v end
+LOOT.itemTypes.OPERATOR = 1
+LOOT.itemTypes.OPERATOR_SKIN = 8
+LOOT.itemTypes.OPERATOR_EXECUTION = 9
+LOOT.itemTypes.EMBLEM = 12
+LOOT.itemTypes.CHARM = 16
+LOOT.itemTypes.STICKER = 17
+LOOT.itemTypes.SPRAYS = 22
+LOOT.itemTypes.LOAD_SCREEN = 36
+LOOT.itemTypes.EMOTE = 49
+LOOT.itemTypes.PERK = 6
+LOOT.itemTypes.EQUIPMENT = 5
+LOOT.itemTypes.STREAK = 4
+LOOT.itemTypes.SUPER = 3
+LOOT.itemTypes.WILDCARD = 45
+LOOT.itemTypes.AMMOMOD = 46
+"""
+
+STORE_LISTS = ["@cat_camos", "@cat_attachments", "@cat_reticles", "@cat_cards", "@cat_emblems",
+               "@cat_operators", "@cat_loadingscreens", "@cat_finishers", "@cat_stickers",
+               "@cat_charms", "@cat_sprays", "@cat_emotes"]
+
+BUY_FIX = r"""
+if type(STORE) ~= "table" then STORE = {} end
+if type(STORE.Bundles) ~= "table" then STORE.Bundles = {} end
+BUY, BPASS, BLCK, BMAP = {}, {}, {}, {}
+BUYCALLS, BPCALLS, BCCALLS, BMCALLS, DESCCALLS = 0, 0, 0, 0, 0
+function SET_BUY(id, b) BUY[tostring(id)] = b end
+function SET_BP(id, v) BPASS[tostring(id)] = v end
+function SET_BC(id, v) BLCK[tostring(id)] = v end
+function SET_BM(id, v) BMAP[tostring(id)] = v end
+function SET_BIDX(id, v) BATTLEMAP.LootIdToSectorIndex[tonumber(id)] = v end
+STORE.Bundles[xhash("GetFirstBundleWithLootId")] = function(c, id)
+  BUYCALLS = BUYCALLS + 1
+  return BUY[tostring(id)]
+end
+LOOT[xhash("GetUnlockDescription")] = function(b)
+  DESCCALLS = DESCCALLS + 1
+  return "unlocked in the store"
+end
+PAGEDBATTLEPASS = {}
+PAGEDBATTLEPASS[xhash("isbattlepassreward")] = function(id)
+  BPCALLS = BPCALLS + 1
+  return BPASS[tostring(id)] == true
+end
+PAGEDBATTLEPASS[xhash("isblackcellreward")] = function(id)
+  BCCALLS = BCCALLS + 1
+  return BLCK[tostring(id)] == true
+end
+BATTLEMAP = { LootIdToSectorIndex = {} }
+BATTLEMAP[xhash("IsReward")] = function(c, id)
+  BMCALLS = BMCALLS + 1
+  return BMAP[tostring(id)] == true
+end
+function BUYCARDS()
+  return BUYCALLS + BPCALLS + BCCALLS + BMCALLS + DESCCALLS
+end
+"""
+
+
+def g32_store(lua51):
+    card, paid, earn = 6015, 117486, 62769
+    weapon, perk, plat = 200000, 200001, 200002
+    ids = [card, paid, earn, weapon, perk, plat]
+    rt = card_vm(lua51, CARD_ROWS + CARD_TYPES + STORE_FIX + BUY_FIX
+                 + "SET_BUY(%d, { lootid = %d }) SET_BUY(%d, { lootid = %d })" % (card, card, plat, plat),
+                 ids, 88)
+    rt.execute("SET_TYPE(%d, 2)" % weapon)
+    rt.execute("SET_TYPE(%d, 6)" % perk)
+    rt.execute("SET_TYPE(%d, 11)" % earn)
+    rt.execute("SET_TYPE(%d, 11)" % plat)
+    before = int(rt.eval("LCALLS"))
+    ans = rt.eval("ASK_L(%d)" % card)
+    calls = int(rt.eval("LCALLS")) - before
+    check("g32 store: a store card with a bit and a bundle reads unlocked",
+          ans is True and rt.eval("ASK_P(%d)" % card) is True, str(ans))
+    check("g32 store: and the client's own function is never asked for it", calls == 0, str(calls))
+    check("g32 store: a card one of the game tables pays stays locked",
+          rt.eval("ASK_L(%d)" % paid) is False, str(rt.eval("ASK_L(%d)" % paid)))
+    before = int(rt.eval("LCALLS"))
+    ans = rt.eval("ASK_L(%d)" % earn)
+    check("g32 store: a card a level list earns still carries a bit and locks",
+          ans is False and int(rt.eval("LCALLS")) - before == 0, str(ans))
+    before = int(rt.eval("LCALLS"))
+    got = (rt.eval("ASK_L(%d)" % weapon), rt.eval("ASK_L(%d)" % perk))
+    check("g32 store: a weapon and a perk are left to the client too",
+          got == (True, True) and int(rt.eval("LCALLS")) - before == 2, str(got))
+    rt.execute("SET_PLATFORM(false)")
+    before = int(rt.eval("LCALLS"))
+    ans = rt.eval("ASK_L(%d)" % plat)
+    check("g32 store: a platform that refuses the item leaves it to the client",
+          ans is True and int(rt.eval("LCALLS")) - before == 1, str(ans))
+    rt.execute("SET_PLATFORM(true)")
+    before, p0 = int(rt.eval("LCALLS")), int(rt.eval("PLATCALLS"))
+    ans = rt.eval("ASK_L(%d)" % plat)
+    check("g32 store: and that refusal is kept for the session, with no second question",
+          ans is True and int(rt.eval("LCALLS")) - before == 1
+          and int(rt.eval("PLATCALLS")) == p0,
+          "%s / %d / %d" % (ans, int(rt.eval("LCALLS")) - before, int(rt.eval("PLATCALLS")) - p0))
+    pump(rt, 12)
+    l = lines_of(rt)
+    tally = [x for x in l if "store ids by type:" in x]
+    check("g32 store: one line says how many store ids opened, by type",
+          len(tally) == 1 and " by type: 11=" in tally[0], " | ".join(tally))
+    rt.eval("ASK_L(%d)" % card)
+    pump(rt, 12)
+    check("g32 store: and it is printed once per vm",
+          count_line(lines_of(rt), "store ids by type:") == 1,
+          str(count_line(lines_of(rt), "store ids by type:")))
+
+    rt2 = card_vm(lua51, CARD_TYPES + STORE_FIX + BUY_FIX
+                  + "SET_BUY(%d, { lootid = %d })" % (card, card), [card], 89)
+    before = int(rt2.eval("LCALLS"))
+    ans = rt2.eval("ASK_L(%d)" % card)
+    check("g32 store: a card opens even while a card table is outstanding",
+          ans is True and int(rt2.eval("LCALLS")) - before == 0, str(ans))
+    check("g32 store: and the card set is reported short, not whole",
+          rt2.eval("G11('cardK')") is None, str(rt2.eval("G11('cardK')")))
+
+
+def g32_toggle(lua51):
+    card, camo, band = 117486, 131708, 107478
+    ids = [card, camo, band]
+    rt = new_rt(lua51, frontend=True, src=False)
+    rt.execute(CARD_ROWS + CARD_TYPES + STORE_FIX)
+    lua_slabs(rt, slabs_of(ids))
+    lua_rslabs(rt, slabs_of([card, camo]))
+    rt.execute("SET_G11(90)")
+    rt.execute("SET_G12(2)")
+    rt.execute("SET_TYPE(%d, 13)" % camo)
+    rt.execute("SET_TYPE(%d, 13)" % band)
+    rt.execute('SET_CAMODATA(%d, "sat_pi_alcor")' % band)
+    rt.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    rt.execute('SET_LEVEL("sat_pi_alcor", 0)')
+    rt.execute(PRESTIGE_CAMO_FN)
+    load(rt)
+    pump(rt, 1)
+    rt.eval("LOAD_ALL()")
+    l = lines_of(rt)
+    want = ("unlock dvars: ammomods=- attachments=- camos=- cards=- charms=- emblems=- emotes=-"
+            " equipment=- fieldupgrades=- finishers=- loadingscreens=- operators=- perks=- reticles=-"
+            " scorestreaks=- sprays=- stickers=- wildcards=-")
+    check("g32 toggle: the arm line names every unlock switch and what it reads", has_line(l, want),
+          " | ".join([x for x in l if "unlock dvars:" in x]))
+    check("g32 toggle: a paid card and a paid camo read locked with every switch off",
+          rt.eval("ASK_L(%d)" % card) is False and rt.eval("ASK_L(%d)" % camo) is False,
+          "%s / %s" % (rt.eval("ASK_L(%d)" % card), rt.eval("ASK_L(%d)" % camo)))
+    check("g32 toggle: and the band camo reads locked below its band",
+          rt.eval("ASK_L(%d)" % band) is False, str(rt.eval("ASK_L(%d)" % band)))
+    rt.execute('SET_DVAR("zm_unlock_cards", "1")')
+    pump(rt, 2)
+    check("g32 toggle: cards on makes a paid card read unlocked",
+          rt.eval("ASK_L(%d)" % card) is True and rt.eval("ASK_P(%d)" % card) is True,
+          str(rt.eval("ASK_L(%d)" % card)))
+    check("g32 toggle: and the camo beside it stays locked",
+          rt.eval("ASK_L(%d)" % camo) is False, str(rt.eval("ASK_L(%d)" % camo)))
+    rt.execute('SET_DVAR("zm_unlock_cards", "0")')
+    rt.execute('SET_DVAR("zm_unlock_camos", "1")')
+    pump(rt, 2)
+    check("g32 toggle: camos on makes a paid camo read unlocked",
+          rt.eval("ASK_L(%d)" % camo) is True, str(rt.eval("ASK_L(%d)" % camo)))
+    check("g32 toggle: and the band camo opens with its band unreached",
+          rt.eval("ASK_L(%d)" % band) is True, str(rt.eval("ASK_L(%d)" % band)))
+    check("g32 toggle: the card is locked again",
+          rt.eval("ASK_L(%d)" % card) is False, str(rt.eval("ASK_L(%d)" % card)))
+    rt.execute('SET_DVAR("zm_unlock_camos", "0")')
+    pump(rt, 2)
+    rt.execute("ProgressionTuning.tick = ProgressionTuning.tick + 1")
+    rt.execute("RESET_READS()")
+    rt.eval("ASK_L(%d)" % camo)
+    one = int(rt.eval("READS()"))
+    rt.execute("RESET_READS()")
+    rt.eval("ASK_L(%d)" % camo)
+    two = int(rt.eval("READS()"))
+    check("g32 toggle: every switch is read once a tick, not once an ask",
+          one - two >= 18, "%d then %d" % (one, two))
+
+
+def g32_prestige_sets(lua51):
+    one, three, five, plain = 80001, 80002, 80003, 80004
+
+    def sets(pre="", player=0):
+        rt = new_rt(lua51, frontend=True, src=False)
+        rt.execute(PRESTIGE_SETS)
+        rt.execute("SET_CS(%d, 0) SET_CS(%d, 0) SET_CS(%d, 0) SET_CS(%d, 0)" % (one, three, five, plain))
+        rt.execute("SET_PPLAYER(%d)" % player)
+        if pre:
+            rt.execute(pre)
+        load(rt)
+        pump(rt, 8)
+        return rt
+
+    rt = sets(player=1)
+    check("g32 sets: a set at the player's own prestige reads in progress",
+          rt.eval("ASK_CS(%d)" % one) == 1, str(rt.eval("ASK_CS(%d)" % one)))
+    check("g32 sets: a set above it reads inactive, not in progress",
+          rt.eval("ASK_CS(%d)" % three) == 4 and rt.eval("ASK_CS(%d)" % five) == 4,
+          "%s / %s" % (rt.eval("ASK_CS(%d)" % three), rt.eval("ASK_CS(%d)" % five)))
+    check("g32 sets: an id that is no prestige row is answered by the client untouched",
+          rt.eval("ASK_CS(%d)" % plain) == 0, str(rt.eval("ASK_CS(%d)" % plain)))
+    check("g32 sets: the one line names the prestige, its source and the sets it opens",
+          has_line(lines_of(rt), "prestige sets: player prestige 1 from prestige, 1 sets open"),
+          " | ".join([x for x in lines_of(rt) if "prestige sets:" in x][:2]))
+    cols = rt.eval("table.concat(COLNUM['ccprestige'], ',')")
+    check("g32 sets: the map is built from the id and prestige columns alone",
+          cols == "0,14", str(cols))
+
+    rt.execute("SET_PPLAYER(5)")
+    pump(rt, 1)
+    check("g32 sets: every set up to a prestige 5 player reads in progress",
+          [rt.eval("ASK_CS(%d)" % i) for i in (one, three, five)] == [1, 1, 1],
+          str([rt.eval("ASK_CS(%d)" % i) for i in (one, three, five)]))
+    rt.execute("SET_CS(%d, 3)" % three)
+    check("g32 sets: a set the client has finished stays finished",
+          rt.eval("ASK_CS(%d)" % three) == 3, str(rt.eval("ASK_CS(%d)" % three)))
+    rt.execute("SET_CS(%d, 4)" % plain)
+    check("g32 sets: an inactive state on an id of ours is not read as ours",
+          rt.eval("ASK_CS(%d)" % plain) == 4, str(rt.eval("ASK_CS(%d)" % plain)))
+
+    pump(rt, 1)
+    p0 = int(rt.eval("PPCALLS"))
+    for _ in range(3):
+        rt.eval("ASK_CS(%d)" % one)
+    check("g32 sets: the player prestige is read once a tick, not once an ask",
+          int(rt.eval("PPCALLS")) - p0 == 1, str(int(rt.eval("PPCALLS")) - p0))
+
+    rt.execute('SET_DVAR("zm_unlock_cards", "1")')
+    pump(rt, 1)
+    check("g32 sets: with unlock cards on the client's own state stands",
+          rt.eval("ASK_CS(%d)" % one) == 0, str(rt.eval("ASK_CS(%d)" % one)))
+    rt.execute('SET_DVAR("zm_unlock_cards", "0") SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 1)
+    check("g32 sets: and with unlock all on it stands too",
+          rt.eval("ASK_CS(%d)" % one) == 0, str(rt.eval("ASK_CS(%d)" % one)))
+    rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 1)
+    check("g32 sets: both off and the set is in progress again",
+          rt.eval("ASK_CS(%d)" % one) == 1, str(rt.eval("ASK_CS(%d)" % one)))
+
+    dvar = sets(pre="DROP_PPLAYER() SET_DVAR('zm_local_prestige', '3')", player=3)
+    check("g32 sets: with no prestige native the dvar the hud reads answers instead",
+          dvar.eval("ASK_CS(%d)" % three) == 1 and dvar.eval("ASK_CS(%d)" % five) == 4,
+          "%s / %s" % (dvar.eval("ASK_CS(%d)" % three), dvar.eval("ASK_CS(%d)" % five)))
+    check("g32 sets: and the line says where the number came from",
+          has_line(lines_of(dvar), "prestige sets: player prestige 3 from dvar, 2 sets open"),
+          " | ".join([x for x in lines_of(dvar) if "prestige sets:" in x][:2]))
+
+    late = new_rt(lua51, frontend=True, src=False)
+    late.execute(PRESTIGE_SETS)
+    late.execute("SET_CS(%d, 0) SET_PPLAYER(1) DROP_CS()" % one)
+    load(late)
+    pump(late, 4)
+    check("g32 sets: a vm with no state reader arms without a word",
+          not any("error" in x or "raised" in x for x in lines_of(late)),
+          " | ".join([x for x in lines_of(late) if "error" in x or "raised" in x][:2]))
+    late.execute("ADD_CS()")
+    pump(late, 40)
+    check("g32 sets: and the reader is wrapped as soon as the client offers it",
+          late.eval("ASK_CS(%d)" % one) == 1, str(late.eval("ASK_CS(%d)" % one)))
+
+
+def g32_ask_cost(lua51):
+    camo, ret = 107478, 129198
+    rt = new_rt(lua51, frontend=True, src=False)
+    rt.execute(CAMO_SCAN)
+    lua_slabs(rt, slabs_of([camo, ret]))
+    rt.execute("SET_G11(101)")
+    rt.execute("SET_TYPE(%d, 14)" % ret)
+    rt.execute("SET_TYPE(%d, 13)" % camo)
+    rt.execute('SET_CAMODATA(%d, "sat_pi_alcor")' % camo)
+    rt.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    rt.execute('SET_LEVEL("sat_pi_alcor", 2)')
+    load(rt)
+    pump(rt, 1)
+    rt.eval("ASK_L(%d)" % camo)
+    rt.execute("RESET_READS()")
+    for _ in range(3):
+        rt.eval("ASK_L(%d)" % camo)
+    cam = int(rt.eval("READS()"))
+    check("w2 ask: three asks of one camo id in a tick cost three reads, not fifteen",
+          cam <= 3, "%d reads" % cam)
+
+    rt.eval("ASK_L(%d)" % ret)
+    rt.execute("RESET_READS()")
+    for _ in range(3):
+        rt.eval("ASK_L(%d)" % ret)
+    retr = int(rt.eval("READS()"))
+    check("w2 ask: a reticle id asked three times in a tick reads no switch again",
+          retr == 0, "%d reads" % retr)
+
+    many = [160100 + i for i in range(50)]
+    for i in many:
+        rt.execute("SET_TYPE(%d, 14)" % i)
+    lua_slabs(rt, slabs_of([camo, ret] + many))
+    rt.execute('SET_VER("102:33:65536")')
+    pump(rt, 8)
+    rt.eval("ASK_L(%d)" % many[0])
+    rt.execute("RESET_READS()")
+    for i in many:
+        rt.eval("ASK_L(%d)" % i)
+    bulk = int(rt.eval("READS()"))
+    check("w2 ask: fifty ids asked in one tick cost less than one read each", bulk < 50,
+          "%d reads" % bulk)
+
+    rt.execute("SET_TYPE(160500, 14)")
+    lua_slabs(rt, slabs_of([160500]))
+    rt.execute('SET_VER("103:33:65536")')
+    pump(rt, 8)
+    rt.eval("ASK_L(160500)")
+    tc = int(rt.eval("TYPECALLS"))
+    for _ in range(3):
+        rt.eval("ASK_L(160500)")
+    check("w2 ask: the type of an id is looked up once for three asks",
+          int(rt.eval("TYPECALLS")) - tc == 0, str(int(rt.eval("TYPECALLS")) - tc))
+
+
+def g32_ask_native(lua51):
+    card, ret = 104861, 129198
+    rt = new_rt(lua51, frontend=True, src=False)
+    rt.execute(CARD_ROWS + CARD_TYPES + STORE_FIX + BUY_FIX + "SET_BUY(%d, { lootid = %d })" % (card, card))
+    lua_slabs(rt, slabs_of([card, ret]))
+    lua_rslabs(rt, slabs_of([ret]))
+    rt.execute("SET_G11(104)")
+    rt.execute("SET_G12(1)")
+    rt.execute("SET_TYPE(%d, 14)" % ret)
+    load(rt)
+    pump(rt, 1)
+    rt.eval("ASK_L(%d)" % card)
+    p0 = int(rt.eval("PLATCALLS"))
+    for _ in range(3):
+        rt.execute("ProgressionTuning.g11.memo = nil")
+        rt.eval("ASK_L(%d)" % card)
+    plat = int(rt.eval("PLATCALLS"))
+    check("w2 native: the platform question is asked once for an id", p0 == 1 and plat == 1,
+          "%d then %d" % (p0, plat))
+
+    d0 = int(rt.eval("DEFCALLS"))
+    rt.eval("ASK_L(%d)" % ret)
+    d1 = int(rt.eval("DEFCALLS"))
+    for _ in range(3):
+        rt.execute("ProgressionTuning.g11.memo = nil")
+        rt.eval("ASK_L(%d)" % ret)
+    defs = int(rt.eval("DEFCALLS"))
+    check("w2 native: the default question is asked once for an id", d1 - d0 == 1 and defs == d1,
+          "%d / %d then %d" % (d0, d1, defs))
+
+    lua_slabs(rt, slabs_of([card]))
+    rt.execute('SET_VER("105:33:65536")')
+    pump(rt, 8)
+    ans = rt.eval("ASK_L(%d)" % ret)
+    check("w2 memo: a moved serial drops the answer the door kept", ans is True, str(ans))
+
+
+def g32_ask_epoch(lua51):
+    card = 117486
+    rt = card_vm(lua51, CARD_ROWS + CARD_TYPES, [card], 106)
+    first = rt.eval("ASK_L(%d)" % card)
+    rt.execute('SET_DVAR("zm_unlock_cards", "1")')
+    pump(rt, 1)
+    on = rt.eval("ASK_L(%d)" % card)
+    rt.execute('SET_DVAR("zm_unlock_cards", "0")')
+    pump(rt, 1)
+    off = rt.eval("ASK_L(%d)" % card)
+    check("w2 memo: a changed switch drops the answer the door kept",
+          first is False and on is True and off is False, "%s / %s / %s" % (first, on, off))
+
+
+def g32_ask_logs(lua51):
+    ids = [160001 + i for i in range(300)]
+    rt = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt, slabs_of(ids))
+    rt.execute("SET_G11(107)")
+    for i in ids:
+        rt.execute("SET_TYPE(%d, 13)" % i)
+    load(rt)
+    pump(rt, 1)
+    for i in ids:
+        rt.eval("ASK_L(%d)" % i)
+    n = count_line(lines_of(rt), "names no weapon")
+    check("w2 log: the no weapon line stops at twenty four a session", n == 24, str(n))
+
+
+def g32_ask_cards(lua51):
+    rt = card_vm(lua51, CARD_ROWS + CARD_TYPES + READ_COUNT, [117486], 108, ticks=1, cards=False)
+    pump(rt, 64)
+    why = count_line(lines_of(rt), "why=")
+    check("w2 card: no tick reads a card table, however long the vm runs",
+          [reads(rt, f) for f in ("ret", "seas", "gs")] == [0, 0, 0]
+          and reads(rt, "ccprestige") == 2 and why == 0,
+          "%d / %d / %d / %d / %d" % (reads(rt, "ret"), reads(rt, "seas"), reads(rt, "gs"),
+                                      reads(rt, "ccprestige"), why))
+
+
+BUY_IDS = r"""
+SET_TYPE(130001, 11) SET_TYPE(130002, 11) SET_TYPE(130003, 11) SET_TYPE(130004, 11)
+SET_TYPE(130005, 11) SET_TYPE(130006, 11) SET_TYPE(130007, 11) SET_TYPE(130008, 11)
+SET_TYPE(130009, 11)
+"""
+
+BUY_SELLS = r"""
+SET_BUY(130002, { lootid = 130002 })
+SET_BP(130003, true)
+SET_BC(130004, true)
+SET_BM(130005, true)
+SET_BIDX(130006, 3)
+SET_DEFAULT(130007)
+PLAIN_BUNDLE(130008, "jup_ar_mw3gun")
+"""
+
+BIDX_ONLY = r"""
+STORE = nil
+BATTLEMAP = { LootIdToSectorIndex = { [130006] = 3 } }
+"""
+
+
+def g32_buy(lua51):
+    plain, sold, bp, bc, bm, bidx = 130001, 130002, 130003, 130004, 130005, 130006
+    dflt, car, nobit = 130007, 130008, 130009
+    ids = [plain, sold, bp, bc, bm, bidx, dflt, car]
+
+    def vm(pre="", slabs=None, n=120, ticks=2):
+        rt = new_rt(lua51, frontend=True, src=False)
+        rt.execute(BUY_IDS)
+        if pre:
+            rt.execute(pre)
+        lua_slabs(rt, slabs_of(slabs if slabs is not None else ids))
+        rt.execute("SET_G11(%d)" % n)
+        load(rt)
+        pump(rt, ticks)
+        return rt
+
+    rt = vm(BUY_FIX + BUY_SELLS)
+    check("g32 buy: a card with a bit and nothing selling it locks",
+          rt.eval("ASK_L(%d)" % plain) is False, str(rt.eval("ASK_L(%d)" % plain)))
+    check("g32 buy: the same card opens when a bundle carries it",
+          rt.eval("ASK_L(%d)" % sold) is True, str(rt.eval("ASK_L(%d)" % sold)))
+    check("g32 buy: a battle pass reward opens",
+          rt.eval("ASK_L(%d)" % bp) is True, str(rt.eval("ASK_L(%d)" % bp)))
+    check("g32 buy: a blackcell reward opens",
+          rt.eval("ASK_L(%d)" % bc) is True, str(rt.eval("ASK_L(%d)" % bc)))
+    check("g32 buy: a battle map reward opens",
+          rt.eval("ASK_L(%d)" % bm) is True, str(rt.eval("ASK_L(%d)" % bm)))
+    check("g32 buy: a battle map sector index no longer opens on its own",
+          rt.eval("ASK_L(%d)" % bidx) is False, str(rt.eval("ASK_L(%d)" % bidx)))
+    check("g32 buy: a card the game ships by default opens",
+          rt.eval("ASK_L(%d)" % dflt) is True, str(rt.eval("ASK_L(%d)" % dflt)))
+    check("g32 buy: a card carried by a foreign ref opens",
+          rt.eval("ASK_L(%d)" % car) is True, str(rt.eval("ASK_L(%d)" % car)))
+    check("g32 buy: a card with no bit opens",
+          rt.eval("ASK_L(%d)" % nobit) is True, str(rt.eval("ASK_L(%d)" % nobit)))
+
+    b0, p0 = int(rt.eval("BUYCALLS")), int(rt.eval("BPCALLS"))
+    k0, m0, d0 = int(rt.eval("BCCALLS")), int(rt.eval("BMCALLS")), int(rt.eval("DESCCALLS"))
+    for _ in range(3):
+        rt.execute("ProgressionTuning.g11.memo = nil")
+        rt.eval("ASK_L(%d)" % sold)
+    check("g32 buy: every native is asked once for an id, not once an ask",
+          (int(rt.eval("BUYCALLS")), int(rt.eval("BPCALLS")), int(rt.eval("BCCALLS")),
+           int(rt.eval("BMCALLS")), int(rt.eval("DESCCALLS"))) == (b0, p0, k0, m0, d0),
+          "%d/%d/%d/%d/%d" % (int(rt.eval("BUYCALLS")) - b0, int(rt.eval("BPCALLS")) - p0,
+                              int(rt.eval("BCCALLS")) - k0, int(rt.eval("BMCALLS")) - m0,
+                              int(rt.eval("DESCCALLS")) - d0))
+
+    rt.execute('SET_DVAR("zm_unlock_cards", "1")')
+    pump(rt, 1)
+    check("g32 buy: the card switch still forces the type open",
+          rt.eval("ASK_L(%d)" % plain) is True, str(rt.eval("ASK_L(%d)" % plain)))
+    rt.execute('SET_DVAR("zm_unlock_cards", "0")')
+    pump(rt, 1)
+    check("g32 buy: and off again locks it back",
+          rt.eval("ASK_L(%d)" % plain) is False, str(rt.eval("ASK_L(%d)" % plain)))
+
+    cold = vm(BUY_FIX + BUY_SELLS, n=121)
+    c0 = int(cold.eval("BUYCARDS()"))
+    cold.eval("ASK_L(%d)" % sold)
+    first = int(cold.eval("BUYCARDS()")) - c0
+    c1 = int(cold.eval("BUYCARDS()"))
+    cold.execute("ProgressionTuning.g11.memo = nil")
+    cold.eval("ASK_L(%d)" % sold)
+    check("g32 buy: a sold card costs five questions cold and none warm",
+          first == 5 and int(cold.eval("BUYCARDS()")) == c1,
+          "%d then %d" % (first, int(cold.eval("BUYCARDS()")) - c1))
+
+    bare = vm("", n=122)
+    check("g32 buy: with no probe at all a card stays locked",
+          bare.eval("ASK_L(%d)" % plain) is False, str(bare.eval("ASK_L(%d)" % plain)))
+    check("g32 buy: and says once which probe is missing",
+          count_line(lines_of(bare),
+                     "card lock: purchasable probe missing STORE.Bundles.GetFirstBundleWithLootId") == 1,
+          " | ".join([x for x in lines_of(bare) if "purchasable" in x][:2]))
+
+    only = vm(BIDX_ONLY, n=125)
+    check("g32 buy: a sector table alone is no probe, so the fail closed line prints",
+          only.eval("ASK_L(%d)" % bidx) is False
+          and count_line(lines_of(only), "card lock: purchasable probe missing") == 1,
+          " | ".join([x for x in lines_of(only) if "purchasable" in x][:2]))
+
+    many = [130100 + i for i in range(300)]
+    cap = new_rt(lua51, frontend=True, src=False)
+    cap.execute("".join("SET_TYPE(%d, 11) " % i for i in many))
+    cap.execute(BUY_FIX)
+    cap.execute("SET_TOGGLE('pt_log', 1)")
+    lua_slabs(cap, slabs_of(many))
+    cap.execute("SET_G11(123)")
+    load(cap)
+    pump(cap, 1)
+    for i in many:
+        cap.eval("ASK_L(%d)" % i)
+    blk = [x for x in lines_of(cap) if "card lock: " in x and "probe missing" not in x]
+    check("g32 buy: the card lock line stops at forty a session",
+          len(blk) == 40 and has_line(blk, "card lock: 1 id=%d type=11 buy=0" % many[0])
+          and has_line(blk, "card lock: 40 id=%d type=11 buy=0" % many[39]),
+          "%d lines" % len(blk))
+
+    trig = new_rt(lua51, frontend=True, src=False)
+    trig.execute(CARD_ROWS + CARD_TYPES + STORE_FIX + READ_COUNT)
+    trig.execute("SET_TYPE(131708, 13) SET_TYPE(129198, 14) SET_TYPE(140001, 16) SET_TYPE(140002, 12)")
+    lua_slabs(trig, slabs_of([117486, 131708, 129198, 140001, 140002]))
+    trig.execute("SET_G11(124)")
+    load(trig)
+    trig.eval("ASK_L(117486)")
+    check("g32 load: a card ask loads no reward table",
+          [reads(trig, f) for f in ("ret", "seas", "gs")] == [0, 0, 0],
+          str([reads(trig, f) for f in ("ret", "seas", "gs")]))
+    trig.eval("ASK_L(131708)")
+    check("g32 load: a camo ask loads the gunsmith table", reads(trig, "gs") == 1,
+          str(reads(trig, "gs")))
+    trig.eval("ASK_L(129198)")
+    check("g32 load: a reticle ask loads the reticle table", reads(trig, "ret") == 1,
+          str(reads(trig, "ret")))
+    trig.eval("ASK_L(140001)")
+    check("g32 load: a charm ask loads the seasonal table", reads(trig, "seas") == 1,
+          str(reads(trig, "seas")))
+    trig.eval("ASK_L(140002)")
+    check("g32 load: an emblem ask finds that table already there", reads(trig, "seas") == 1,
+          str(reads(trig, "seas")))
+
+
+W5_CAMO = r"""
+PRESTIGE[xhash("getmaxweaponprestigelevel")] = function(ref) return 2 end
+PRESTIGE[xhash("getweaponprestigecamos")] = function(ref)
+  local a = { { startPrestige = 0, startLevel = 0, targetPrestige = 1, targetLevel = 27,
+                camoBundle = { lootid = 107478 } } }
+  local b = { { startPrestige = 2, startLevel = 99, targetPrestige = 2, targetLevel = 149,
+                camoBundle = { lootid = 132741 } } }
+  local c = { { startPrestige = 0, startLevel = 0, targetPrestige = 1, targetLevel = 27,
+                camoBundle = { lootid = 113244 } } }
+  return a, b, c
+end
+WEAPON[xhash("enumerateweapons")] = function(cb) cb({ ref = "sat_pi_alcor" }) end
+"""
+
+W5_COUNTS = r"""
+CAMOREFCALLS, PRESTIGECALLS, PRESTCALLS, LEVELCALLS = 0, 0, 0, 0
+MODENOW = "zm"
+Engine[xhash("GetActiveGameModeKey")] = function() return MODENOW end
+function SET_MODE(v) MODENOW = v end
+function MEMO(id)
+  local m = G11('memo')
+  if type(m) ~= "table" or type(m.lock) ~= "table" then return nil end
+  return m.lock[id]
+end
+local w5camo = WEAPON[xhash("getcamodatabyid")]
+WEAPON[xhash("getcamodatabyid")] = function(id)
+  CAMOREFCALLS = CAMOREFCALLS + 1
+  return w5camo(id)
+end
+local w5steps = PRESTIGE[xhash("getweaponprestigecamos")]
+PRESTIGE[xhash("getweaponprestigecamos")] = function(ref)
+  PRESTIGECALLS = PRESTIGECALLS + 1
+  return w5steps(ref)
+end
+local w5prest = PRESTIGE[xhash("getweaponprestigelevel")]
+PRESTIGE[xhash("getweaponprestigelevel")] = function(c, ref)
+  PRESTCALLS = PRESTCALLS + 1
+  return w5prest(c, ref)
+end
+local w5lvl = PROGRESSION[xhash("GetWeaponLevel")]
+PROGRESSION[xhash("GetWeaponLevel")] = function(c, ref)
+  LEVELCALLS = LEVELCALLS + 1
+  return w5lvl(c, ref)
+end
+function W5()
+  return TYPECALLS + DEFCALLS + PLATCALLS + CAMOREFCALLS + PRESTIGECALLS + PRESTCALLS + LEVELCALLS
+end
+"""
+
+
+def g32_w5(lua51):
+    band, flat, plain = 107478, 160200, 140701
+    att, ret, card, plat = 126608, 129198, 117486, 200002
+    gear, gatt, ctrl = 113244, 62769, 140702
+    rt = new_rt(lua51, frontend=True, src=False)
+    rt.execute(CARD_ROWS + CARD_TYPES + STORE_FIX + BUY_FIX
+               + "SET_BUY(%d, { lootid = %d })" % (plat, plat) + W5_CAMO + W5_COUNTS)
+    lua_slabs(rt, slabs_of([band, att, ret, card, plat]))
+    rt.execute("SET_G11(110)")
+    rt.execute("SET_TYPE(%d, 13)" % band)
+    rt.execute("SET_TYPE(%d, 13)" % flat)
+    rt.execute("SET_TYPE(%d, 13)" % gear)
+    rt.execute("SET_TYPE(132741, 13)")
+    rt.execute("SET_TYPE(%d, 11)" % card)
+    rt.execute("SET_TYPE(%d, 11)" % plat)
+    rt.execute("SET_TYPE(%d, 14)" % ret)
+    rt.execute('SET_CAMODATA(%d, "sat_pi_alcor")' % band)
+    rt.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    rt.execute('SET_LEVEL("sat_pi_alcor", 2)')
+    for i in (att, gatt, ctrl):
+        rt.execute('SET_PREQ("sat_pi_alcor", %d, 1)' % i)
+        rt.execute('PRESTIGE_BUNDLE(%d, "sat_pi_alcor")' % i)
+    load(rt)
+    pump(rt, 1)
+
+    c0 = int(rt.eval("CAMOREFCALLS"))
+    rt.eval("ASK_L(%d)" % flat)
+    check("w5 camo: the first ask of a camo with no own data reads that data once",
+          int(rt.eval("CAMOREFCALLS")) - c0 == 1, str(int(rt.eval("CAMOREFCALLS")) - c0))
+    for _ in range(2):
+        rt.eval("ASK_L(%d)" % flat)
+    check("w5 camo: and the miss is kept - three asks read it once",
+          int(rt.eval("CAMOREFCALLS")) - c0 == 1, str(int(rt.eval("CAMOREFCALLS")) - c0))
+
+    check("w5 gearn: an earned prestige reward with no bit is not closed by its own rule",
+          rt.eval("ASK_L(%d)" % gatt) is True and rt.eval("ASK_L(%d)" % gear) is True,
+          "%s / %s" % (rt.eval("ASK_L(%d)" % gatt), rt.eval("ASK_L(%d)" % gear)))
+    check("w5 gearn: while the same two rules still close a camo and a reward that earn nothing",
+          rt.eval("ASK_L(%d)" % 132741) is False and rt.eval("ASK_L(%d)" % ctrl) is False,
+          "%s / %s" % (rt.eval("ASK_L(%d)" % 132741), rt.eval("ASK_L(%d)" % ctrl)))
+
+    for i in (flat, plain, ret, card):
+        rt.eval("ASK_L(%d)" % i)
+    rt.execute("RESET_READS()")
+    w0 = int(rt.eval("W5()"))
+    for _ in range(3):
+        for i in (flat, plain, ret, card):
+            rt.eval("ASK_L(%d)" % i)
+    check("w5 warm: three more asks of a camo, an attachment, a reticle and a card cost no call",
+          int(rt.eval("W5()")) == w0, "%d -> %d" % (w0, int(rt.eval("W5()"))))
+    check("w5 warm: and not one dvar read between them", int(rt.eval("READS()")) == 0,
+          "%d reads" % int(rt.eval("READS()")))
+
+    s0 = int(rt.eval("PRESTIGECALLS"))
+    rt.eval("ASK_L(%d)" % band)
+    check("w5 band: the weapon ladder is read once and kept",
+          int(rt.eval("PRESTIGECALLS")) - s0 == 1, str(int(rt.eval("PRESTIGECALLS")) - s0))
+    p0, l0 = int(rt.eval("PRESTCALLS")), int(rt.eval("LEVELCALLS"))
+    rt.eval("ASK_L(%d)" % band)
+    check("w5 band: a second ask reads the weapon pair and nothing else",
+          int(rt.eval("PRESTIGECALLS")) - s0 == 1 and int(rt.eval("PRESTCALLS")) - p0 == 1
+          and int(rt.eval("LEVELCALLS")) - l0 == 1,
+          "%d / %d / %d" % (int(rt.eval("PRESTIGECALLS")) - s0, int(rt.eval("PRESTCALLS")) - p0,
+                            int(rt.eval("LEVELCALLS")) - l0))
+    rt.execute('SET_PRESTIGE("sat_pi_alcor", 1)')
+    check("w5 band: a weapon prestige change answers on the next ask in the same tick",
+          rt.eval("ASK_L(%d)" % band) is True, str(rt.eval("ASK_L(%d)" % band)))
+    rt.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    check("w5 band: and back again locks it in the same tick too",
+          rt.eval("ASK_L(%d)" % band) is False, str(rt.eval("ASK_L(%d)" % band)))
+
+    for i in (ret, card, flat):
+        rt.eval("ASK_L(%d)" % i)
+    before = {i: rt.eval("ASK_L(%d)" % i) for i in (ret, card, flat)}
+    rt.execute('SET_MODE("ob")')
+    pump(rt, 1)
+    check("w5 mode: a mode change drops every answer the door kept",
+          rt.eval("MEMO(%d) == nil" % ret) is True and rt.eval("MEMO(%d) == nil" % card) is True,
+          "%s / %s" % (rt.eval("MEMO(%d)" % ret), rt.eval("MEMO(%d)" % card)))
+    check("w5 mode: and drops the camo answer the band does move",
+          rt.eval("MEMO(%d) == nil" % flat) is True, str(rt.eval("MEMO(%d)" % flat)))
+    check("w5 mode: the camo map and the weapon ladder go with it",
+          rt.eval("G11('camomap')") is None
+          and rt.eval("G11('pcamo')['sat_pi_alcor']") is None,
+          "%s / %s" % (rt.eval("G11('camomap')") is not None,
+                       rt.eval("G11('pcamo')['sat_pi_alcor']") is not None))
+    check("w5 mode: and the ask after it answers as it did before the move",
+          all(rt.eval("ASK_L(%d)" % i) == before[i] for i in (ret, card, flat)),
+          " | ".join("%d %s/%s" % (i, before[i], rt.eval("ASK_L(%d)" % i)) for i in (ret, card, flat)))
+    check("w5 mode: while the answer it just gave fills the memo again",
+          rt.eval("MEMO(%d) ~= nil" % ret), str(rt.eval("MEMO(%d)" % ret)))
+
+    rt.execute("SET_PLATFORM(false)")
+    p1 = int(rt.eval("PLATCALLS"))
+    for _ in range(3):
+        rt.execute("ProgressionTuning.g11.memo = nil")
+        rt.eval("ASK_L(%d)" % plat)
+    check("w5 store: a refused platform id asks the platform once and keeps the no",
+          int(rt.eval("PLATCALLS")) - p1 == 1, str(int(rt.eval("PLATCALLS")) - p1))
+
+    rt.eval("ASK_L(%d)" % card)
+    e1 = int(rt.eval("G11('memo').epoch"))
+    lua_slabs(rt, slabs_of([band, att, ret, card, plat, 200003]))
+    rt.execute('SET_VER("111:33:65536")')
+    pump(rt, 20)
+    rt.eval("ASK_L(%d)" % card)
+    e2 = int(rt.eval("G11('memo').epoch"))
+    check("w5 epoch: a moved serial drops the memo and the next ask refills it",
+          e2 > e1 and e2 == int(rt.eval("G11('epoch')")), "%d -> %d" % (e1, e2))
+
+
+def g32_earn_pin(lua51):
+    text = LUA_TEXT[PRISON]
+    m = re.search(r"local GEARN_IDS = \{(.*?)\}", text, re.S)
+    ids = sorted(int(x) for x in re.findall(r"\d+", m.group(1))) if m else []
+    path = os.path.join(PKG, "data", "challenges.tsv")
+    rows = [ln.rstrip("\n").split("\t") for ln in open(path, encoding="utf-8")]
+    lists = {r[0]: r[1] for r in rows if len(r) == 2 and r[0].startswith("@")}
+
+    def ids_of(name):
+        return set(int(t) for t in lists.get(name, "").split(",") if t.strip().isdigit())
+
+    earn, store = set(), set()
+    for name in lists:
+        if name.startswith(("@lv_", "@pr_", "@rank_")):
+            earn |= ids_of(name)
+    for name in STORE_LISTS:
+        store |= ids_of(name)
+    check("g32 earn: the earn list is exactly the store ids a level prestige or rank list pays",
+          ids == sorted(earn & store), "%d ids against %d" % (len(ids), len(earn & store)))
+
+
+
+
 def splashck_lines(lines):
     return [ln for ln in lines if "splashck:" in ln]
-
-
 def splashck_arm(lua51):
     rt = new_rt(lua51, frontend=True, src=False)
     rt.execute(SPLASHFIX)
@@ -4919,10 +6938,10 @@ def week_sweep(lua51):
     pump(rt, 24)
     l = lines_of(rt)
     check("G: the sweep holds the client's whole weekly list, past the old window of nine",
-          has_line(l, "chal sweep src=fork kind=585,590,592 n=12 done=0 prog=12"),
+          has_line(l, "chal sweep src=fork kind=585,590,592,429 n=12 done=0 prog=12"),
           " | ".join([x for x in l if "chal sweep" in x][:2]))
     check("G: and it names each weekly kind it swept with that kind's row count",
-          has_line(l, "chal sweep kinds zm_weekly=585 weekly=590 mastery=592 rows=9/0/3"),
+          has_line(l, "chal sweep kinds zm_weekly=585 weekly=590 mastery=592 sticker=429 rows=9/0/3/0"),
           " | ".join([x for x in l if "chal sweep kinds" in x][:1]))
     check("G: the first sweep primes silently, so no weekly is carded at match start",
           rt.eval("NEVENTS()") == 0, str(rt.eval("NEVENTS()")))
@@ -4980,7 +6999,7 @@ def week_sweep(lua51):
     pump(rt, 24)
     l = lines_of(rt)
     check("G: a weekly already complete when the sweep primes draws nothing",
-          has_line(l, "chal sweep src=fork kind=585,590,592 n=1 done=1 prog=1")
+          has_line(l, "chal sweep src=fork kind=585,590,592,429 n=1 done=1 prog=1")
           and rt.eval("NEVENTS()") == 0,
           " | ".join([x for x in l if "chal sweep" in x][:1]))
 
@@ -4994,7 +7013,7 @@ def week_sweep(lua51):
     pump(rt, 24)
     l = lines_of(rt)
     check("G: without the store call the client's own weekly list is the source, by presence",
-          has_line(l, "chal sweep src=list kind=585,590,592 n=2 done=0 prog=2"),
+          has_line(l, "chal sweep src=list kind=585,590,592,429 n=2 done=0 prog=2"),
           " | ".join([x for x in l if "chal sweep" in x][:1]))
     rt.execute("SET_COMPLETE(70300)")
     rt.execute("DROP_WEEK_LIST()")
@@ -5083,6 +7102,44 @@ def week_sweep(lua51):
     check("G: and the dailies still card through the untouched path",
           has_line(l, "daily card id=53310 row=sat_daily_zm_ch_p1_kills_melee kind=438 target=75"),
           " | ".join([x for x in l if "daily card" in x][:2]))
+
+
+def week_sticker(lua51):
+    PRE = SweepStub + """
+WSTORE[429] = {}
+ASKS = {}
+WeeklyChallenge[xhash("getweeklychallengedatabyid")] = function(id)
+  ASKS[#ASKS + 1] = id
+  return WROW[id]
+end
+"""
+    rt = new_rt(lua51, src=False)
+    rt.execute(PRE)
+    rt.execute("SET_WEEK(52508, 429, '3', 'sat_sb_zm_freshmeat_1', 1, 1)")
+    rt.execute("SET_G11(230)")
+    load(rt)
+    pump(rt, 24)
+    l = lines_of(rt)
+    check("G: the sweep asks for the sticker book kind beside the three weeklies",
+          has_line(l, "chal sweep src=fork kind=585,590,592,429 n=1 done=0 prog=1 sample=52508")
+          and has_line(l, "chal sweep kinds zm_weekly=585 weekly=590 mastery=592 sticker=429"
+                          " rows=0/0/0/1"),
+          " | ".join([x for x in l if "chal sweep" in x][:2]))
+    check("G: a sticker book row is never asked for a weekly row",
+          rt.eval("#ASKS") == 0, str(rt.eval("#ASKS")))
+    rt.execute("SET_WEEK_STATUS(429, 52508, 3, 3)")
+    pump(rt, 40)
+    l = lines_of(rt)
+    check("G: a 429 row that flips complete is carded once on route A with its own kind",
+          rt.eval("NAMED('completed_challenge')") == 1
+          and int(rt.eval("LASTOF('completed_challenge').kind")) == 429
+          and rt.eval("LASTOF('completed_challenge').id") == 52508
+          and has_line(l, "daily card id=52508 row=- kind=429 target=3 value=3 route=A")
+          and has_line(l, "chal week card id=52508 ref=- kind=429 enabled=nil isweekly=false"
+                          " splash=true route=A"),
+          " | ".join([x for x in l if " card id=" in x][:2]))
+    check("G: and no weekly row is asked for that 429 id even after it is carded",
+          rt.eval("#ASKS") == 0, str(rt.eval("#ASKS")))
 
 
 def camo_families(lua51):
@@ -5648,6 +7705,7 @@ end
         return rt2
 
     rt2 = capped(700)
+    pump(rt2, 48)
     check("cf: a prestige camo on the 650th weapon is in the map, past the old 600 cap",
           rt2.eval("ASK_L(140810)") is False, str(rt2.eval("ASK_L(140810)")))
     check("cf: and the map says how many weapons it walked",
@@ -5655,6 +7713,7 @@ end
           " | ".join([x for x in lines_of(rt2) if "prestige camo ids over" in x][:2]))
 
     rt3 = capped(2100)
+    pump(rt3, 140)
     check("cf: a list longer than the client's own weapon table is not cached at all",
           rt3.eval("ASK_L(140810)") is True, str(rt3.eval("ASK_L(140810)")))
     check("cf: and exactly one line says the map is truncated",
@@ -5694,13 +7753,15 @@ end
     rt5.execute('SET_VER("205:33:65536")')
     pump(rt5, 8)
     rt5.eval("ASK_L(140820)")
-    check("cf: and the rebuild that re-reads the bitmap re-asks it once",
-          int(rt5.eval("BUNDLECALLS")) == 2, str(rt5.eval("BUNDLECALLS")))
+    check("cf: and the rebuild that re-reads the bitmap never re-asks it",
+          int(rt5.eval("BUNDLECALLS")) == 1, str(rt5.eval("BUNDLECALLS")))
 
     scope4 = sorted(ls)[:4]
     rt6 = new_rt(lua51, frontend=True, src=False)
     lua_slabs(rt6, slabs_of(scope4 + [160001]))
+    lua_rslabs(rt6, slabs_of([scope4[1], scope4[3]]))
     rt6.execute("SET_G11(206)")
+    rt6.execute("SET_G12(2)")
     rt6.execute('PLAIN_BUNDLE(%d, "t10_ar_coslo")' % scope4[0])
     rt6.execute("SET_TYPE(%d, 7)" % scope4[0])
     rt6.execute('PLAIN_BUNDLE(%d, "sat_pi_alcor")' % scope4[1])
@@ -5888,6 +7949,7 @@ def main():
             g11_absent(lua51)
             g11_order_and_cap(lua51, ls)
             s1_door(lua51, ls)
+            g12_door(lua51, ls)
             s1_reticle(lua51, ls)
             s1_fallback(lua51, ls)
             s3_prestige(lua51, ls)
@@ -5903,6 +7965,7 @@ def main():
             camo_zm_rows(lua51)
             weekly_rows(lua51)
             week_sweep(lua51)
+            week_sticker(lua51)
             camo_families(lua51)
             camo_bursts(lua51)
             reticle_rows(lua51)
@@ -5923,6 +7986,26 @@ def main():
             diag_qb_sources(lua51)
             diag_qb_dvar(lua51)
             diag_qb_reticle(lua51)
+            diag_qb_rewards(lua51)
+            g32_cards(lua51)
+            g32_qb20(lua51)
+            g32_card_files(lua51)
+            g32_card_path(lua51)
+            g32_card_miss(lua51)
+            g32_newtables(lua51)
+            g32_speed(lua51)
+            g32_open(lua51)
+            g32_store(lua51)
+            g32_toggle(lua51)
+            g32_prestige_sets(lua51)
+            g32_ask_cost(lua51)
+            g32_ask_native(lua51)
+            g32_ask_epoch(lua51)
+            g32_ask_logs(lua51)
+            g32_ask_cards(lua51)
+            g32_buy(lua51)
+            g32_w5(lua51)
+            g32_earn_pin(lua51)
             splashck_arm(lua51)
             splashck_absent(lua51)
             splashck_slot(lua51)

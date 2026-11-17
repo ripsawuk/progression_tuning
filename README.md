@@ -98,6 +98,7 @@ on what the build holds, or skip with a `SKIP` line.
     tests\                       the mod's replay
     RELEASE-NOTES-rc1.0.md       what is proven, what is not, and what is not done
     RELEASE-NOTES-rc1.1.md       what changed in rc1.1
+    RELEASE-NOTES-rc1.2.md       what changed in rc1.2
 
 Two things are deliberately **not** in this repository: any copy of a game file or a table derived from one, and
 any client binary other than the release's own DLL. The one exception is `data\challenges.tsv` - the weapon level

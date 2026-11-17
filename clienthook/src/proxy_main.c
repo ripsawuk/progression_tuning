@@ -447,13 +447,13 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         }
         // Two writers to one append-only file, both opening with share-all and writing whole lines: the proxy's
         // one-line writer (this file) and nativepay's buffered writer. Interleaving per line is expected.
-        // The banner is measured, not estimated: 402 chars, so the formatted line is 19 + 2 + 402 + 2 = 425
-        // bytes, 87 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
-        log_line("proxy attached (version.dll build 29: one file - the original is loaded from the Windows system "
-                 "directory at run time; the client addresses are resolved from its own code, the award call site "
-                 "pays field 45 on ev=95, ptsplash_paid is published per payment, zm_g11_* carries the lock bitmap, "
-                 "master.c extends the level byte, one branch of the ops check is forced on and the state is "
-                 "republished in match)");
+        // The banner is measured, not estimated: 399 chars, so the formatted line is 19 + 2 + 399 + 2 = 422
+        // bytes, 90 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
+        log_line("proxy attached (version.dll build 30: one file - the system copy is loaded at run time, every "
+                 "address comes from the game's own code, the award call site pays field 45 on ev=95, "
+                 "ptsplash_paid is published per payment, zm_g11_* carries the lock bitmap, zm_g12_* the "
+                 "challenge reward set, master.c extends the level byte, one branch of the ops check is forced "
+                 "on and the state is republished in match)");
         // the client ops check armed before the client is mapped
         opsfix_start();
         // the frame first: it owns the paid hook and the install gate nativepay needs, and it starts the threads

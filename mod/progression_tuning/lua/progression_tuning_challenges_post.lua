@@ -27,6 +27,7 @@ local WATCH_GAP_TICKS = 32
 local WEEK_POLL_TICKS = 16
 local KIND_DAILY = 438
 local KIND_WEEKLY = 585
+local KIND_STICKER = 429
 
 local function enqueue(what, fn)
   local d = S.draw
@@ -354,6 +355,8 @@ local function chal_sweep()
       i = i + 1
     end
   end
+  nk = nk + 1
+  kinds[nk] = KIND_STICKER
   local now, nn = {}, 0
   local done_n, prog_n = 0, 0
   local src = nil
@@ -457,7 +460,8 @@ local function chal_sweep()
     log("chal sweep src=" .. src .. " kind=" .. kind_txt() .. " n=" .. nn
       .. " done=" .. done_n .. " prog=" .. prog_n .. " sample=" .. sweep_sample(now))
     log("chal sweep kinds zm_weekly=" .. tostring(byname[1]) .. " weekly=" .. tostring(byname[2])
-      .. " mastery=" .. tostring(byname[3]) .. " rows=" .. rows_txt())
+      .. " mastery=" .. tostring(byname[3]) .. " sticker=" .. tostring(KIND_STICKER)
+      .. " rows=" .. rows_txt())
     return
   end
   local prev = sw.prev
@@ -481,7 +485,7 @@ local function chal_sweep()
       crossed = was == nil or was.v == nil or was.v < e.t
     end
     if crossed then
-      if e.ref == nil then
+      if e.ref == nil and e.k ~= KIND_STICKER then
         local drow = week_data(id)
         if drow ~= nil then
           if e.t == nil then e.t = week_target(drow) end

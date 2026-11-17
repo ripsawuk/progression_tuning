@@ -9,7 +9,7 @@ table a weapon levels on the stock curve and the mod's display disagrees with it
 
 | | |
 |---|---|
-| this file | 568,536 bytes, SHA256 `2DDFD195D46DF7F359D5F205C1B1BD9368009D4162FB6C36D89212A168A75264` |
+| this file | 568,907 bytes, SHA256 `A712B5782B8EE592A8CFA549F6D17F93033C75F5126171122F1D284BEBDF605F` |
 | the stock table it replaces | 566,694 bytes, SHA256 `6952F51928A4DF44C4B15B4BDBC3E6372664E9BC9EF187D0BB722DB166057959` |
 
 ## Install and rollback

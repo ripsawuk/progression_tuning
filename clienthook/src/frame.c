@@ -1,6 +1,6 @@
 // clienthook - the frame: what runs in the game process beside the proxy and the payment.
 //
-// Four things, and nothing else:
+// Five things, and nothing else:
 //
 //   1. the install gate. One mutex, created here and handed to master.c's installer and to nativepay.c's, so
 //      the two thread-freeze windows (five call sites, one call site) can never overlap. It lives as long as
@@ -14,10 +14,14 @@
 //   4. the forced publish (`publish.c`). A thread of ours calls the client's own serialise-and-publish
 //      (`client+0x962E0`) once a paid payment or a moved record asks for one, at most once per second, so the
 //      state a menu reads is taken during a match instead of only at a boundary.
+//   5. the challenge reward set (g12). One 32,768 B bitmap of every loot id a challenge row can pay, walked out
+//      of the record array once and published through g11's own 33-dvar machinery, so a menu can tell a reward
+//      from a lock. No game byte is written.
 //
-// Four threads: `probe_thread` (waits for the client image and installs master.c's hook), `g11_thread` (arms
-// the payload and publishes it), `pxp_thread` (arms `ptsplash_paid`, writes it, and emits the log lines for
-// both channels) and `publish_thread` (the forced publish's clock and its record scan).
+// Five threads: `probe_thread` (waits for the game image and installs master.c's hook), `g11_thread` (arms
+// the payload and publishes it), `g12_thread` (the reward set, published once), `pxp_thread` (arms
+// `ptsplash_paid`, writes it, and emits the log lines for both channels) and `publish_thread` (the forced
+// publish's clock and its record scan).
 // The client's own threads only ever reach memory here: `pubxp_on_paid` and `pubxp_match_reset` run on them,
 // and neither opens a file.
 
@@ -120,6 +124,16 @@ static const char *G11_NAMES[G11_DVARS] = {
     "zm_g11_24", "zm_g11_25", "zm_g11_26", "zm_g11_27", "zm_g11_28", "zm_g11_29",
     "zm_g11_30", "zm_g11_31", "zm_g11_32"};
 
+// the reward set's 35, in the same order: [0] the arm signal, [1] the header, [2..34] the 33 parts
+static const char *G12_NAMES[G11_DVARS] = {
+    "zm_g12_arm", "zm_g12_ver",
+    "zm_g12_0",  "zm_g12_1",  "zm_g12_2",  "zm_g12_3",  "zm_g12_4",  "zm_g12_5",
+    "zm_g12_6",  "zm_g12_7",  "zm_g12_8",  "zm_g12_9",  "zm_g12_10", "zm_g12_11",
+    "zm_g12_12", "zm_g12_13", "zm_g12_14", "zm_g12_15", "zm_g12_16", "zm_g12_17",
+    "zm_g12_18", "zm_g12_19", "zm_g12_20", "zm_g12_21", "zm_g12_22", "zm_g12_23",
+    "zm_g12_24", "zm_g12_25", "zm_g12_26", "zm_g12_27", "zm_g12_28", "zm_g12_29",
+    "zm_g12_30", "zm_g12_31", "zm_g12_32"};
+
 static unsigned char G11_BITMAP[G11_BITMAP_BYTES];
 // two banks, so a Lua reader holding one string never sees it change under it
 static char G11_BANK[2][G11_PARTS][G11_PART_CHARS + 1];
@@ -137,6 +151,24 @@ static int G11_SAID_NORFN = 0;
 static int G11_SAID_ABSENT = 0;
 static int G11_SAID_NOBITMAP = 0;
 static int G11_SAID_UNSTABLE = 0;
+
+// the reward set's state. One bank, not two: the payload is written once and never changes under a reader.
+static unsigned char G12_SET[G11_BITMAP_BYTES];
+static char G12_BANK[G11_PARTS][G11_PART_CHARS + 1];
+static char G12_VERBUF[G11_VER_CAP];
+static void *G12_DVAR[G11_DVARS];
+static long G12_SLOT = -1;
+static G11GATE G12_GATE_STATE;
+static volatile LONG G12_OFF = 0;
+static int G12_ARMED = 0;
+static int G12_DONE = 0;
+static long G12_PUBLISHED = 0;
+static const unsigned char *G12_RECS = NULL;
+static int G12_N = 0;
+static int G12_SAID_WAIT = 0;
+static int G12_SAID_ABSENT = 0;
+static int G12_SAID_NOREC = 0;
+static int G12_SAID_EMPTY = 0;
 
 static void g11_latch(const char *why)
 {
@@ -477,6 +509,228 @@ static DWORD WINAPI g11_thread(LPVOID unused)
             }
         }
         g11_publish(client);
+    }
+}
+
+// --- g12: the challenge reward set ---------------------------------------------------------------
+//
+// The same channel, the same 32,768 B bitmap and the same 33 dvars as g11, in the same id space, so the menu
+// can tell a reward from a lock. What is different is the source and the cadence: the lock bitmap is the
+// game's live one and moves on every publish, while the reward set is walked out of the record array once
+// and never moves again. Hence one bank, one publish, and a header whose first field is the id count instead
+// of a serial - a static set has no serial, so the count is what a reader checks the 33 parts against.
+//
+// Everything else is g11's, unchanged and proved by its own driver: the encoder, the splitter, the header
+// format, the create-and-validate pass and the canary (still "g11" - that pass hard-codes it).
+//
+// A validation failure latches this feature alone off, with one `g12: refused - ...` line; a register-or-find
+// that returns nothing, or an array that is not readable yet, is "waiting" and retried. The two channels share
+// no state but the record array's reader, so either can be off while the other publishes.
+
+// the record array's own reader, defined with the paid channel below: one function, one set of addresses
+static int pxp_records(HMODULE client, unsigned char **out, int *count);
+
+static void g12_latch(const char *why)
+{
+    g11_gate(&G12_GATE_STATE, G11_REFUSE, why);
+    InterlockedExchange(&G12_OFF, 1);
+}
+
+static int g12_arm(HMODULE client)
+{
+    frame_identify(client);
+    const RS_TABLE *rs = rs_for(client);
+    if (!rs_feature_ok(rs, RS_F_G12))
+    {
+        char why[96];
+        ch_logf("g12: refused - %s; the reward set is off for this session",
+                frame_reason(why, sizeof(why), rs, RS_F_G12));
+        g12_latch("resolver");
+        return 0;
+    }
+
+    void *rf = *(void **)((BYTE *)client + rs_rva(rs, RS_RFN));
+    if (rf == NULL)
+    {
+        if (!G12_SAID_WAIT)
+        {
+            G12_SAID_WAIT = 1;
+            ch_logf("g12: the register function is not resolved yet (the game needs ~15 s) - waiting");
+        }
+        return 0;
+    }
+    if (!g11_page_ok(rf) || memcmp(rf, G11_RFN_SIG, sizeof(G11_RFN_SIG)) != 0)
+    {
+        ch_logf("g12: refused - the register function at 0x%08lX does not carry its 9-byte prologue",
+                (unsigned long)((ULONG_PTR)rf & 0xFFFFFFFFu));
+        g12_latch("register function");
+        return 0;
+    }
+
+    unsigned salt_rva = rs_rva(rs, RS_SALT);
+    const unsigned char *salt = (const unsigned char *)((BYTE *)client + salt_rva);
+    if (!g11_page_ok(salt))
+    {
+        ch_logf("g12: refused - the name-hash salt at rva 0x%lX is not readable", (unsigned long)salt_rva);
+        g12_latch("hash salt");
+        return 0;
+    }
+
+    G11_REG reg = (G11_REG)rf; // g11.h's own typedef: one signature, so the create pass and this call agree
+
+    // the hash proof g11 makes, made here too: a dvar the game already registered, found with OUR hash of its
+    // name, must be the same dvar_t the game's own registration stored. A wrong hash cannot pass this.
+    void *got = reg(g11_hash_name("zm_ch_ver", salt), G11_PROBE, 0, "g12 hash self-test");
+    void *want = *(void **)((BYTE *)client + rs_rva(rs, RS_CHVER));
+    if (got == NULL || want == NULL || got != want)
+    {
+        ch_logf("g12: refused - the name hash does not match the game (zm_ch_ver -> 0x%08lX, want 0x%08lX)",
+                (unsigned long)((ULONG_PTR)got & 0xFFFFFFFFu), (unsigned long)((ULONG_PTR)want & 0xFFFFFFFFu));
+        g12_latch("name hash");
+        return 0;
+    }
+
+    long off = (long)*(int *)((BYTE *)client + rs_rva(rs, RS_SLOT));
+    if (!g11_slot_ok(off))
+    {
+        ch_logf("g12: refused - the string slot offset is %ld, outside 0..0xFF or not 8-aligned", off);
+        g12_latch("string slot");
+        return 0;
+    }
+
+    // all 35, found or created through the game's own register-or-find; the default is the sentinel, so a dvar
+    // this call creates is indistinguishable from one the mod made
+    G11CREATE pass = g11_dvar_pass(reg, salt, G12_NAMES, G11_DVARS, off, G12_DVAR);
+    if (pass.usable != G11_DVARS)
+    {
+        int bad = pass.bad;
+        if (bad < 0 || bad >= G11_DVARS)
+        {
+            ch_logf("g12: refused - the payload dvar pass returned %d of %d", pass.usable, G11_DVARS);
+            g12_latch("payload dvars");
+            return 0;
+        }
+        if (pass.reason == G11_D_NULL)
+        {
+            if (!G12_SAID_ABSENT)
+            {
+                G12_SAID_ABSENT = 1;
+                ch_logf("g12: waiting - the engine did not hand back %s (the register function is not usable "
+                        "yet); retrying every 5 s",
+                        G12_NAMES[bad]);
+            }
+            return 0;
+        }
+        if (pass.reason == G11_D_SLOT)
+        {
+            ch_logf("g12: refused - the value slot of %s is not writable", G12_NAMES[bad]);
+            g12_latch("value slot");
+            return 0;
+        }
+        ch_logf("g12: refused - %s does not read \"%s\" back (the engine created it with another value)",
+                G12_NAMES[bad], G11_SENTINEL);
+        g12_latch("payload value");
+        return 0;
+    }
+
+    G12_SLOT = off;
+    G12_ARMED = 1;
+    g11_gate(&G12_GATE_STATE, G11_OK, NULL);
+    ch_logf("g12: armed - %d payload dvars validated at slot %ld, register 0x%08lX, 33 parts of %d hex chars "
+            "(created here where absent - no match needed)",
+            G11_DVARS, off, (unsigned long)((ULONG_PTR)rf & 0xFFFFFFFFu), G11_PART_CHARS);
+    return 1;
+}
+
+static void g12_publish(HMODULE client)
+{
+    unsigned char *recs = NULL;
+    int n = 0;
+    if (pxp_records(client, &recs, &n) != 0)
+    {
+        if (!G12_SAID_NOREC)
+        {
+            G12_SAID_NOREC = 1;
+            ch_logf("g12: the record array is not readable yet - retrying");
+        }
+        return;
+    }
+    if (G12_DONE && recs == G12_RECS && n == G12_N)
+    {
+        return; // published, and the array has not moved since: no work, no bytes
+    }
+
+    int count = g12_collect(recs, n, G12_SET);
+    if (count <= 0)
+    {
+        if (!G12_SAID_EMPTY)
+        {
+            G12_SAID_EMPTY = 1;
+            ch_logf("g12: the record array holds no reward ids yet (%d records) - retrying", n);
+        }
+        return;
+    }
+
+    for (int i = 0; i < G11_PARTS; i++)
+    {
+        size_t off = g11_part_offset(i) / 2; // hex chars -> bitmap bytes: 1,000 a part
+        size_t len = g11_part_chars(i) / 2;  // 1,000, or 768 for the last
+        g11_hex(G12_SET + off, len, G12_BANK[i]);
+    }
+    for (int i = 0; i < G11_PARTS; i++)
+    {
+        *(char **)((BYTE *)G12_DVAR[2 + i] + G12_SLOT) = G12_BANK[i];
+    }
+    // the header LAST, so a reader can never pair a new count with old parts
+    g11_ver(G12_VERBUF, sizeof(G12_VERBUF), (unsigned)count, G11_PARTS, G11_HEX);
+    *(char **)((BYTE *)G12_DVAR[1] + G12_SLOT) = G12_VERBUF;
+
+    G12_RECS = recs;
+    G12_N = n;
+    G12_DONE = 1;
+    long k = InterlockedIncrement(&G12_PUBLISHED);
+    ch_logf("g12: published %d reward ids from %d records in %d parts (32768 B bitmap, #%ld)", count, n, G11_PARTS,
+            k);
+}
+
+static DWORD WINAPI g12_thread(LPVOID unused)
+{
+    (void)unused;
+    // the kill switch is read before the arm pass: with the file present no dvar is created at all, so the mod
+    // sees no header and no reward lock - today's behaviour, and nothing to undo
+    if (g12_off_present(NULL))
+    {
+        InterlockedExchange(&G12_OFF, 1);
+        ch_logf("g12: disabled by file (%s)", "%TEMP%\\progression-tuning\\rewards_off.txt");
+        return 0;
+    }
+    ULONGLONG last_try = 0;
+    for (;;)
+    {
+        Sleep(250);
+        if (G12_OFF)
+        {
+            continue;
+        }
+        HMODULE client = GetModuleHandleW(L"XINPUT9_1_0.dll");
+        if (client == NULL)
+        {
+            continue;
+        }
+        if (!G12_ARMED)
+        {
+            ULONGLONG now = GetTickCount64();
+            if (last_try != 0 && now - last_try < 5000)
+            {
+                continue;
+            }
+            last_try = now;
+            if (!g12_arm(client))
+            {
+                continue;
+            }
+        }
+        g12_publish(client);
     }
 }
 
@@ -1331,6 +1585,12 @@ void ch_frame_start(void)
     if (gh != NULL)
     {
         CloseHandle(gh);
+    }
+    // the reward set: its own thread, because it waits on the record array rather than on a publish
+    HANDLE rh = CreateThread(NULL, 0, g12_thread, NULL, 0, NULL);
+    if (rh != NULL)
+    {
+        CloseHandle(rh);
     }
     HANDLE xh = CreateThread(NULL, 0, pxp_thread, NULL, 0, NULL);
     if (xh != NULL)

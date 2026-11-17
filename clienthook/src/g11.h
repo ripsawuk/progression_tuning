@@ -93,6 +93,21 @@ int g11_ver(char *out, size_t cap, unsigned serial, int parts, int hexchars);
 // How many ids the payload says are locked (popcount over the hex digits).
 int g11_count_ids(const char *hex, size_t chars);
 
+// --- the static reward set (g12): the same channel, a second bitmap ------------------------------------
+//
+// The ids the game's challenge rows can pay, in the same 32,768 B bitmap and the same 33 dvars, so a menu can
+// tell a reward from a lock. The canary is still "g11": g11_dvar_pass hard-codes it, and the mod creates both
+// sets with that one value.
+#define G12_REC_MAX 20000 // a larger array is not the game's challenge table (4,508 rows today)
+
+// Every id in `n` records at `recs` - stride MASTER_STRIDE, the row's own tier count at +0x58, three ids a tier
+// at +0x15C + k*0xC - into `out`, a 32,768 B bitmap: bit (id & 7) of byte (id >> 3), ids 1..G11_MAX_ID. `out` is
+// cleared first, and the return value is how many distinct ids it now holds. Nothing is read from the game: the
+// array is the caller's pointer, so the whole walk is proved offline against a staged one.
+int g12_collect(const unsigned char *recs, int n, unsigned char *out);
+// 1 when <tempdir>\progression-tuning\rewards_off.txt exists. tempdir NULL = the process's %TEMP%.
+int g12_off_present(const wchar_t *tempdir);
+
 // The client's own name hash (client+0xB8420); `salt` is the 16 bytes at client rva 0x16ED38.
 unsigned long long g11_hash_name(const char *name, const unsigned char salt[16]);
 

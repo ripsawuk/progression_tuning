@@ -50,6 +50,8 @@
 #define MASTER_REC_KIND 0x08            // the record kind
 #define MASTER_REC_COUNT 0x58           // thresholds count, filled by the client at 0x950d0
 #define MASTER_REC_THR 0x5C             // uint[64] thresholds, filled by the client at 0x950d0
+#define MASTER_REC_TIER_LOOT 0x15C      // uint[64][3] tier loot ids, straight after the thresholds
+#define MASTER_TIER_LOOT 192            // 64 tiers x 3 ids: the ceiling of one row's loot walk
 #define MASTER_REC_XP 0x560             // u64 stored XP
 #define MASTER_REC_LEVEL 0x56E          // the level byte, written by the client's own pass
 #define MASTER_REC_PRESTIGE 0x574       // the prestige byte
