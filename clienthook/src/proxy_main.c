@@ -95,6 +95,12 @@ static void self_dir(wchar_t *out, DWORD cch)
     *(slash + 1) = L'\0';
 }
 
+// tokens.c names the same directory for its file: one copy of the rule, in this file
+void ch_self_dir(wchar_t *out, DWORD cch)
+{
+    self_dir(out, cch);
+}
+
 // --- the host guard --------------------------------------------------------------------------------
 //
 // The proxy is a static-import target of more than the game. `codCrashHandler.exe` - a 1,516,024 B exe in
@@ -431,6 +437,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
     void nativepay_stop(void);
     void opsfix_start(void);
     void opsfix_stop(void);
+    void tokens_stop(void);
 
     switch (reason)
     {
@@ -447,13 +454,14 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         }
         // Two writers to one append-only file, both opening with share-all and writing whole lines: the proxy's
         // one-line writer (this file) and nativepay's buffered writer. Interleaving per line is expected.
-        // The banner is measured, not estimated: 399 chars, so the formatted line is 19 + 2 + 399 + 2 = 422
-        // bytes, 90 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
-        log_line("proxy attached (version.dll build 30: one file - the system copy is loaded at run time, every "
+        // The banner is measured, not estimated: 457 chars, so the formatted line is 19 + 2 + 457 + 2 = 480
+        // bytes, 32 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
+        log_line("proxy attached (version.dll build 31: one file - the system copy is loaded at run time, every "
                  "address comes from the game's own code, the award call site pays field 45 on ev=95, "
                  "ptsplash_paid is published per payment, zm_g11_* carries the lock bitmap, zm_g12_* the "
                  "challenge reward set, master.c extends the level byte, one branch of the ops check is forced "
-                 "on and the state is republished in match)");
+                 "on, the state is republished in match, and pt_tokens_ch is registered at boot and saved to a "
+                 "file)");
         // the client ops check armed before the client is mapped
         opsfix_start();
         // the frame first: it owns the paid hook and the install gate nativepay needs, and it starts the threads
@@ -468,6 +476,8 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         {
             break;
         }
+        // the token channel's last write, first of all: it is the only thing here whose loss would be data
+        tokens_stop();
         nativepay_stop();
         // The loader notification is unregistered here, never from inside the callback that receives it.
         opsfix_stop();

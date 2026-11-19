@@ -1,4 +1,5 @@
-"""Offline proof of clienthook build 30 - the forced publish, the native payment and the bounded log. Read-only
+"""Offline proof of clienthook build 31 - the forced publish, the native payment, the bounded log and the token
+channel. Read-only
 with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
 (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
 
@@ -7,7 +8,7 @@ with respect to the game: nothing is installed, nothing is launched, and nothing
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 30.
+general offline proof and the banner it checks is the current one, build 31.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -25,7 +26,7 @@ of only at a mode boundary.
                            at 0x930D3 and its kill switch, ptsplash_paid, the g11 lock payload, master.c's five
                            call sites, the ev=109 boundary and the install gate.
 
-WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (eight sources, where each guard
+WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (nine sources, where each guard
 sits, the two triggers' placement); the image's strings - what it carries and what it does not; the personal-path
 and identifier scan the release package uses; the client's own bytes; and every offline driver, with its count.
 """
@@ -142,11 +143,11 @@ KEPT_SOURCE = [
     ("src\\nativepay.h", "typedef void (*np_reset_fn)(void);"),
 ]
 
-# The files this tree ships under src\, and the only ones any scan here reads: the eight sources build.cmd names,
-# their six headers, and the export definition. A file that is not on this list is not part of the build.
+# The files this tree ships under src\, and the only ones any scan here reads: the nine sources build.cmd names,
+# their seven headers, and the export definition. A file that is not on this list is not part of the build.
 SHIPPED_SRC = ["frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c", "pubxp.c",
-               "resolve.c", "g11.h", "master.h", "nativepay.h", "publish.h", "pubxp.h", "resolve.h",
-               "version_proxy.def"]
+               "resolve.c", "tokens.c", "g11.h", "master.h", "nativepay.h", "publish.h", "pubxp.h", "resolve.h",
+               "tokens.h", "version_proxy.def"]
 
 passes = []
 failures = []
@@ -257,7 +258,7 @@ def build_once():
 
 
 def main():
-    print("clienthook build 30 - the forced publish, the native payment, the bounded log - " + ROOT)
+    print("clienthook build 31 - the forced publish, the native payment, the bounded log, the token channel - " + ROOT)
     print("")
     if not CLIENT:
         print("NOTE  KRONOS_GAME_DIR is not set and no --game was given - the client file cannot be read, so the "
@@ -285,8 +286,9 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 30", "version.dll build 30" in text)
-    for gone in ("version.dll build 25", "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
+    check("the banner says build 31", "version.dll build 31" in text)
+    for gone in ("version.dll build 30", "version.dll build 25", "version.dll build 23c",
+                "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
 
@@ -313,15 +315,15 @@ def main():
     build_cmd = read(os.path.join(ROOT, "build.cmd"))
     cl_text = "\n".join(l for l in build_cmd.replace("^", " ").split("\n") if l.strip().startswith("cl "))
     sources = sorted(set(re.findall(r"([a-z0-9_]+\.c)", cl_text)))
-    check("build.cmd compiles exactly the eight sources",
+    check("build.cmd compiles exactly the nine sources",
           sources == ["frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c",
-                      "pubxp.c", "resolve.c"], ", ".join(sources))
+                      "pubxp.c", "resolve.c", "tokens.c"], ", ".join(sources))
     for gone in ("io_probe.c", "ladder.c", "ladder.h", "g10seed.c", "g10seed.h", "pay.c", "pay.h", "aexp.c",
                  "aexp.h"):
         check("src\\%s is gone from the tree" % gone, not os.path.isfile(os.path.join(SRC, gone)))
     for kept in ("frame.c", "proxy_main.c", "nativepay.c", "pubxp.c", "g11.c", "master.c",
-                 "publish.c", "nativepay.h", "pubxp.h", "g11.h", "master.h", "publish.h",
-                 "version_proxy.def"):
+                 "publish.c", "tokens.c", "nativepay.h", "pubxp.h", "g11.h", "master.h", "publish.h",
+                 "tokens.h", "version_proxy.def"):
         check("src\\%s is there" % kept, os.path.isfile(os.path.join(SRC, kept)))
 
     proxy = read(PROXY)
@@ -526,6 +528,39 @@ def main():
     check("the reset itself is a no-op when no gun has a per-match base (idempotent)",
           "if (!armed)" in reset_fn and reset_fn.index("if (!armed)") < reset_fn.index("pxp_render(L)"))
 
+    # ---- 4d. the token channel's dvar and the file behind it -----------------------------------------
+    print("")
+    print("TOKENS  a dvar from boot, one line, and the file it is saved to")
+    tk = read(os.path.join(SRC, "tokens.c"))
+    tkh = read(os.path.join(SRC, "tokens.h"))
+    check("the channel is the one name the mod's Lua and GSC use", '#define TOKENS_NAME "pt_tokens_ch"' in tkh,
+          "tokens.h")
+    check("the seed line is the one the GSC writes when it creates the dvar",
+          '#define TOKENS_DEFAULT "p=0;w=0;n=0"' in tkh)
+    check("the form is one line of 512 chars at most", "#define TOKENS_MAX 512" in tkh)
+    check("the path is the dll's own directory plus players\\tokens.txt",
+          r'TK_SUBDIR L"players"' in tkh + tk and r'TK_FILE L"tokens.txt"' in tkh + tk)
+    check("the client's players folder is read, never made", "CreateDirectoryW" not in tk)
+    check("it is armed where the register, the hash and the slot are all proved",
+          frame.index("long off = (long)*(int *)") < frame.index("tokens_arm(reg, salt, off);")
+          < frame.index("g11_dvar_pass("))
+    check("the value goes into the client's own string slot, not into a copy of it",
+          "char **value = (char **)((char *)d + slot);" in tk and "*value = TK_DISK;" in tk)
+    check("the write is a .tmp and a replace-rename, the client store's own order",
+          r'_snwprintf_s(tmp, MAX_PATH, _TRUNCATE, L"%s.tmp", path)' in tk
+          and "MoveFileExW(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)" in tk)
+    check("a value outside the alphabet is never written to the file",
+          tk.count("!tokens_valid(v, n)") == 2, "%d guard(s)" % tk.count("!tokens_valid(v, n)"))
+    check("the tick rides the frame's existing thread and creates none", "tokens_tick();" in frame
+          and frame.count("= CreateThread(NULL, 0, ") == 5)
+    check("the detach flush sits inside the armed branch",
+          detach.index("if (!g_armed)") < detach.index("tokens_stop();"))
+    check("the three log lines are the ones a reader of clienthook.log expects",
+          '"tokens: file %s"' in tk and '"tokens: registered %s = %s"' in tk and '"tokens: saved %s"' in tk)
+    check("a rejected file still registers the seed line", "strcpy_s(line, sizeof(line), TOKENS_DEFAULT);" in tk)
+    check("the saved line is rate-limited after the first",
+          "#define TK_LOG_MS 30000" in tk and "static int tk_may_say(ULONGLONG now)" in tk)
+
     # ---- 5. the client's own bytes (read-only) ------------------------------------------------------
     print("")
     print("CLIENT  the six sites still hold what the guards expect, and the publish target is where it was")
@@ -595,6 +630,19 @@ def main():
           (r.stdout or "").strip())
 
     drive(os.path.join(BUILD, "pubxp_test.exe"), ["self"], 45, "pubxp_test self")
+    # the token channel's driver never goes near the game: a fabricated dvar_t, and a folder under build\
+    arm_root = os.path.join(BUILD, "tokens-arm")
+    shutil.rmtree(arm_root, ignore_errors=True)
+    os.makedirs(arm_root)
+    drive(os.path.join(BUILD, "tokens_test.exe"), ["self"], 25, "tokens_test self")
+    for mode in ("valid", "none", "bad"):
+        d = os.path.join(arm_root, mode)
+        os.makedirs(d, exist_ok=True)
+        drive(os.path.join(BUILD, "tokens_test.exe"), ["arm", d, mode], 16, "tokens_test arm " + mode)
+    # the one mode with no players folder at all: the save is skipped and the folder stays missing
+    d = os.path.join(arm_root, "nofolder")
+    os.makedirs(d, exist_ok=True)
+    drive(os.path.join(BUILD, "tokens_test.exe"), ["arm", d, "nofolder"], 11, "tokens_test arm nofolder")
     drive(os.path.join(BUILD, "g11_test.exe"), ["self"], 51, "g11_test self")
     drive(os.path.join(BUILD, "master_test.exe"), ["self"], 53, "master_test self")
     drive(os.path.join(BUILD, "detour_test.exe"), ["self"], 19, "detour_test self")
@@ -653,7 +701,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 30's banner", "version.dll build 30" in armed_log)
+    check("the log carries build 31's banner", "version.dll build 31" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):
@@ -694,8 +742,9 @@ def main():
         for f in failures:
             print("  FAILED: " + f)
         return 1
-    print("OK - one tree, eight sources, two identical builds, the kept features armed, the forced publish back")
-    print("     with its guard, its window and its kill switch, and every offline driver passing.")
+    print("OK - one tree, nine sources, two identical builds, the kept features armed, the forced publish back")
+    print("     with its guard, its window and its kill switch, the token channel's dvar behind its file, and")
+    print("     every offline driver passing.")
     return 0
 
 

@@ -21,7 +21,7 @@
 #include <string.h>
 #include <wchar.h>
 
-// DllMain's five callees: never called here. They are declared inside DllMain's body in proxy_main.c, so
+// DllMain's six callees: never called here. They are declared inside DllMain's body in proxy_main.c, so
 // these definitions cannot collide with anything, and with /O2 + /Gy an unreferenced DllMain is dropped.
 void ch_frame_start(void)
 {
@@ -36,6 +36,9 @@ void opsfix_start(void)
 {
 }
 void opsfix_stop(void)
+{
+}
+void tokens_stop(void)
 {
 }
 

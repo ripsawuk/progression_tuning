@@ -565,6 +565,108 @@ S.hooks.chal = function()
 end
 S.probes.challenges = function() return type(A.log) == "function" and type(S.chal) == "table" end
 
+local utc_say = rawget(_G, "DebugPrint") or rawget(_G, "print")
+
+-- one line from this part
+local function utc_out(s)
+  if type(utc_say) == "function" then pcall(utc_say, s) end
+end
+
+-- a member by its plain name or its hash
+local function utc_at(tbl, name)
+  if type(tbl) ~= "table" then return nil, nil end
+  local ok, v = pcall(function() return tbl[name] end)
+  if ok and v ~= nil then return name, v end
+  local h = rawget(_G, "xhash")
+  if type(h) ~= "function" then return nil, nil end
+  local okh, key = pcall(h, name)
+  if not okh or key == nil then return nil, nil end
+  local ok2, v2 = pcall(function() return tbl[key] end)
+  if ok2 and v2 ~= nil then return key, v2 end
+  local want = string.match(tostring(key), "#x(%x+)")
+  if want == nil then return nil, nil end
+  want = string.gsub(string.sub(want, 2), "^0+", "")
+  local got, gkey = nil, nil
+  pcall(function()
+    for k, val in pairs(tbl) do
+      local d = string.match(tostring(k), "#x(%x+)")
+      if d ~= nil then d = string.gsub(string.sub(d, 2), "^0+", "") end
+      if d ~= nil and d == want then got, gkey = val, k end
+    end
+  end)
+  return gkey, got
+end
+
+-- packs a call and spreads it back whole
+local utc_up = unpack
+
+local function utc_pack(...) return { n = select("#", ...), ... } end
+
+local function utc_spread(t, i)
+  if utc_up ~= nil then return utc_up(t, i, t.n) end
+  return table.unpack(t, i, t.n)
+end
+
+-- the cod getter answer when it is a number
+local function utc_cod()
+  local _, f = utc_at(rawget(_G, "CoD"), "GetUTC")
+  if type(f) ~= "function" then return nil end
+  local ok, v = pcall(f)
+  if ok and type(v) == "number" then return v end
+  return nil
+end
+
+-- the original number or a filled one
+local function utc_call(orig, ...)
+  local r = utc_pack(pcall(orig, ...))
+  if r[1] and type(r[2]) == "number" then return utc_spread(r, 2) end
+  local v = utc_cod()
+  if v ~= nil then return v end
+  return 0
+end
+
+-- the pushed and hashed keys for a member name
+local function utc_push(name)
+  local cu = rawget(_G, "CLUA")
+  if type(cu) == "table" and type(cu.PushXHash) == "function" then
+    local ok, k = pcall(cu.PushXHash, name)
+    if ok and k ~= nil then return k end
+  end
+  return nil
+end
+
+local function utc_hash(name)
+  local h = rawget(_G, "xhash")
+  if type(h) ~= "function" then return nil end
+  local ok, k = pcall(h, name)
+  if ok and k ~= nil then return k end
+  return nil
+end
+
+-- arms the one fill once per vm
+local function utc_arm()
+  if S.utc == true then return true end
+  local tbl = rawget(_G, "Engine")
+  local key, f = utc_at(tbl, "GetUTC")
+  if type(f) ~= "function" then return false end
+  local function w(...) return utc_call(f, ...) end
+  if not pcall(function() tbl[key] = w end) then return false end
+  -- replaces a real member only
+  local function put(k)
+    if k == nil or k == key then return end
+    if rawget(tbl, k) ~= f then return end
+    pcall(function() rawset(tbl, k, w) end)
+  end
+  put(utc_push("GetUTC"))
+  put(utc_hash("GetUTC"))
+  S.utc = true
+  return true
+end
+
+local utc_ok = false
+pcall(function() utc_ok = utc_arm() end)
+utc_out("progression_tuning: utc fill " .. (utc_ok and "armed" or "absent"))
+
 local dp = rawget(_G, "DebugPrint") or rawget(_G, "print")
 if type(dp) == "function" then pcall(dp, "progression_tuning: part challenges armed") end
 

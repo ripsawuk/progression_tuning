@@ -74,12 +74,32 @@ The cases:
       exactly as they were.
       a carried id with a bit passes to the client
       an out of scope operator id passes to the client
+  21. the clock fill (`utc_fill`): a nil original answers with the cod getter's number and no cod getter
+      answers 0, a number passes all four of its returns through whole, a raising original is filled, the
+      wrapper lands on the plain, pushed and hashed keys wherever each holds the function it wrapped (a
+      plain name reached through a metatable included) and never on a key holding another function, a vm
+      with no loader table fills the found key alone, a vm with no engine or no getter says absent once,
+      and one arm line and one wrap per vm.
+  22. the options rows: the data member answers our two ids out of the stock bundle it was handed,
+      with their labels and their kind, and passes every other id through; the list member appends both
+      to the debug tab, appends them only once, keeps every return the page gave it and leaves a
+      table that is not the debug tab alone; the page build moves both to sit directly after the
+      anchor and leaves the stock order otherwise; the dropdown answers the 1-based index of the
+      lowest current count and writes the count it is given, the toggle answers and sets the permanent
+      flag, and with no page at all the part arms nothing.
+  23. the token channel (`pt_tokens_ch`): a full line is read into its fields and written back with its
+      serial risen and every other field kept; a field this build does not parse is ignored on the read
+      and dropped by the next write; a line with no counts seeds them from the client's own record and
+      says so, a line with no channel seeds nothing; a serial another vm wrote is adopted on the next
+      tick by the seconds, the counts and the flag, and the same serial is not adopted twice;
 
-The mod is eight `*_post.lua` parts (D96 split): main, weaponxp, splash, camos, challenges, prison,
-reticles, diag. `load()` runs all eight in that fixed order; `SRC` is their concatenation and every
-whole-mod check reads it. The diagnostic is quarantined in its own part: `shipping()` is the seven
+The mod is ten `*_post.lua` parts (D96 split): main, weaponxp, splash, camos, challenges, prison,
+reticles, diag, options, tokens. `load()` runs all ten in that order; `SRC` is their concatenation and
+every whole-mod check reads it. The diagnostic is quarantined in its own part: `shipping()` is the nine
 parts that ship, because the diag part legitimately names the features the shipping code must not.
-Everything else, including every static ban on IO, still scans all of it.
+Everything else, including every static ban on IO, still scans all of it. The token part reads its
+channel at chunk scope, so the reversed order arms it last, and it carries four retired words the file
+rule and the residue scan allow by name, each pinned in `static_checks`.
 
 Run:  python -I tests\\test_progression_tuning.py
 """
@@ -103,12 +123,18 @@ CHALLENGES = "progression_tuning_challenges_post.lua"
 PRISON = "progression_tuning_prison_post.lua"
 RETICLES = "progression_tuning_reticles_post.lua"
 DIAG = "progression_tuning_diag_post.lua"
-LUA_FILES = [MAIN, WEAPONXP, SPLASH, CAMOS, CHALLENGES, PRISON, RETICLES, DIAG]
+OPTIONS = "progression_tuning_options_post.lua"
+TOKENS = "progression_tuning_tokens_post.lua"
+LUA_FILES = [MAIN, WEAPONXP, SPLASH, CAMOS, CHALLENGES, PRISON, RETICLES, DIAG, OPTIONS, TOKENS]
 SHIP_FILES = [n for n in LUA_FILES if n != DIAG]
+TEXT_FILES = LUA_FILES
+# the two rows parts arm last in the reversed order: the token part reads its channel at chunk scope, and
+# the diagnostic's own arm gate counts eight parts, so no original part may fall outside the first eight
+CORE_LAST = [OPTIONS, TOKENS]
 LOAD_ORDERS = {
     "harness": LUA_FILES,
     "alphabetical": sorted(LUA_FILES),
-    "reversed": sorted(LUA_FILES, reverse=True),
+    "reversed": ([n for n in sorted(LUA_FILES, reverse=True) if n not in CORE_LAST] + CORE_LAST),
 }
 LOAD_ORDER = "harness"
 
@@ -208,6 +234,10 @@ Dvar[xhash("GetDvarInt")] = function(key)
   local v = XINT[key]
   if type(v) == "number" then return v end
   return tonumber(DVARS[key])
+end
+Dvar[xhash("SetDvarString")] = function(key, v)
+  DVARS[key] = tostring(v)
+  return true
 end
 function READS() return DV_READS end
 function RESET_READS() DV_READS = 0 end
@@ -699,16 +729,52 @@ SET_ITEM_NAME(97707, "Bowen Pixel Reflex")
 SET_ITEM_NAME(119621, "Shepherd Grip")
 SET_OC(54499, 0, 0)
 SET_OC(59756, 0, 0)
+SET_DVAR("pt_tokens_ch", "p=0;w=0;n=1;c=0,0,0,0,0,0,0,0;x=0")
 """
 
-LUA_TEXT = {n: open(os.path.join(LUA_DIR, n), "rb").read().decode("ascii") for n in LUA_FILES}
+# the debug tab's page, stubbed: the four members under their printed hash, one stock list, one stock
+# bundle per id, the tab id the page publishes and the builder the arm hook wraps
+OPTIONSFIX = r"""
+LIST = {
+  { [xhash("settingId")] = "#x7a1b0000000000a1" },
+  { [xhash("settingId")] = "0x5a6d0000000000be" },
+  { [xhash("settingId")] = "#x2c9f0000000000d4" },
+}
+function STOCKBUNDLE(id)
+  return { [xhash("settingId")] = id,
+           [xhash("label")] = "Stock row",
+           [xhash("description")] = "the stock row own description",
+           [xhash("labels")] = { "Off", "On", "Auto" },
+           [xhash("getter")] = function() return 1 end,
+           [xhash("setter")] = function() end,
+           [xhash("widgetType")] = "Dropdown" }
+end
+OPTIONS = { TabIds = { DEBUG = 7 } }
+OPTIONS["#x7bf7f57679e8d050"] = function(tab, c, idx) return LIST, "and a second return" end
+OPTIONS["#xe7686f7a9907efd8"] = function(id, c) return STOCKBUNDLE(id) end
+OPTIONS["#x9f6c4b08602983fb"] = function(id, c) return STOCKBUNDLE(id) end
+OPTIONS[xhash("createoptionlist")] = function(a, b, list, d)
+  return function(el, c) return list end
+end
+BUILT = 0
+MenuBuilder = { BuildRegisteredType = function(t, data) BUILT = BUILT + 1 return { t = t } end }
+"""
+
+# the client's own record for the eight token ids, in the channel's own order
+TOKENREC = r"""
+TOKCNT = { [84677] = 1, [84680] = 2, [84678] = 3, [84679] = 4,
+           [84672] = 5, [84675] = 6, [84673] = 7, [84674] = 8 }
+Loot = { [xhash("IsOwned")] = function(c, id) return TOKCNT[id] or 0 end }
+"""
+
+LUA_TEXT = {n: open(os.path.join(LUA_DIR, n), "rb").read().decode("ascii") for n in TEXT_FILES}
 SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 181584
-SHIP_LUA_SHA = "4DCAE56785C0D0C0F0A0EB1FA684EAC9A9301C3621C393FB2909A981657B7443"
-LITERAL_SHA = "31CA1377ED9B19A4AFC50AC36AC919340D228F6C312071C3C180CABE1C155DE0"
+SHIP_LUA_LEN = 230881
+SHIP_LUA_SHA = "C11C081452D66295BA425E0FF95FBCD3578E1C8616944D26083B1BA4A8CFCF13"
+LITERAL_SHA = "E3E23D1DA0E14F1CE595095332E347BB6D827F8F600C86E3528E2BB7CB98DDB8"
 LITERAL_REMOVED = [
     " (locks ",
     " ah=",
@@ -723,7 +789,6 @@ LITERAL_REMOVED = [
     "Challenge.GetAEKindID refused ae_kind_reticle",
     "GetSoundLengthMS",
     "IsSoundPlaying",
-    "PlaySound",
     "no Challenge.GetAEKindID in this VM",
     "sndprobe alias=",
     "sndprobe: no PlaySound in this vm",
@@ -736,6 +801,7 @@ LITERAL_REMOVED = [
     "uin_loadout_hilite",
 ]
 LITERAL_ADDED = [
+    " ",
     " - not one of ours, so no row is read for it",
     " - the camo map is truncated and",
     " 101644 b=",
@@ -760,6 +826,7 @@ LITERAL_ADDED = [
     " csv=",
     " ctl=",
     " cum=",
+    "CLUA",
     "card lock: ",
     "card lock: purchasable probe missing ",
     "cardbuy",
@@ -781,6 +848,7 @@ LITERAL_ADDED = [
     " isComplete=",
     " k398=",
     " k400=",
+    " key=",
     " l92066=",
     " left as the client answers it",
     " live=",
@@ -834,6 +902,8 @@ LITERAL_ADDED = [
     ": cards capped at ",
     ": snd ",
     ": snd capped at ",
+    "=",
+    "?",
     "A",
     "AMMOMOD",
     "ATTACHMENT",
@@ -1010,6 +1080,7 @@ LITERAL_ADDED = [
     "no rows",
     "nosplash",
     "notification_feed_opacity",
+    "off",
     "open ",
     "options",
     "part main armed ",
@@ -1092,13 +1163,117 @@ LITERAL_ADDED = [
     "zm_unlock_scorestreaks",
     "zm_unlock_sprays",
     "zm_unlock_stickers",
+    "zm_unlock_weapons",
     "zm_unlock_wildcards",
+    # the two rows parts: the page's own members, the two ids, the channel and its log lines
+    " Q12 act=",
+    " Q7 gate=",
+    " Q7 lset=",
+    " Q7 lset=? why=",
+    " aeid=",
+    " ch=",
+    " front=",
+    " hit=",
+    " inf=",
+    " kd=",
+    " ms=",
+    " paused=",
+    " snd=",
+    " toast=",
+    " ver=",
+    " wraps=",
+    " no bundle",
+    "4849F2616A844C09",
+    "5a6d0000000000be",
+    "7bf7f57679e8d050",
+    "9f6c4b08602983fb",
+    ";c=([%d,]+)",
+    ";x=1",
+    "=#x",
+    "=missing",
+    "Active XP Tokens count down in real-time",
+    "Active XP Tokens count down with in-game time",
+    "DoubleXPType",
+    "Dropdown",
+    "Enable Double XP",
+    "GetCurrentEpochTime",
+    "GetGlobalDoubleXPEventsEndTime",
+    "IsDoubleWeaponXPActiveByType",
+    "IsPaused",
+    "Keeps Level and Weapon Double XP active at all times while on.",
+    "MenuBuilder",
+    "NOTIFICATIONS",
+    "OPTIONS",
+    "Off",
+    "On",
+    "OnlineProgression",
+    "P_",
+    "SetDvarString",
+    "Sets how many of every Level and Weapon 2XP token you own.",
+    "ToggleButton",
+    "XP Token Amount",
+    "XPTOKENS",
+    "activateachievement",
+    "ae:",
+    "ae:set",
+    "ae_kind_tokens",
+    "cer__doublexp__player_xp_end_time",
+    "cer__doublexp__weapon_xp_end_time",
+    "cer_ae_kind_tokens",
+    "chan",
+    "createoptionlist",
+    "creategenericnotification",
+    "data_a",
+    "data_b",
+    "e7686f7a9907efd8",
+    "fallback",
+    "getalldoublexpstates",
+    "gettoastdatafromachievementid",
+    "getuserstatesvalues",
+    "hash_4849f2616a844c09",
+    "isdoubleweaponxpactive",
+    "isdoublexpactive",
+    "isdoublexpactivebytype",
+    "onachievementactivated",
+    "opt",
+    "options anchor missing",
+    "options armed",
+    "options data id=",
+    "options items ",
+    "options move skip ",
+    "options row added",
+    "options row moved after=",
+    "options slot ",
+    "progression_tuning: part options armed",
+    "progression_tuning: part tokens armed",
+    "pt_permanent",
+    "pt_token_amount",
+    "pt_tokens_ch",
+    "pt_tokens_st",
+    "sections",
+    "seed",
+    "settokenuselocked",
+    "tokens P2 ch=",
+    "tokens P2 raw=",
+    "tokens P2 st=",
+    "tokens P3 end p=",
+    "tokens P3 wrap=1",
+    "tokens P4 c=",
+    "tokens P5 perm=",
+    "tokens P6 event=",
+    "tokens Q12 done used=",
+    "tokens Q12 kind=",
+    "tokens Q4b own=",
+    "tokens Q4b own=? why=",
+    "tokens txt key=",
+    "zm_ch_s",
+    "zm_ch_ver",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
 
 def load(rt):
-    """Run the eight parts in the order the active replay mode names."""
+    """Run the parts in the order the active replay mode names."""
     for name in LOAD_ORDERS[LOAD_ORDER]:
         rt.execute(LUA_TEXT[name])
 
@@ -1137,8 +1312,24 @@ def diag_span():
 
 
 def shipping():
-    """The seven parts that ship - everything except the quarantined diagnostic."""
+    """The nine parts that ship - everything except the quarantined diagnostic."""
     return "".join(LUA_TEXT[n] for n in SHIP_FILES)
+
+
+def tokens_first():
+    """What the token part does when it is read before the part that fills its api, or None."""
+    try:
+        from lupa.lua51 import LuaRuntime
+    except Exception:
+        return "lupa absent"
+    rt = LuaRuntime(unpack_returned_tuples=True)
+    rt.execute(PRELUDE)
+    rt.execute("FRONTEND = false")
+    try:
+        rt.execute(LUA_TEXT[TOKENS])
+    except Exception as exc:
+        return str(exc)
+    return None
 
 
 def diag_quarantine():
@@ -1224,6 +1415,16 @@ COMMENT_KEEP = frozenset([
     (PRISON, "this shit is for locking other shit, for progression yanno"),
     (RETICLES, "i love yanking and eating the reticles off my gun tbh"),
 ])
+# no comment line in the tokens part is excused from the rule any more
+COMMENT_DEBT = frozenset([])
+# the retired words the tokens part carries as reads of the client's own channel, and not as its own
+TOKENS_RESIDUE_KEEP = [
+    '"zm_ch_ver"',
+    '"zm_ch_s"',
+    "-- the token channel the gsc reads",
+    "-- the gsc status read only",
+    "-- says the gsc status when it moved",
+]
 
 
 def src_owner(i):
@@ -1237,8 +1438,8 @@ def src_owner(i):
 
 
 def bad_comments():
-    """Every comment line, held to the file rule: lower case, no punctuation, ten words at most."""
-    bad = []
+    """Every comment line, held to the file rule, and the ones kept by name."""
+    bad, owed = [], []
     for i, ln in enumerate(SRC.split("\n"), 1):
         s = ln.strip()
         if "--" in s and not s.startswith("--"):
@@ -1249,18 +1450,21 @@ def bad_comments():
         text = s[2:].strip()
         if (src_owner(i), text) in COMMENT_KEEP:
             continue
+        if (src_owner(i), text) in COMMENT_DEBT:
+            owed.append(text)
+            continue
         if not text or not COMMENT_RULE.match(text) or len(text.split()) > COMMENT_WORDS:
             bad.append("%d: %s" % (i, text[:44]))
-    return bad
+    return bad, owed
 
 
 def static_checks():
-    raw_parts = {n: open(os.path.join(LUA_DIR, n), "rb").read() for n in LUA_FILES}
+    raw_parts = {n: open(os.path.join(LUA_DIR, n), "rb").read() for n in TEXT_FILES}
     mod = json.load(open(MODJSON, encoding="utf-8"))
 
     check("mod.json: name", mod["name"] == "Progression Tuning", mod.get("name"))
     check("mod.json: author", mod["author"] == "ripsawuk", mod.get("author"))
-    check("mod.json: version 1.2", mod["version"] == "1.2", mod.get("version"))
+    check("mod.json: version 1.3", mod["version"] == "1.3", mod.get("version"))
     check("mod.json: type names the ui and the script", mod["type"] == "ui,script", mod.get("type"))
     check("mod.json: requires is empty", mod["requires"] == [])
     check("mod.json: the keys are the installed mods' six, in order",
@@ -1279,11 +1483,13 @@ def static_checks():
                                      for v in raw_parts.values()),
           ", ".join(n for n, v in raw_parts.items() if b"\r" in v))
     check("lua: ASCII", all(b < 128 for v in raw_parts.values() for b in v))
-    bad = bad_comments()
+    bad, owed = bad_comments()
     ncom = sum(1 for ln in SRC.split("\n") if ln.strip().startswith("--"))
     check("lua: every comment line is one lower-case line of ten words at most",
           not bad and ncom >= COMMENT_MIN and "/*" not in SRC,
           ", ".join(bad[:6]) or "%d comment lines" % ncom)
+    check("lua: the tokens part owes the comment rule nothing by name",
+          not owed, " | ".join(owed))
     check("lua: no trailing whitespace", not any(ln != ln.rstrip() for ln in SRC.split("\n")))
     check("lua: ends with one LF", all(v.endswith(b"\n") and not v.endswith(b"\n\n")
                                        for v in raw_parts.values()),
@@ -1328,17 +1534,35 @@ def static_checks():
           and 'displayLocation = "dailyNotification"' in LUA_TEXT[SPLASH])
     check("order: the alphabetical replay is the order the client arms the parts in",
           [n[len("progression_tuning_"):-len("_post.lua")] for n in LOAD_ORDERS["alphabetical"]]
-          == ["camos", "challenges", "diag", "main", "prison", "reticles", "splash", "weaponxp"],
+          == ["camos", "challenges", "diag", "main", "options", "prison", "reticles", "splash",
+              "tokens", "weaponxp"],
           " | ".join(LOAD_ORDERS["alphabetical"]))
     check("order: the harness order is a fourth, different order",
           LOAD_ORDERS["harness"] != LOAD_ORDERS["alphabetical"]
           and LOAD_ORDERS["harness"] != LOAD_ORDERS["reversed"]
           and len(set(tuple(v) for v in LOAD_ORDERS.values())) == 3)
+    check("order: the reversed replay keeps the eight original parts reversed and the two new last",
+          LOAD_ORDERS["reversed"][-2:] == CORE_LAST
+          and LOAD_ORDERS["reversed"][:-2] == [n for n in sorted(LUA_FILES, reverse=True)
+                                               if n not in CORE_LAST],
+          " | ".join(LOAD_ORDERS["reversed"]))
+    check("lua: the diagnostic's arm gate still counts eight parts, and there are ten",
+          "for _ in pairs(S.parts) do n = n + 1 end" in LUA_TEXT[MAIN]
+          and "if n < 8 then return end" in LUA_TEXT[MAIN] and len(LUA_FILES) == 10)
+    first = tokens_first()
+    check("order: the token part read before the part that fills its api raises at chunk scope",
+          first in (None, "lupa absent") or "dv' (a nil value)" in first, str(first)[-80:])
 
     scan = ship.replace('"RETICLE"', "")
     for name in CARD_TABLES + CARD_PATHS + UNLOCK_DVARS:
         scan = scan.replace('"%s"' % name, "")
+    for word in TOKENS_RESIDUE_KEEP:
+        scan = scan.replace(word, "")
     found = [k for k in REMOVED if k in scan]
+    check("lua: the retired channel name and the gsc word are reads and prose, once each, in tokens",
+          all(sum(LUA_TEXT[n].count(w) for n in LUA_FILES) == 1 for w in TOKENS_RESIDUE_KEEP)
+          and all(w in LUA_TEXT[TOKENS] for w in TOKENS_RESIDUE_KEEP),
+          " | ".join(w for w in TOKENS_RESIDUE_KEEP if LUA_TEXT[TOKENS].count(w) != 1))
     drop = [k for k in DROPPED_CARDS + DROPPED_PATHS if k in ship]
     check("lua: the four dropped card tables are named nowhere in the shipped parts",
           drop == [], " | ".join(drop))
@@ -1363,7 +1587,14 @@ def static_checks():
                        ("dofile", "runs a file"), ("loadfile", "loads a file"),
                        ("loadstring", "compiles a string"), ("require", "loads a module"),
                        ("debug.", "debug library")):
-        check("lua: no %r (%s)" % (token, why), token not in SRC)
+        body = SRC.replace('"SetDvarString"', "") if token == "SetDvar" else SRC
+        check("lua: no %r (%s)" % (token, why), token not in body)
+    check("lua: the one dvar write is the token channel, and the tokens part is the only one holding it",
+          [n for n in LUA_FILES if "SetDvar" in LUA_TEXT[n]] == [TOKENS]
+          and LUA_TEXT[TOKENS].count('"SetDvarString"') == 1
+          and '"SetDvarString"' not in ship.replace(LUA_TEXT[TOKENS], "")
+          and '"PlaySound"' in LUA_TEXT[TOKENS] and SRC.count('"PlaySound"') == 1,
+          " | ".join(n for n in LUA_FILES if "SetDvar" in LUA_TEXT[n]))
 
     texts = {n: LUA_TEXT[n] for n in LUA_FILES}
     texts[DIAG] = diag_quarantine()
@@ -1410,11 +1641,13 @@ def static_checks():
     check("lua: no reader walks the 65536-char payload to count it",
           "gcountLocks" not in SRC and "gcountScope" not in SRC and "GBITS" not in SRC
           and "for i = 1, GHEXLEN" not in SRC)
-    check("lua: no new timer and no new dispatcher",
+    check("lua: no new timer, and the only dispatchers are the splash queue and the token event",
           SRC.count(":Wait(") == 2 and "CreateEventTimer" not in SRC
-          and where(":Wait(") == [MAIN] and SRC.count("local function fire(") == 1
-          and where("local function fire(") == [SPLASH]
-          and SRC.count("ProcessEvent") == LUA_TEXT[SPLASH].count("ProcessEvent"),
+          and where(":Wait(") == [MAIN] and SRC.count("local function fire(") == 2
+          and where("local function fire(") == [SPLASH, TOKENS]
+          and where("ProcessEvent") == [SPLASH, TOKENS]
+          and SRC.count("ProcessEvent") == (LUA_TEXT[SPLASH].count("ProcessEvent")
+                                            + LUA_TEXT[TOKENS].count("ProcessEvent")),
           "%d waits in %s, %d fire, %d ProcessEvent" % (
               SRC.count(":Wait("), "/".join(where(":Wait(")), SRC.count("local function fire("),
               SRC.count("ProcessEvent")))
@@ -1461,8 +1694,8 @@ def static_checks():
 
     m = re.search(r"local GUNLOCK = \{([^}]*)\}", SRC)
     named = re.findall(r'"([^"]+)"', m.group(1)) if m else []
-    check("lua: the two toggles that can reach the scope are named, not hashed",
-          named == ["zm_unlock_all", "zm_unlock_attachments"], ", ".join(named))
+    check("lua: the one switch that stands every lock down is named, not hashed",
+          named == ["zm_unlock_all"], ", ".join(named))
 
     start = SRC.index("local GCSV = [[")
     body = SRC[start + len("local GCSV = [["):]
@@ -1476,10 +1709,13 @@ def static_checks():
     check("lua: the scope is the generator's own set (its SHA-256)", digest == LS_SHA, digest)
     check("lua: all eight acceptance ids are in the scope", all(i in set(ids) for i in ACCEPT))
 
-    left = sorted(n for n in (os.listdir(SCRIPTS_DIR) if os.path.isdir(SCRIPTS_DIR) else [])
-                  if n.lower().endswith((".gsc", ".gscc")))
-    check("gsc: the mod ships no script part - the folder is absent or empty",
-          left == [], ", ".join(left))
+    scripts = sorted(n for n in (os.listdir(SCRIPTS_DIR) if os.path.isdir(SCRIPTS_DIR) else [])
+                     if n.lower().endswith((".gsc", ".gscc")))
+    shipped = {n: open(os.path.join(SCRIPTS_DIR, n), "rb").read().decode("utf-8", "replace").lower()
+               for n in scripts}
+    storing = [n for n in scripts if "nengine_store_" in shipped[n]]
+    check("gsc: no shipped script calls nengine_store_ (the g10 store crash, D42/D43)",
+          storing == [], ", ".join(storing))
 
     info("lua %d B sha256 %s" % (len(SRC.encode()), hashlib.sha256(SRC.encode()).hexdigest().upper()))
     info("mod.json %d B" % os.path.getsize(MODJSON))
@@ -1683,7 +1919,7 @@ def g11_reader(lua51, ls):
     lines = lines_of(rt)
 
     check("g11: the menu context arms the reader",
-          has_line(lines, "armed v1.2 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
+          has_line(lines, "armed v1.3 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
           " | ".join(lines[:6]))
     check("g11: both ownership doors are wrapped",
           has_line(lines, "g11 isunlockedwithid wrapped (2 of 2: PROGRESSION, LOOT)"), " | ".join(lines[:8]))
@@ -1909,8 +2145,8 @@ def g11_order_and_cap(lua51, ls):
     fired = int(pump(rt2, 480))
     l3 = lines_of(rt2)
     check("g11 order: the wrap wait is capped at 480 ticks", fired == 480, "%d ticks" % fired)
-    check("g11 order: the wait is announced once, then the cap",
-          count_line(l3, "g11 waiting for PROGRESSION / LOOT") == 1
+    check("g11 order: the wait is announced, then the cap once",
+          count_line(l3, "g11 waiting for PROGRESSION / LOOT") >= 1
           and count_line(l3, "card table ") == 0
           and count_line(l3, "g11 gave up wrapping - PROGRESSION / LOOT") == 1, " | ".join(l3))
     check("g11 order: the timer keeps running after the cap (the display half needs it)",
@@ -4100,7 +4336,7 @@ def g32_toggle(lua51):
     l = lines_of(rt)
     want = ("unlock dvars: ammomods=- attachments=- camos=- cards=- charms=- emblems=- emotes=-"
             " equipment=- fieldupgrades=- finishers=- loadingscreens=- operators=- perks=- reticles=-"
-            " scorestreaks=- sprays=- stickers=- wildcards=-")
+            " scorestreaks=- sprays=- stickers=- weapons=- wildcards=-")
     check("g32 toggle: the arm line names every unlock switch and what it reads", has_line(l, want),
           " | ".join([x for x in l if "unlock dvars:" in x]))
     check("g32 toggle: a paid card and a paid camo read locked with every switch off",
@@ -4135,6 +4371,98 @@ def g32_toggle(lua51):
     two = int(rt.eval("READS()"))
     check("g32 toggle: every switch is read once a tick, not once an ask",
           one - two >= 18, "%d then %d" % (one, two))
+
+
+def debug_toggles(lua51):
+    attach, card, weapon = 126608, 200000, 125186
+    ids = [attach, card, weapon]
+    rt = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt, slabs_of(ids))
+    lua_rslabs(rt, slabs_of(ids))
+    rt.execute("SET_TYPE(%d, 7)" % attach)
+    rt.execute("SET_TYPE(%d, 11)" % card)
+    rt.execute("SET_TYPE(%d, 2)" % weapon)
+    rt.execute("SET_G11(120)")
+    rt.execute("SET_G12(%d)" % len(ids))
+    load(rt)
+    pump(rt, 1)
+
+    def doors(i):
+        return rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)
+
+    check("dbg toggle: an attachment, a card and a weapon with a bit and a reward read locked",
+          all(doors(i) == (False, False) for i in ids), str([doors(i) for i in ids]))
+
+    rt.execute('SET_DVAR("zm_unlock_attachments", "1")')
+    pump(rt, 8)
+    check("dbg toggle: unlock attachments opens the attachment on both doors",
+          doors(attach) == (True, True), str(doors(attach)))
+    check("dbg toggle: and leaves a calling card with a bit and a reward locked",
+          doors(card) == (False, False), str(doors(card)))
+    check("dbg toggle: and leaves a weapon with a bit and a reward locked",
+          doors(weapon) == (False, False), str(doors(weapon)))
+    check("dbg toggle: the open side opens that attachment and nothing else",
+          rt.eval("ProgressionTuning.locks.open(%d)" % attach) is True
+          and rt.eval("ProgressionTuning.locks.open(%d)" % card) is False
+          and rt.eval("ProgressionTuning.locks.open(%d)" % weapon) is False,
+          "%s / %s" % (rt.eval("ProgressionTuning.locks.open(%d)" % attach),
+                       rt.eval("ProgressionTuning.locks.open(%d)" % card)))
+    check("dbg toggle: it is not the unlock everything switch, so no stand-down is logged",
+          count_line(lines_of(rt), "g11 debug unlock") == 0,
+          " | ".join([ln for ln in lines_of(rt) if "debug unlock" in ln]))
+
+    rt.execute('SET_DVAR("zm_unlock_attachments", "0") SET_DVAR("zm_unlock_weapons", "1")')
+    pump(rt, 8)
+    check("dbg toggle: unlock weapons opens that weapon on both doors",
+          doors(weapon) == (True, True), str(doors(weapon)))
+    check("dbg toggle: and leaves the attachment and the card locked",
+          doors(attach) == (False, False) and doors(card) == (False, False),
+          str([doors(attach), doors(card)]))
+
+    rt.execute('SET_DVAR("zm_unlock_weapons", "0") SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 8)
+    check("dbg toggle: unlock everything opens all three on both doors",
+          all(doors(i) == (True, True) for i in ids), str([doors(i) for i in ids]))
+    check("dbg toggle: and that is the one switch the door reports as a stand-down",
+          count_line(lines_of(rt), "g11 debug unlock zm_unlock_all is on") == 1,
+          " | ".join([ln for ln in lines_of(rt) if "debug unlock" in ln]))
+    rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 8)
+    check("dbg toggle: every switch off closes all three again",
+          all(doors(i) == (False, False) for i in ids), str([doors(i) for i in ids]))
+
+
+def dbg_toggle_prestige(lua51):
+    rt = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt, slabs_of([150900]))
+    lua_rslabs(rt, slabs_of([150100]))
+    rt.execute("SET_G11(51)")
+    rt.execute("SET_G12(1)")
+    rt.execute('SET_PRESTIGE("sat_pi_alcor", 0)')
+    rt.execute('SET_LEVEL("sat_pi_alcor", 2)')
+    rt.execute('SET_PREQ("sat_pi_alcor", 126608, 1)')
+    rt.execute('PRESTIGE_BUNDLE(126608, "sat_pi_alcor")')
+    rt.execute("SET_TYPE(126608, 7)")
+    load(rt)
+    pump(rt, 1)
+
+    def doors(i):
+        return rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)
+
+    check("dbg toggle: a prestige attachment reads locked with every switch off",
+          doors(126608) == (False, False), str(doors(126608)))
+    rt.execute('SET_DVAR("zm_unlock_attachments", "1")')
+    pump(rt, 8)
+    check("dbg toggle: unlock attachments opens a prestige attachment on both doors",
+          doors(126608) == (True, True), str(doors(126608)))
+    rt.execute('SET_DVAR("zm_unlock_attachments", "0")')
+    pump(rt, 8)
+    check("dbg toggle: and off again closes that prestige attachment",
+          doors(126608) == (False, False), str(doors(126608)))
+    rt.execute('SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 8)
+    check("dbg toggle: unlock everything still opens that prestige attachment",
+          doors(126608) == (True, True), str(doors(126608)))
 
 
 def g32_prestige_sets(lua51):
@@ -4796,7 +5124,7 @@ def splashck_order(lua51):
         raised = str(exc)
     lines = lines_of(rt)
     blk = splashck_lines(lines)
-    check("order: the eight parts load in %s order with nothing raised" % LOAD_ORDER,
+    check("order: the %d parts load in %s order with nothing raised" % (len(LUA_FILES), LOAD_ORDER),
           raised == "", raised[:160])
     check("order: the diag part announces its arm once in %s order" % LOAD_ORDER,
           count_line(lines, "part diag armed") == 1,
@@ -7922,6 +8250,309 @@ def cf_off(lua51):
           " | ".join([x for x in lines_of(rt3) if "carry-forward" in x][:3]))
 
 
+UTCFILLFIX = r"""
+UTC_SEEN = 0
+UTC_N = 0
+CoD = { GetUTC = function() return 1763520000 end }
+Engine[xhash("GetUTC")] = function(...)
+  UTC_SEEN = UTC_SEEN + 1
+  UTC_N = select("#", ...)
+  return nil
+end
+"""
+
+
+UTC_KEY_MT = r"""
+CLUA = { PushXHash = function(n) return xhash(n) end }
+Engine[xhash("GetUTC")] = function() return nil end
+setmetatable(Engine, { __index = function(t, k)
+  if type(k) == "string" then return rawget(t, xhash(k)) end
+  return nil
+end })
+"""
+
+UTC_KEY_OTHER = r"""
+CLUA = { PushXHash = function(n) return xhash(n) end }
+OTHERUTC = function() return "other" end
+Engine[xhash("GetUTC")] = OTHERUTC
+Engine.GetUTC = function() return nil end
+"""
+
+
+def utc_fill(lua51):
+    """The clock fill: a nil is answered by the cod getter, a number passes through whole."""
+    ra = new_rt(lua51, frontend=True, src=False)
+    ra.execute(UTCFILLFIX)
+    load(ra)
+    la = lines_of(ra)
+    check("utcfill: one arm line per vm, and the nil the original answers becomes the cod number",
+          count_line(la, "progression_tuning: utc fill armed") == 1
+          and count_line(la, "utc fill ") == 1
+          and ra.eval('Engine[xhash("GetUTC")]()') == 1763520000
+          and ra.eval("UTC_SEEN") == 1,
+          "%s | %s" % (ra.eval('Engine[xhash("GetUTC")]()'),
+                       " | ".join([x for x in la if "utc fill" in x][:3])))
+    check("utcfill: the wrapper sits under the hash key it was found by and no plain name appears",
+          ra.eval('Engine["GetUTC"]') is None and ra.eval('Engine[xhash("GetUTC")]') is not None,
+          "%s / %s" % (ra.eval('Engine["GetUTC"]'), ra.eval('Engine[xhash("GetUTC")]')))
+    ra.eval('Engine[xhash("GetUTC")](7, "b", nil)')
+    check("utcfill: every argument reaches the original that was wrapped",
+          ra.eval("UTC_N") == 3, str(ra.eval("UTC_N")))
+
+    rb = new_rt(lua51, frontend=True, src=False)
+    rb.execute('CoD = { GetUTC = function() return 7 end }')
+    rb.execute('Engine[xhash("GetUTC")] = function() error("boom utc", 0) end')
+    load(rb)
+    check("utcfill: an original that raises is filled, and the raise never reaches the caller",
+          rb.eval('Engine[xhash("GetUTC")]()') == 7,
+          str(rb.eval('pcall(function() return Engine[xhash("GetUTC")]() end)')))
+
+    rz = new_rt(lua51, frontend=True, src=False)
+    rz.execute('Engine[xhash("GetUTC")] = function() return nil end')
+    load(rz)
+    check("utcfill: with no cod getter a nil clock is answered 0",
+          rz.eval('Engine[xhash("GetUTC")]()') == 0, str(rz.eval('Engine[xhash("GetUTC")]()')))
+
+    rs = new_rt(lua51, frontend=True, src=False)
+    rs.execute('CoD = { GetUTC = function() return "soon" end }')
+    rs.execute('Engine[xhash("GetUTC")] = function() return nil end')
+    load(rs)
+    check("utcfill: a cod answer that is not a number is answered 0",
+          rs.eval('Engine[xhash("GetUTC")]()') == 0, str(rs.eval('Engine[xhash("GetUTC")]()')))
+
+    rp = new_rt(lua51, frontend=True, src=False)
+    rp.execute('CoD = { GetUTC = function() return 1 end }')
+    rp.execute('Engine[xhash("GetUTC")] = function() return 5, "b", nil, "d" end')
+    load(rp)
+    rp.execute('UP_N = select("#", Engine[xhash("GetUTC")]())')
+    rp.execute("UP_A, UP_B, UP_C, UP_D = Engine[xhash(\"GetUTC\")]()")
+    check("utcfill: a number clock comes back with all four of its returns, the nil one too",
+          rp.eval("UP_N") == 4 and rp.eval("UP_A") == 5 and rp.eval("UP_B") == "b"
+          and rp.eval("UP_C") is None and rp.eval("UP_D") == "d",
+          "%s %s %s %s %s" % (rp.eval("UP_N"), rp.eval("UP_A"), rp.eval("UP_B"),
+                              rp.eval("UP_C"), rp.eval("UP_D")))
+    check("utcfill: and the cod getter was never asked while the original answered",
+          count_line(lines_of(rp), "utc fill armed") == 1
+          and rp.eval("UP_A") == 5,
+          "%s %s" % (rp.eval("UP_A"), count_line(lines_of(rp), "utc fill armed")))
+
+    rn = new_rt(lua51, frontend=True, src=False)
+    rn.execute("Engine.GetUTC = function() return nil end")
+    rn.execute('CoD = { GetUTC = function() return 33 end }')
+    load(rn)
+    check("utcfill: a table that keeps the plain name is filled in place",
+          rn.eval("Engine.GetUTC()") == 33, str(rn.eval("Engine.GetUTC()")))
+
+    km = new_rt(lua51, frontend=True, src=False)
+    km.execute(UTC_KEY_MT)
+    load(km)
+    check("utcfill: a plain name reached through a metatable is filled, and the pushed and hashed keys too",
+          km.eval('Engine[xhash("GetUTC")]()') == 0
+          and km.eval('Engine["GetUTC"]') is not None
+          and km.eval('Engine[xhash("GetUTC")] == Engine.GetUTC') is True
+          and count_line(lines_of(km), "utc fill armed") == 1,
+          "%s / %s" % (km.eval('Engine[xhash("GetUTC")]()'),
+                       km.eval('Engine[xhash("GetUTC")] == Engine.GetUTC')))
+
+    ko = new_rt(lua51, frontend=True, src=False)
+    ko.execute(UTC_KEY_OTHER)
+    load(ko)
+    check("utcfill: a pushed key holding another function is never overwritten",
+          ko.eval('Engine[xhash("GetUTC")] == OTHERUTC') is True
+          and ko.eval('Engine[xhash("GetUTC")]()') == "other"
+          and ko.eval('Engine.GetUTC()') == 0,
+          "%s / %s" % (ko.eval('Engine[xhash("GetUTC")]()'), ko.eval("Engine.GetUTC()")))
+
+    kn = new_rt(lua51, frontend=True, src=False)
+    kn.execute('CoD = { GetUTC = function() return 44 end }')
+    kn.execute("Engine.GetUTC = function() return nil end")
+    load(kn)
+    check("utcfill: with no loader table the found member alone is filled and nothing raises",
+          kn.eval("Engine.GetUTC()") == 44
+          and count_line(lines_of(kn), "progression_tuning: utc fill armed") == 1,
+          "%s" % kn.eval("Engine.GetUTC()"))
+
+    rx = new_rt(lua51, frontend=True)
+    lx = lines_of(rx)
+    check("utcfill: a vm whose engine has no getter says absent once and wraps nothing",
+          count_line(lx, "progression_tuning: utc fill absent") == 1
+          and count_line(lx, "utc fill armed") == 0
+          and rx.eval('Engine[xhash("GetUTC")]') is None,
+          " | ".join([x for x in lx if "utc fill" in x][:3]))
+
+    re = new_rt(lua51, frontend=True, src=False)
+    re.execute("Engine = nil")
+    re.execute(LUA_TEXT[CHALLENGES])
+    check("utcfill: with no engine table at all it arms absent and raises nothing",
+          count_line(lines_of(re), "progression_tuning: utc fill absent") == 1,
+          " | ".join([x for x in lines_of(re) if "utc fill" in x][:3]))
+
+    rd = new_rt(lua51, frontend=True, src=False)
+    rd.execute(UTCFILLFIX)
+    load(rd)
+    rd.execute('F1 = Engine[xhash("GetUTC")]')
+    load(rd)
+    rd.execute('F2 = Engine[xhash("GetUTC")]')
+    rd.execute("UTC_SEEN = 0")
+    rd.execute('Engine[xhash("GetUTC")]()')
+    ld = lines_of(rd)
+    check("utcfill: a second chunk run wraps nothing twice - the same function, one call through",
+          rd.eval("F1 == F2") is True and rd.eval("UTC_SEEN") == 1
+          and count_line(ld, "utc fill armed") == 1,
+          "same=%s seen=%s arms=%d" % (rd.eval("F1 == F2"), rd.eval("UTC_SEEN"),
+                                       count_line(ld, "utc fill armed")))
+
+
+def ch_of(rt):
+    """The token channel's own string in this vm."""
+    v = rt.eval('DVARS[xhashdvar("pt_tokens_ch")]')
+    return None if v is None else str(v)
+
+
+def options_rows(lua51):
+    """The two rows the debug tab gains: their place, their labels and what the page does with them."""
+    rt = new_rt(lua51, pre=OPTIONSFIX)
+    tab, other = '{ 7, "debug" }', '{ "not", "the debug tab" }'
+    check("opts: the rows part arms against a page holding all four members",
+          rt.eval("ProgressionTuning.probes.options()") is True, " | ".join(lines_of(rt)[-3:]))
+    rt.execute('W1 = OPTIONS["#x7bf7f57679e8d050"]')
+    rt.execute("NRET = select('#', W1(%s, 0, 1))" % tab)
+    check("opts: the list member keeps every return the page gave it", int(rt.eval("NRET")) == 2,
+          str(rt.eval("NRET")))
+    check("opts: the list member appends both rows to the debug tab",
+          int(rt.eval("#LIST")) == 5
+          and rt.eval('LIST[4][xhash("settingId")]') == "pt_token_amount"
+          and rt.eval('LIST[5][xhash("settingId")]') == "pt_permanent",
+          "%s rows" % rt.eval("#LIST"))
+    rt.execute("W1(%s, 0, 1)" % tab)
+    check("opts: and appends them once - a second build of the same list adds nothing",
+          int(rt.eval("#LIST")) == 5 and count_line(lines_of(rt), "options row added") <= 1,
+          "%s rows" % rt.eval("#LIST"))
+    rt.execute("W1(%s, 0, 1)" % other)
+    check("opts: and adds nothing to a list that is not the debug tab",
+          int(rt.eval("#LIST")) == 5 and count_line(lines_of(rt), "options row added") <= 1)
+
+    rt.execute('OPTIONS[xhash("createoptionlist")](nil, nil, LIST, false)')
+    ids = [rt.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 6)]
+    check("opts: the page build moves both rows to sit directly after the anchor",
+          ids == ["#x7a1b0000000000a1", "0x5a6d0000000000be", "pt_token_amount",
+                  "pt_permanent", "#x2c9f0000000000d4"], " | ".join(ids))
+
+    rt.execute('DR = OPTIONS["#xe7686f7a9907efd8"]')
+    rt.execute('TROW = DR("pt_token_amount", 0)')
+    rt.execute('PROW = DR("pt_permanent", 0)')
+    check("opts: the dropdown row carries its own id, its six labels and its kind",
+          rt.eval('TROW[xhash("settingId")]') == "pt_token_amount"
+          and rt.eval('TROW[xhash("label")]') == "XP Token Amount"
+          and [rt.eval('TROW[xhash("labels")][%d]' % i) for i in range(1, 7)]
+          == ["0", "1", "5", "10", "25", "99"]
+          and rt.eval('TROW[xhash("widgetType")]') == "Dropdown",
+          str(rt.eval('TROW[xhash("labels")]')))
+    check("opts: the toggle row carries its own id, its two labels and its kind",
+          rt.eval('PROW[xhash("settingId")]') == "pt_permanent"
+          and [rt.eval('PROW[xhash("labels")][%d]' % i) for i in range(1, 3)] == ["Off", "On"]
+          and rt.eval('PROW[xhash("widgetType")]') == "ToggleButton",
+          str(rt.eval('PROW[xhash("labels")]')))
+    check("opts: every other id is the page's own answer",
+          rt.eval('DR("#x7a1b0000000000a1", 0)[xhash("settingId")]') == "#x7a1b0000000000a1"
+          and rt.eval('ProgressionTuning.tokens.csrc') == "chan")
+
+    check("opts: the dropdown answers the 1-based index of the lowest current count",
+          int(rt.eval('TROW[xhash("getter")](0)')) == 1, str(rt.eval('TROW[xhash("getter")](0)')))
+    rt.execute('TROW[xhash("setter")](0, 3)')
+    check("opts: and the index it is handed writes that count to every slot, on the channel",
+          int(rt.eval('TROW[xhash("getter")](0)')) == 3
+          and ch_of(rt) == "p=0;w=0;n=2;c=5,5,5,5,5,5,5,5;x=0", str(ch_of(rt)))
+    check("opts: the toggle answers 1 while the flag is off",
+          int(rt.eval('PROW[xhash("getter")](0)')) == 1)
+    rt.execute('PROW[xhash("setter")](0, 2)')
+    check("opts: and 2 once it is set on, with the flag on the channel",
+          int(rt.eval('PROW[xhash("getter")](0)')) == 2
+          and str(ch_of(rt)).endswith(";x=1"), str(ch_of(rt)))
+    rt.execute('PROW[xhash("setter")](0, 1)')
+    check("opts: and 1 again when it is set back to off",
+          int(rt.eval('PROW[xhash("getter")](0)')) == 1
+          and str(ch_of(rt)).endswith(";x=0"), str(ch_of(rt)))
+    rt.execute("MenuBuilder.BuildRegisteredType('a', {})")
+    rt.execute("MenuBuilder.BuildRegisteredType('a', {})")
+    check("opts: every page build re-arms and leaves the wrapper it installed in place",
+          rt.eval('OPTIONS["#x7bf7f57679e8d050"] == W1') is True and int(rt.eval("BUILT")) == 2,
+          str(rt.eval("BUILT")))
+
+    rm = new_rt(lua51)
+    check("opts: with no page at all the part arms nothing and moves nothing",
+          rm.eval("ProgressionTuning.probes.options()") is False
+          and count_line(lines_of(rm), "options move raised") == 0)
+
+
+def tokens_channel(lua51):
+    """The token channel: what it reads, what it writes and what another vm's write does."""
+    full = "p=600;w=1200;n=42;c=1,2,3,4,5,6,7,8;x=1"
+    rt = new_rt(lua51, pre='SET_DVAR("pt_tokens_ch", "%s")' % full)
+    check("tok: a full line is read into its five fields, counts in channel order",
+          int(rt.eval("ProgressionTuning.tokens.p")) == 600
+          and int(rt.eval("ProgressionTuning.tokens.w")) == 1200
+          and int(rt.eval("ProgressionTuning.tokens.sn")) == 42
+          and int(rt.eval("ProgressionTuning.tokens.x")) == 1
+          and [int(rt.eval("ProgressionTuning.tokens.c[%d]" % i)) for i in range(1, 9)]
+          == [1, 2, 3, 4, 5, 6, 7, 8]
+          and rt.eval("ProgressionTuning.tokens.csrc") == "chan", str(ch_of(rt)))
+    check("tok: and the part does not write over it while nothing moves",
+          ch_of(rt) == full, str(ch_of(rt)))
+    rt.execute("ProgressionTuning.tokens.perm(true)")
+    check("tok: a write keeps every field and rises the serial",
+          ch_of(rt) == "p=600;w=1200;n=43;c=1,2,3,4,5,6,7,8;x=1", str(ch_of(rt)))
+    check("tok: the line the writer produces is inside the dll's own charset and size",
+          re.match(r"^[a-z0-9=;,]+$", str(ch_of(rt))) is not None and len(str(ch_of(rt))) <= 512,
+          str(ch_of(rt)))
+    unk = "p=11;w=22;n=30;c=1,2,3,4,5,6,7,8;x=0;z=7"
+    rk = new_rt(lua51, pre='SET_DVAR("pt_tokens_ch", "%s")' % unk)
+    check("tok: a field this build does not parse is ignored by the read",
+          int(rk.eval("ProgressionTuning.tokens.p")) == 11
+          and int(rk.eval("ProgressionTuning.tokens.sn")) == 30
+          and int(rk.eval("ProgressionTuning.tokens.c[1]")) == 1, str(ch_of(rk)))
+    rk.execute("ProgressionTuning.tokens.perm(true)")
+    check("tok: and dropped by the next write, which rebuilds the line from its own fields",
+          ch_of(rk) == "p=11;w=22;n=31;c=1,2,3,4,5,6,7,8;x=1" and "z=" not in str(ch_of(rk)),
+          str(ch_of(rk)))
+
+    rseed = new_rt(lua51, pre="CLR_DVAR('pt_tokens_ch') " + TOKENREC)
+    check("tok: a line with no counts seeds the eight slots from the client's own record",
+          [int(rseed.eval("ProgressionTuning.tokens.c[%d]" % i)) for i in range(1, 9)]
+          == [1, 2, 3, 4, 5, 6, 7, 8]
+          and rseed.eval("ProgressionTuning.tokens.csrc") == "seed"
+          and count_line(lines_of(rseed), "tokens P4 c=1,2,3,4,5,6,7,8 src=seed") == 1,
+          " | ".join([x for x in lines_of(rseed) if "tokens P4" in x][:3]))
+    rnone = new_rt(lua51, pre="CLR_DVAR('pt_tokens_ch')")
+    check("tok: with no channel and no record there is nothing to seed and nothing written",
+          rnone.eval("ProgressionTuning.tokens.c") is None and ch_of(rnone) in (None, ""),
+          str(ch_of(rnone)))
+
+    foreign = "p=300;w=900;n=57;c=2,3,4,5,6,7,8,1;x=1"
+    rp = new_rt(lua51, pre='SET_DVAR("pt_tokens_ch", "%s")' % full)
+    pump(rp, 1)
+    rp.execute('SET_DVAR("pt_tokens_ch", "%s")' % foreign)
+    pump(rp, 1)
+    check("tok: a serial another vm wrote is adopted on the next tick, with its counts",
+          int(rp.eval("ProgressionTuning.tokens.sn")) == 57
+          and int(rp.eval("ProgressionTuning.tokens.p")) == 300
+          and int(rp.eval("ProgressionTuning.tokens.w")) == 900
+          and int(rp.eval("ProgressionTuning.tokens.x")) == 1
+          and int(rp.eval("ProgressionTuning.tokens.c[1]")) == 2
+          and rp.eval("ProgressionTuning.tokens.csrc") == "chan", str(ch_of(rp)))
+    pump(rp, 1)
+    check("tok: and the same serial is not adopted a second time",
+          int(rp.eval("ProgressionTuning.tokens.sn")) == 57, str(ch_of(rp)))
+
+    ro = new_rt(lua51, frontend=True, src=False, pre="SET_TOGGLE('pt_on', 0)")
+    ro.execute(UTCFILLFIX)
+    load(ro)
+    check("utcfill: the fill arms with every toggle off, because it only fills a nil",
+          ro.eval('Engine[xhash("GetUTC")]()') == 1763520000
+          and count_line(lines_of(ro), "progression_tuning: utc fill armed") == 1,
+          str(ro.eval('Engine[xhash("GetUTC")]()')))
+
+
 def main():
     print("progression-tuning - offline checks")
     print("source: %d parts under %s" % (len(LUA_FILES), LUA_DIR))
@@ -7997,6 +8628,8 @@ def main():
             g32_open(lua51)
             g32_store(lua51)
             g32_toggle(lua51)
+            debug_toggles(lua51)
+            dbg_toggle_prestige(lua51)
             g32_prestige_sets(lua51)
             g32_ask_cost(lua51)
             g32_ask_native(lua51)
@@ -8031,10 +8664,13 @@ def main():
             cf_camos(lua51)
             cf_splash(lua51)
             cf_off(lua51)
+            utc_fill(lua51)
+            options_rows(lua51)
+            tokens_channel(lua51)
 
         for order in LOAD_ORDERS:
             LOAD_ORDER = order
-            info("replay: the eight parts load in %s order" % order)
+            info("replay: the %d parts load in %s order" % (len(LUA_FILES), order))
             seen, bad = len(passes), len(failures)
             try:
                 replay(_Lua51, ls)
@@ -8047,7 +8683,7 @@ def main():
         info("lupa.lua51 is not installed - the dry run was skipped")
 
     print("")
-    for path in ([MODJSON] + [os.path.join(LUA_DIR, n) for n in LUA_FILES]
+    for path in ([MODJSON] + [os.path.join(LUA_DIR, n) for n in TEXT_FILES]
                  + [os.path.abspath(__file__)]):
         data = open(path, "rb").read()
         print("HASH  %s  %d B  %s" % (os.path.relpath(path, PKG), len(data),

@@ -22,6 +22,12 @@ data behind it instead of a stale snapshot.
 for a weapon at prestige 2 whose XP is past its last threshold, the level continues one step per 1,800 XP, up to
 250.
 
+**It keeps the token channel's dvar alive.** The token menu's countdown lives in one dvar, `pt_tokens_ch`, but
+nothing of the mod runs before a level start, so a token activated in the front end would have nowhere to be
+written. The hook registers that dvar at boot from `cod25\players\tokens.txt` and saves it back to that file
+whenever it changes - one ASCII line, written through a temporary file and a rename. The `players` folder is the
+client's own: the hook reads it and never makes it.
+
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the
 byte it changed and reads it back. One byte, and the decision is the client's own, not ours.
@@ -71,6 +77,7 @@ or skip with a `SKIP` line.
     src\resolve.c           every client address, found at run time; the per-feature gate; one summary line
     src\publish.c           the forced publish's pure half: the page check, the guard, the window, the kill switch
     src\g11.c               the lock payload's pure half: hex, split, header, name hash, canary
+    src\tokens.c            the token channel's dvar and its file: the one-line form, the tmp-and-rename write
     src\master.c            the master-prestige level byte, at its call sites
     src\nativepay.c         the five bytes at the award's call site
     src\pubxp.c             the paid-XP text, the per-gun ledger and the record lookup

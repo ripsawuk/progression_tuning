@@ -1,7 +1,7 @@
 # The mod - `progression_tuning`
 
-A Kronos mod folder for Call of Duty: Black Ops 7 Zombies. It is UI Lua only: no game file is written, no GSC
-logic runs, and it displays what the client hook's payload says rather than computing XP of its own.
+A Kronos mod folder for Call of Duty: Black Ops 7 Zombies. It is UI Lua and one GSC script: no game file is
+written by the mod, and it displays what the client hook's payload says rather than computing XP of its own.
 
     mod.json                              name, version, the toggles, one description
     lua\progression_tuning_main_post.lua  the core: registry, clock, payload readers, the door rule, the timer
@@ -11,8 +11,29 @@ logic runs, and it displays what the client hook's payload says rather than comp
     lua\progression_tuning_challenges_post.lua  daily and weekly sweeps and their completion cards
     lua\progression_tuning_prison_post.lua    the lock door and the gunsmith scope
     lua\progression_tuning_reticles_post.lua  the optic watch (reticle unlocks are not answered yet)
+    lua\progression_tuning_options_post.lua   the Debug Options rows: XP Token Amount, Enable Double XP
+    lua\progression_tuning_tokens_post.lua    the XP token channel: counts, countdown, activation, the menu reads
     lua\progression_tuning_diag_post.lua      the temporary `rc1diag` block, `pt_diag` off by default
+    scripts\progression_tuning_tokens.gsc     the script side of the token channel: the native XP multipliers
 
-Kronos loads every `*_post.lua` in the folder as its own chunk. `main` is required: it holds the registry and
-the API the other parts call, and it is the part that reports `core absent - no part <name>` when one is missing.
-The six feature parts are optional - delete one and its feature is simply absent, the rest keep running.
+Kronos loads every `*_post.lua` in the folder as its own chunk, and the folder's `scripts\` script as its own
+GSC program. `main` is required: it holds the registry and the API the other parts call, and it is the part that
+reports `core absent - no part <name>` when one is missing. The eight feature parts are optional - delete one
+and its feature is simply absent, the rest keep running.
+
+## The token channel
+
+`progression_tuning_tokens_post.lua` and `scripts\progression_tuning_tokens.gsc` are the two ends of one dvar,
+`pt_tokens_ch`. The Lua part counts and writes it; the script part reads it inside a match, puts the client's own
+level and weapon XP multipliers on the player while a token is live, widens the performance band to match, and
+writes its whole state back in `pt_tokens_st`. The same Lua part answers the menu's token tiles with the local
+count, fills the double XP end times the token menu reads, and replaces the token footer's text.
+
+The counts themselves are persisted by the hook, not by the mod: `cod25\version.dll` registers `pt_tokens_ch`
+at boot and writes the file `cod25\players\tokens.txt` beside the game's own player data. That file is the
+mod's memory across launches. Without the hook the part still arms and counts down, but the counts start from
+the client's own record and are not kept.
+
+The two rows the part adds to Debug Options come from `progression_tuning_options_post.lua`: `XP Token Amount`
+sets every level and weapon token count at once, and `Enable Double XP` holds double XP on without using a
+token up.

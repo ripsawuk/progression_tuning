@@ -65,6 +65,7 @@ local GCOSN = { "ATTACHMENT", "OPERATOR", "OPERATOR_SKIN", "OPERATOR_EXECUTION",
   "EMBLEM", "CAMO", "RETICLE", "CHARM", "STICKER", "SPRAYS", "LOAD_SCREEN", "EMOTE" }
 -- the unlock switch each type answers to
 local GTOGN = {
+  { "WEAPON", "zm_unlock_weapons" },
   { "ATTACHMENT", "zm_unlock_attachments" }, { "CAMO", "zm_unlock_camos" },
   { "RETICLE", "zm_unlock_reticles" }, { "PLAYERCARD", "zm_unlock_cards" },
   { "EMBLEM", "zm_unlock_emblems" }, { "OPERATOR", "zm_unlock_operators" },
@@ -325,6 +326,7 @@ end
 
 -- a prestige attachment waits for its prestige
 local function gattach(n)
+  if gtoggle(GTYPE_A) then return false end
   local r = grec(n)
   if r == nil then return false end
   if r.req == nil then r.req = greq(n, r) end

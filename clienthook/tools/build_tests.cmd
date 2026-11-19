@@ -48,6 +48,9 @@ rem the SHIPPED src\resolve.c beside their own unit.
 call :build master_test "%~dp0master_test.c" "%~dp0..\src\master.c" "%~dp0..\src\resolve.c"
 call :build detour_test "%~dp0detour_test.c" "%~dp0..\src\master.c" "%~dp0..\src\resolve.c"
 call :build pubxp_test "%~dp0pubxp_test.c" "%~dp0..\src\pubxp.c"
+rem tokens.c carries the token channel's text and its file, so its driver links the shipped g11.c beside it
+rem (the page checks and the name hash are g11's).
+call :build tokens_test "%~dp0tokens_test.c" "%~dp0..\src\tokens.c" "%~dp0..\src\g11.c"
 call :build publish_test "%~dp0publish_test.c" "%~dp0..\src\publish.c"
 call :build nativepay_test "%~dp0nativepay_test.c" "%~dp0..\src\nativepay.c" "%~dp0..\src\resolve.c"
 rem resolve_check.exe is the resolver's own checker: the shipped src\resolve.c over a PE file on disk.

@@ -1297,9 +1297,9 @@ static int mode_proxy(const wchar_t *dll)
        "proxy: the resolved module's path is under the Windows system directory", sys_a);
     ok(_wcsicmp(sys_path, ours_path) != 0, "proxy: and it is not this DLL's path", sys_a);
     // and the module called "ours" really is this build, in memory - not a stray system copy at that path
-    // (the literal is this build's banner; it moves with the banner, build 30's is 399 chars - build 27's
+    // (the literal is this build's banner; it moves with the banner, build 31's is 457 chars - build 27's
     // 490-char one formatted a 513-byte line into log_line's 512-byte buffer, docs\B27-NOLAUNCH.md 3.3)
-    ok(module_carries(ours, "proxy attached (version.dll build 30"),
+    ok(module_carries(ours, "proxy attached (version.dll build 31"),
        "proxy: the module under test carries this build's banner in its own image", "");
     ok(!module_carries(sys, "proxy attached"), "proxy: the system module does not carry it", "");
 

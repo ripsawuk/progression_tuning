@@ -1,4 +1,4 @@
-local VERSION = "v1.2"
+local VERSION = "v1.3"
 local PREFIX = "progression_tuning: "
 
 local TICK_MS = 250
@@ -491,6 +491,8 @@ local function gtick()
   if gcinstall ~= nil then pcall(gcinstall) end
   local f = S.hooks.locks
   if f ~= nil then f() end
+  f = S.hooks.tokens
+  if f ~= nil then f() end
 end
 
 local function diag_poll()
@@ -507,7 +509,7 @@ local function scan_all()
   if f ~= nil then pcall(f) end
 end
 
-local PART_ORDER = { "weaponxp", "splash", "camos", "challenges", "prison", "reticles", "diag" }
+local PART_ORDER = { "weaponxp", "splash", "camos", "challenges", "prison", "reticles", "diag", "tokens" }
 
 local function report_parts()
   local miss = {}
@@ -540,7 +542,7 @@ local function gnames(prefix)
   return t
 end
 local GN_PART, GN_RPART = gnames("zm_g11_"), gnames("zm_g12_")
-local GUNLOCK = { "zm_unlock_all", "zm_unlock_attachments" }
+local GUNLOCK = { "zm_unlock_all" }
 
 -- the 4203 id fallback scope thats fucking huge
 local GCSV = [[
@@ -1138,7 +1140,7 @@ local function greadScope()
   end
 end
 
--- follows the two unlock switches
+-- follows the unlock all switch
 local function greadUnlock()
   local on = nil
   for i = 1, #GUNLOCK do

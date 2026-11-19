@@ -472,8 +472,8 @@ def main():
     build = open(os.path.join(ROOT, "build.cmd"), "r", encoding="utf-8", errors="replace").read()
     cl_text = "\n".join(l for l in build.replace("^", " ").split("\n") if l.strip().startswith("cl "))
     sources = set(re.findall(r"([a-z0-9_]+\.c)", cl_text))
-    check("build.cmd's link line builds the eight sources",
-          sources == {"proxy_main.c", "frame.c", "resolve.c", "publish.c", "g11.c", "master.c",
+    check("build.cmd's link line builds the nine sources",
+          sources == {"proxy_main.c", "frame.c", "resolve.c", "publish.c", "g11.c", "tokens.c", "master.c",
                       "nativepay.c", "pubxp.c"},
           ", ".join(sorted(sources)))
     check("build.cmd compiles src\\nativepay.c (this driver's own source)", "nativepay.c" in sources)

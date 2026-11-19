@@ -35,6 +35,7 @@
 #include "nativepay.h"
 #include "publish.h"
 #include "resolve.h"
+#include "tokens.h"
 
 void ch_logf(const char *fmt, ...);
 
@@ -342,6 +343,11 @@ static int g11_arm(HMODULE client)
         return 0;
     }
 
+    // the token channel: same register, same hash, same slot, its value from our file. armed here because
+    // this is the first point where all three are proved, and before the payload pass so a refusal there
+    // cannot take it down with it
+    tokens_arm(reg, salt, off);
+
     // Find all 35 - and create any that are not there, through the client's own register-or-find. The default
     // is the SENTINEL, so a dvar this call creates is indistinguishable from one the mod's GSC made and the
     // canary below passes for both; asking with the probe default here would make the hook refuse itself.
@@ -486,6 +492,8 @@ static DWORD WINAPI g11_thread(LPVOID unused)
     for (;;)
     {
         Sleep(250);
+        // the token channel's persistence rides this tick: no thread of its own, and a no-op until it armed
+        tokens_tick();
         if (G11_OFF)
         {
             continue;
