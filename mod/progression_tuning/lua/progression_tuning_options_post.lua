@@ -583,10 +583,10 @@ local function wrapList(cur, key)
       if not isDebug(tab) then return end
       local items = itemsOf(res[1])
       local k = (type(items) == "table" and type(items[1]) == "table") and idKey(items[1]) or nil
+      tplGrab(sibling(items))
       if over(rawget(_G, "OPTIONS"), key, w) then strip(items, k) end
       addRow(items, ID, k)
       addRow(items, ID2, k)
-      tplGrab(sibling(items))
     end)
     if not ok and once("raise") then log("options append raised") end
     return unpackAll(res)

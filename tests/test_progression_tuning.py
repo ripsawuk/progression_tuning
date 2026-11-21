@@ -854,14 +854,17 @@ SKDA = "#xe7686f7a9907efd8"
 SKDB = "#x9f6c4b08602983fb"
 DEADID = "3f58d23122dd68ae"
 DBGIDS = { "5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa" }
-HOBJ = {}
+STOCKROWS = { "5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa", DEADID }
+HOBJ, DBGSB = {}, {}
 for _, h in ipairs(DBGIDS) do
   HOBJ[h] = setmetatable({}, { __tostring = function() return "#x3" .. h end })
+  DBGSB[HOBJ[h]] = h
 end
 function HOF(h) return HOBJ[h] or h end
 function STOCKLIST()
-  return { { [SID] = "5a6d0000000000ff" }, { [SID] = "#x7a1b0000000000a1" },
-    { [SID] = DEADID }, { [SID] = "2c9f0000000000d4" } }
+  local out = {}
+  for i, sb in ipairs(STOCKROWS) do out[i] = { [SID] = sb } end
+  return out
 end
 function GROUPSECS(items)
   local group = { [SNAME] = "Debug Options", [SLIST] = items }
@@ -872,9 +875,15 @@ function STOCKSECS(tab, c, idx)
   return GROUPSECS(STOCKLIST())
 end
 function STOCKBUNDLE(id)
+  if id == DEADID then return nil end
   return { [SID] = id, [SNAME] = "Stock row", [SDESC] = "a stock row of the page",
     [SGLAB] = { "Off", "On" }, [SGET] = function() return 1 end,
     [SSET] = function() end, [STYPE] = "ToggleButton" }
+end
+function DBGDATA(id)
+  return { [SID] = id, [SNAME] = "Unlock Everything", [SDESC] = "a debug row the client builds",
+    [SGLAB] = { "Off", "On" }, [SGET] = function() return 1 end,
+    [SSET] = function(c, v) end, [STYPE] = "ToggleButton" }
 end
 OPTIONS = { TabIds = { DEBUG = 7 } }
 OPTIONS[SKSECT] = STOCKSECS
@@ -916,17 +925,13 @@ function KRONOSHOOK()
   end)
   wrap(SKDA, function(orig)
     return function(sb, ...)
-      for _, h in ipairs(DBGIDS) do
-        if sb == HOF(h) then return STOCKBUNDLE(sb) end
-      end
+      if sb ~= nil and DBGSB[sb] then return DBGDATA(sb) end
       return orig(sb, ...)
     end
   end)
   wrap(SKDB, function(orig)
     return function(sb, c, ...)
-      for _, h in ipairs(DBGIDS) do
-        if sb == HOF(h) then return STOCKBUNDLE(sb) end
-      end
+      if sb ~= nil and DBGSB[sb] then return DBGDATA(sb) end
       return orig(sb, c, ...)
     end
   end)
@@ -947,6 +952,12 @@ function PAGELIST()
   closer(nil, 0)
   return IDS(secs)
 end
+function DLBL(hexname, id)
+  local f = OPTIONS[hexname]
+  local b = type(f) == "function" and f(id, 0) or nil
+  if type(b) ~= "table" then return "nil" end
+  return tostring(b[SID]) .. "|" .. tostring(b[SNAME]) .. "|" .. tostring(b[STYPE])
+end
 """
 
 # the client's own record for the eight token ids, in the channel's own order
@@ -962,7 +973,7 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
 SHIP_LUA_LEN = 268492
-SHIP_LUA_SHA = "A7B18BB76E66A0691F4030B5195CC3F62335DE8BB0AD3471BF721BBD9C664D9A"
+SHIP_LUA_SHA = "39F20C78A680416A8F3D6C46D872910F2D7426C4FDB153F712FF41124A7A275E"
 LITERAL_SHA = "A033D299979E9976FE4CFF18DA441BB1DBB35D92C8498FF4D9A6914064981E28"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
@@ -8920,37 +8931,42 @@ def options_rows(lua51):
 def options_layers(lua51):
     """The debug page through both layers: one of every row, whether we hold the slot or sit under it."""
     dbg = ["#x3" + h for h in ("5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa")]
-    stock = ["5a6d0000000000ff", "#x7a1b0000000000a1", "2c9f0000000000d4"]
-    ours = ["pt_token_amount", "pt_permanent"]
-    every = dbg + stock + ours
+    stock = ["5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa"]
     dead = "3f58d23122dd68ae"
+    token, perm = "pt_token_amount", "pt_permanent"
+    trow, prow = token + "|XP Token Amount|Dropdown", perm + "|Enable Double XP|ToggleButton"
+    da, db = "#xe7686f7a9907efd8", "#x9f6c4b08602983fb"
+
+    def data(rt):
+        return [str(rt.eval('DLBL("%s", "%s")' % (m, i))) for m in (da, db) for i in (token, perm)]
 
     rt = new_rt(lua51, pre=OPTIONSLAY)
     inner = str(rt.eval("K1LIST()")).split(",")
     check("opts: the inner layer puts its own rows above the stock ones and drops the dead one",
           len(inner) == 6 and [inner.count(i) for i in dbg] == [1, 1, 1]
-          and stock[0] in inner and dead not in inner, " | ".join(inner))
+          and all(s in inner for s in stock) and dead not in inner, " | ".join(inner))
 
     top = str(rt.eval("PAGELIST()")).split(",")
-    check("opts: holding the slot, every row is on the page once",
-          len(top) == len(every) and [top.count(i) for i in every] == [1] * len(every),
-          " | ".join(top))
+    check("opts: holding the slot, the rebuild above and the stock rows below are on the page once each",
+          top == [dbg[0], dbg[1], token, perm, dbg[2]] + stock, " | ".join(top))
+    check("opts: holding the slot, our two rows answer their own bundle",
+          data(rt) == [trow, prow, trow, prow], " | ".join(data(rt)))
 
-    rt.execute("KRONOSHOOK()")
+    rb = new_rt(lua51, pre=OPTIONSLAY)
+    rb.execute("KRONOSHOOK()")
     check("opts: the page's second layer takes the slot over ours",
-          rt.eval("OPTIONS[SKSECT] == KHOOKS[SKSECT]") is True
-          and rt.eval("OPTIONS[SKSECT] ~= K1") is True)
-    buried = str(rt.eval("PAGELIST()")).split(",")
-    check("opts: under that layer, every row is still on the page once",
-          len(buried) == len(every) and [buried.count(i) for i in every] == [1] * len(every),
-          " | ".join(buried))
-    check("opts: and the page reads the same as the one we build ourselves",
-          buried == top, " | ".join(buried))
+          rb.eval("OPTIONS[SKSECT] == KHOOKS[SKSECT]") is True
+          and rb.eval("OPTIONS[SKSECT] ~= K1") is True)
+    buried = str(rb.eval("PAGELIST()")).split(",")
+    check("opts: under that layer, the stock rows are on the page once and our two once",
+          buried == [dbg[0], dbg[1], token, perm, dbg[2]], " | ".join(buried))
+    check("opts: and under that layer our two rows still answer their own bundle",
+          data(rb) == [trow, prow, trow, prow], " | ".join(data(rb)))
 
-    rt.execute("KRONOSHOOK()")
-    builds = [str(rt.eval("PAGELIST()")) for _ in range(3)]
+    rb.execute("KRONOSHOOK()")
+    builds = [str(rb.eval("PAGELIST()")) for _ in range(3)]
     check("opts: rebuilds and a repeat hook leave one of every row",
-          [b.split(",") for b in builds] == [top, top, top], " | ".join(builds))
+          [b.split(",") for b in builds] == [buried] * 3, " | ".join(builds))
 
 
 def tokens_channel(lua51):
