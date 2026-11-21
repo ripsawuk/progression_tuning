@@ -960,12 +960,239 @@ local function gmemo()
   return m
 end
 
+-- the gun a blueprint id belongs to
+local GNBPBASE = "getbaseweaponlootidfromblueprint"
+-- the blueprint switch and the plain spelling it may carry
+local GNBPSW, GNBPSW2 = "zm_unlock_blueprints", "unlock_blueprints"
+-- the ref to id and the blueprint test
+local GNITEMID = "getitemid"
+local GNBOWN = "ownsBlueprintOfWeapon"
+local GBP_CAP = 12
+-- the builds window one call opens for every blueprint
+local GLIST = 0
+local GBPBUSY = false
+local GBSW = { at = nil, got = false, on = nil }
+
+-- says once when the base getter is absent
+local function gbpcheck()
+  if fn_of(rawget(_G, "WEAPON"), GNBPBASE) ~= nil then return end
+  if said("gbp:base") then
+    log("blueprint lock: no WEAPON." .. GNBPBASE .. " in this VM - a blueprint answers to its own id alone")
+  end
+end
+
+-- the gun a blueprint id belongs to
+local function gbpbase(n)
+  local c = G.bpbase
+  if c == nil then
+    c = {}
+    G.bpbase = c
+  end
+  local v = c[n]
+  if v ~= nil then
+    if v == false then return nil end
+    return v
+  end
+  local f = fcache(rawget(_G, "WEAPON"), GNBPBASE)
+  if f == nil then
+    gbpcheck()
+    return nil
+  end
+  local ok, r = pcall(f, n)
+  if not ok then
+    c[n] = false
+    return nil
+  end
+  local b = tonumber(r)
+  if b == nil then
+    c[n] = false
+    return nil
+  end
+  b = math.floor(b)
+  if b < 1 or b > GMAXID or b == n then
+    c[n] = false
+    return nil
+  end
+  c[n] = b
+  return b
+end
+
+-- a dvar read that never raises
+local function gdvq(name)
+  local dv = A.dv
+  if type(dv) ~= "function" then return nil end
+  local ok, v = pcall(dv, name)
+  if not ok or type(v) ~= "string" then return nil end
+  return v
+end
+
+-- the blueprint switch read once a tick
+local function gbpsw()
+  local now = S.tick
+  if now ~= nil and GBSW.got and GBSW.at == now then return GBSW.on end
+  GBSW.at, GBSW.got = now, true
+  local v = gdvq(GNBPSW)
+  if v == nil or v == "" then v = gdvq(GNBPSW2) end
+  if v == nil or v == "" then
+    GBSW.on = nil
+  else
+    GBSW.on = v ~= "0"
+  end
+  return GBSW.on
+end
+
+-- the base gun answer from the door
+local function gbaselock(base)
+  if GBPBUSY then return true end
+  local rule = S.locks ~= nil and S.locks.answer or nil
+  if type(rule) ~= "function" then return true end
+  GBPBUSY = true
+  local ok, v = pcall(rule, base)
+  GBPBUSY = false
+  if not ok then return true end
+  return v == true
+end
+
+-- one blueprint line per id
+local function gbpline(n, base, locked)
+  local s = G.bpsaid
+  if s == nil then
+    s = {}
+    G.bpsaid = s
+  end
+  if s[n] then return end
+  if (G.bpN or 0) >= GBP_CAP then return end
+  s[n] = true
+  G.bpN = (G.bpN or 0) + 1
+  log("blueprint id=" .. n .. " base=" .. base .. " answer=" .. (locked and "locked" or "open"))
+end
+
+-- the blueprint rule base gun and switch
+local function gbpans(n)
+  local base = gbpbase(n)
+  if base == nil then return false, false end
+  if G.unlock ~= nil then return false, true end
+  if GLIST > 0 then return false, true end
+  local locked = gbaselock(base)
+  if not locked then
+    local on = gbpsw()
+    if on == nil then
+      locked = glockedNow(n)
+    else
+      locked = not on
+    end
+  end
+  if glogging() then gbpline(n, base, locked) end
+  return locked, true
+end
+
+local GW = { tbl = nil, slot = nil, fn = nil }
+local GWK = setmetatable({}, { __mode = "k" })
+
+-- the option shape a builds list passes
+local function gbshape(opt)
+  if type(opt) ~= "table" then return false end
+  if opt.forceLoot ~= true or opt.excludeBaseWeapons ~= true then return false end
+  if type(opt.byWeapons) ~= "table" then return false end
+  if opt.checkOwnership == false then return false end
+  if opt.onlyIncludeUnownedItem or opt.includeBundleItems or opt.exclusiveBundleItems or opt.forceCustom then
+    return false
+  end
+  return true
+end
+
+-- one pcall with every value kept
+local function gpack(...) return { n = select("#", ...), ... } end
+local GUNPACK = rawget(_G, "unpack")
+if type(GUNPACK) ~= "function" then
+  local t = rawget(_G, "table")
+  GUNPACK = type(t) == "table" and t.unpack or nil
+end
+
+-- wraps the builds getter once a menu vm
+local function gwinarm()
+  local fe = A.in_frontend
+  if type(fe) ~= "function" then return false end
+  local okf, front = pcall(fe)
+  if not okf or front ~= true then return false end
+  local tbl = rawget(_G, "WEAPON")
+  if type(tbl) ~= "table" then return false end
+  if GW.tbl == tbl and GW.slot ~= nil and rawget(tbl, GW.slot) == GW.fn then return true end
+  local k, orig = member(tbl, "getmodifications")
+  if k == nil or type(orig) ~= "function" then return false end
+  if GWK[orig] then
+    GW.tbl, GW.slot, GW.fn = tbl, k, orig
+    return true
+  end
+  local w = function(c, opt, ...)
+    local on = false
+    local oks, shaped = pcall(gbshape, opt)
+    if oks then on = shaped end
+    if on then GLIST = GLIST + 1 end
+    local res = gpack(pcall(orig, c, opt, ...))
+    if on then GLIST = GLIST - 1 end
+    if not res[1] then return {} end
+    if GUNPACK == nil then return res[2] end
+    return GUNPACK(res, 2, res.n)
+  end
+  GWK[w] = true
+  tbl[k] = w
+  GW.tbl, GW.slot, GW.fn = tbl, k, w
+  return true
+end
+
+local GBW = { tbl = nil, slot = nil, fn = nil }
+local GBWK = setmetatable({}, { __mode = "k" })
+
+-- the loot id a base ref answers to
+local function gbpref(ref)
+  if type(ref) ~= "string" or ref == "" then return nil end
+  local f = fcache(rawget(_G, "LOOT"), GNITEMID)
+  if f == nil then return nil end
+  local ok, v = pcall(f, ref)
+  if not ok then return nil end
+  local n = tonumber(v)
+  if n == nil then return nil end
+  return math.floor(n)
+end
+
+-- no blueprint counts while its gun is locked
+local function gbown(c, ref, orig, ...)
+  local base = gbpref(ref)
+  if base ~= nil and base >= 1 and base <= GMAXID and gbaselock(base) then return false end
+  local ok, v = pcall(orig, c, ref, ...)
+  if not ok then return false end
+  return v
+end
+
+-- wraps the blueprint test once a vm
+local function gbwarm()
+  local tbl = rawget(_G, "PROGRESSION")
+  if type(tbl) ~= "table" then return false end
+  if GBW.tbl == tbl and GBW.slot ~= nil and rawget(tbl, GBW.slot) == GBW.fn then return true end
+  local k, orig = member(tbl, GNBOWN)
+  if k == nil or type(orig) ~= "function" then return false end
+  if GBWK[orig] then
+    GBW.tbl, GBW.slot, GBW.fn = tbl, k, orig
+    return true
+  end
+  local w = function(c, ref, ...)
+    return gbown(c, ref, orig, ...)
+  end
+  GBWK[w] = true
+  tbl[k] = w
+  GBW.tbl, GBW.slot, GBW.fn = tbl, k, w
+  return true
+end
+
 -- is this a store id the door opens
 local function gopen(id)
   local n = tonumber(id)
   if n == nil then return false end
   n = math.floor(n)
   if n < 1 or n > GMAXID then return false end
+  local bpl, bpk = gbpans(n)
+  if bpk then return not bpl end
   if G.unlock ~= nil then return false end
   local m = gmemo().open
   if m[n] ~= nil then return m[n] end
@@ -1021,6 +1248,8 @@ local function glocked(id)
   if n < 1 or n > GMAXID then return false end
   if G.hex == nil or G.noClock then pcall(grefresh) end
   if G.unlock ~= nil then return false end
+  local bpl, bpk = gbpans(n)
+  if bpk then return bpl end
   gtoggles()
   local t = gtype(n)
   gcardload(t)
@@ -1091,6 +1320,10 @@ local function gtick()
   pcall(gcamopass)
   pcall(gopensay)
   pcall(gmodeclear)
+  if G.n % GPOLL_TICKS == 0 then
+    if GW.fn == nil then pcall(gwinarm) end
+    if GBW.fn == nil then pcall(gbwarm) end
+  end
   if S.tracker ~= nil and not S.tracker.done and G.n % 32 == 1 then pcall(S.tracker.install) end
   if G.wrappers < 2 then
     if G.gaveUp then return end
@@ -1119,12 +1352,17 @@ local function arm_locks()
   log("g11 armed (scope locksmith, " .. S.scopeN .. " ids)")
   G.defcache, G.usecache, G.rec = {}, {}, {}
   G.buycache, G.cardSaid, G.cardN, G.cardTry = {}, {}, 0, {}
+  G.bpbase, G.bpsaid, G.bpN = {}, {}, 0
   pcall(ginstall)
   if G.wrappers >= 2 then pcall(grefresh) end
   pcall(gpreflight)
   pcall(gdvars)
   pcall(gvalinstall)
   pcall(gtokwatch)
+  pcall(gbpcheck)
+  pcall(gbwarm)
+  local okw, win = pcall(gwinarm)
+  if okw and win then log("blueprint lock: the builds window lists every blueprint") end
   if S.tracker ~= nil then pcall(S.tracker.install) end
 end
 

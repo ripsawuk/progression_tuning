@@ -1,6 +1,6 @@
 local PART = "armory"
 
-local VERSION = "v11"
+local VERSION = "v12"
 local PREFIX = "progression_tuning: "
 -- the armory schedule gate a key with no name
 local SCHED = "0a6376439b2d40dc"
@@ -165,11 +165,11 @@ local VARS = {
   [75673] = { 151461, 152067 },
   [75675] = { 152124, 152433 },
 }
--- the loot id each version answers with
+-- the loot id each attachment version answers with
 local VAR = {}
 for row, ids in pairs(VARS) do
   local loot = ROWLOOT[row]
-  if loot ~= nil then
+  if loot ~= nil and KIND[loot] == 2 then
     for i = 1, #ids do VAR[ids[i]] = loot end
   end
 end
@@ -186,27 +186,17 @@ for row, ids in pairs(VARS) do
   end
 end
 
--- the blueprint ids the builds list opens the door for
-local BPID = {}
-for row, ids in pairs(VARS) do
-  local loot = ROWLOOT[row]
-  if loot ~= nil and KIND[loot] == 1 then
-    for i = 1, #ids do BPID[ids[i]] = true end
-  end
-end
-local BPIDN = 0
-for _ in pairs(BPID) do BPIDN = BPIDN + 1 end
--- the builds list window a call opens for blueprints
-local LISTING = 0
-
 -- the version ids under each kind of row
 local VARA, VARW = 0, 0
-for _, base in pairs(VAR) do
-  local k = KIND[base]
-  if k == 1 then
-    VARW = VARW + 1
-  elseif k == 2 then
-    VARA = VARA + 1
+for row, ids in pairs(VARS) do
+  local loot = ROWLOOT[row]
+  if loot ~= nil then
+    local k = KIND[loot]
+    if k == 1 then
+      VARW = VARW + #ids
+    elseif k == 2 then
+      VARA = VARA + #ids
+    end
   end
 end
 
@@ -927,8 +917,6 @@ local function lk_answer(locks)
     local loot = tonumber(id)
     if loot ~= nil then
       loot = math.floor(loot)
-      -- a builds list in flight lists its blueprints
-      if LISTING > 0 and BPID[loot] == true then return false end
       local base = VAR[loot]
       if base ~= nil then loot = base end
       if LOCK[loot] ~= nil then
@@ -952,8 +940,6 @@ local function lk_open(locks)
     local loot = tonumber(id)
     if loot ~= nil then
       loot = math.floor(loot)
-      -- the window answers the open side the same way
-      if LISTING > 0 and BPID[loot] == true then return true end
       local base = VAR[loot]
       if base ~= nil then loot = base end
       if LOCK[loot] ~= nil then
@@ -1019,117 +1005,6 @@ local function wrap_own()
   return true
 end
 
-local BP = { tbl = nil, slot = nil, fn = nil }
-local BPK = setmetatable({}, { __mode = "k" })
-local GETID = nil
-
--- the loot id a ref answers to
-local function ref_id(ref)
-  if type(ref) ~= "string" then return nil end
-  local f = GETID
-  if f == nil then
-    local t = rawget(_G, "LOOT")
-    f = fn_of(t, "getitemid") or fn_of(t, "getitemidfromref")
-    if f == nil then return nil end
-    GETID = f
-  end
-  local ok, v = pcall(f, ref)
-  if not ok then return nil end
-  return tonumber(v)
-end
-
--- no blueprint of ours counts until the gun is earned
-local function bp_ask(c, ref, orig, ...)
-  local loot = ref_id(ref)
-  if loot ~= nil then
-    loot = math.floor(loot)
-    local base = VAR[loot]
-    if base ~= nil then loot = base end
-    if LOCK[loot] ~= nil then
-      local ok, free = pcall(lk_free, loot)
-      if not (ok and free == true) then return false end
-    end
-  end
-  local ok, v = pcall(orig, c, ref, ...)
-  if not ok then return false end
-  return v
-end
-
--- the slot the client keeps its blueprint test under
-local function bp_slot(tbl)
-  local k = hash_of("ownsBlueprintOfWeapon")
-  if k ~= nil then
-    local f = rawget(tbl, k)
-    if type(f) == "function" then return k, f end
-  end
-  return slot_of(tbl, "ownsBlueprintOfWeapon")
-end
-
--- wraps the blueprint test once a vm
-local function wrap_bp()
-  local tbl = rawget(_G, "PROGRESSION")
-  if type(tbl) ~= "table" then return false end
-  if BP.tbl == tbl and BP.slot ~= nil and rawget(tbl, BP.slot) == BP.fn then return true end
-  local k, orig = bp_slot(tbl)
-  if k == nil or type(orig) ~= "function" then return false end
-  if BPK[orig] then
-    BP.tbl, BP.slot, BP.fn = tbl, k, orig
-    return true
-  end
-  local w = function(c, ref, ...)
-    return bp_ask(c, ref, orig, ...)
-  end
-  BPK[w] = true
-  OURS[w] = true
-  tbl[k] = w
-  BP.tbl, BP.slot, BP.fn = tbl, k, w
-  return true
-end
-
-local LW = { tbl = nil, slot = nil, fn = nil }
-local LWK = setmetatable({}, { __mode = "k" })
-
--- the option shape the builds list call passes
-local function list_shape(opt)
-  if type(opt) ~= "table" then return false end
-  if opt.forceLoot ~= true or opt.excludeBaseWeapons ~= true then return false end
-  if type(opt.byWeapons) ~= "table" then return false end
-  if opt.checkOwnership == false then return false end
-  if opt.onlyIncludeUnownedItem or opt.includeBundleItems or opt.exclusiveBundleItems or opt.forceCustom then
-    return false
-  end
-  return true
-end
-
--- wraps the builds getter once a menu vm
-local function wrap_list()
-  if vm_kind() ~= "menu" then return false end
-  local tbl = rawget(_G, "WEAPON")
-  if type(tbl) ~= "table" then return false end
-  if LW.tbl == tbl and LW.slot ~= nil and rawget(tbl, LW.slot) == LW.fn then return true end
-  local k, orig = slot_of(tbl, "getmodifications")
-  if k == nil or type(orig) ~= "function" then return false end
-  if LWK[orig] then
-    LW.tbl, LW.slot, LW.fn = tbl, k, orig
-    return true
-  end
-  local w = function(c, opt, ...)
-    local sok, on = pcall(list_shape, opt)
-    if not sok then on = false end
-    if on then LISTING = LISTING + 1 end
-    local res = pack(pcall(orig, c, opt, ...))
-    if on then LISTING = LISTING - 1 end
-    if not res[1] then return {} end
-    if UNPACK == nil then return res[2] end
-    return UNPACK(res, 2, res.n)
-  end
-  LWK[w] = true
-  OURS[w] = true
-  tbl[k] = w
-  LW.tbl, LW.slot, LW.fn = tbl, k, w
-  return true
-end
-
 -- wraps the doors two rules once each
 lk_arm = function()
   local locks = S.locks
@@ -1158,9 +1033,8 @@ local function armable()
 end
 
 -- what this vm needs in place before the timer rests
-local ARMF = { gate = false, press = false, answer = false, lock = false, own = false, obw = false,
-  bpwin = false, craft = false }
-local FIELDS = { "gate", "press", "answer", "lock", "own", "obw", "bpwin", "craft" }
+local ARMF = { gate = false, press = false, answer = false, lock = false, own = false, craft = false }
+local FIELDS = { "gate", "press", "answer", "lock", "own", "craft" }
 
 local card_word
 
@@ -1170,8 +1044,6 @@ local function attempt()
   ARMF.press = wrap_press()
   ARMF.answer = wrap_answer()
   ARMF.own = wrap_own()
-  ARMF.obw = wrap_bp()
-  ARMF.bpwin = wrap_list()
   ARMF.lock = lk_arm()
   ARMF.craft = craft_arm()
   if ARMF.press then wrap_focus() end
@@ -1180,7 +1052,7 @@ end
 
 -- every wrapper this vm needs is in place
 local function armed(st)
-  if not (st.gate and st.answer and st.lock and st.own and st.obw) then return false end
+  if not (st.gate and st.answer and st.lock and st.own) then return false end
   if vm_kind() == "menu" then return st.press == true end
   return st.craft == true
 end
@@ -1192,8 +1064,7 @@ local LATE_ON = false
 local function arm_line(st)
   log("armory armed " .. VERSION .. " vm=" .. vm_kind() .. " gate=" .. word(st.gate)
     .. " pick=" .. word(st.press) .. " answer=" .. word(st.answer) .. " lock=" .. word(st.lock)
-    .. " own=" .. word(st.own) .. " obw=" .. word(st.obw) .. " bpwin=" .. word(st.bpwin)
-    .. " vars=" .. VARA .. "+" .. VARW .. " list=" .. BPIDN .. " craft=" .. craft_word()
+    .. " own=" .. word(st.own) .. " vars=" .. VARA .. "+" .. VARW .. " craft=" .. craft_word()
     .. " card=" .. card_word()
     .. " rows=" .. #ROWS .. " pick=" .. tostring(Ar.pick or 0)
     .. " q=" .. tostring(Ar.q and #Ar.q or 0))
@@ -1226,7 +1097,7 @@ local function arm(st)
   armq()
   arm_line(st)
   FIRST = { gate = st.gate, press = st.press, answer = st.answer, lock = st.lock, own = st.own,
-    obw = st.obw, bpwin = st.bpwin, craft = st.craft }
+    craft = st.craft }
   LATE_ON = not armed(st)
 end
 
