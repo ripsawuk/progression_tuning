@@ -50,9 +50,7 @@ own, `%TEMP%\progression-tuning\armory_advance_off.txt`, which leaves the pay ru
 **It keeps the armory pick alive.** The Armory's pick has the same problem: the press happens in the front end and
 the row has to outlive the process. The hook registers `pt_armory_ch` at boot from `cod25\players\pt_armory.txt` -
 `a=<row>` and the advance queue `q=<row,row,...>` in the game's own order - adopts every press the mod writes to
-that dvar, keeps the file in step, and moves the pick on when the row it names is paid to completion. One line is
-said the first time the menu's ev=853 reaches the hook, which is what decides whether the pick can be read from the
-event itself.
+that dvar, keeps the file in step, and moves the pick on when the row it names is paid to completion.
 
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the

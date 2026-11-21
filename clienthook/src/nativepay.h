@@ -41,9 +41,6 @@
 //   byte 0x70  i64  entry value [i]       (8 bytes each, from byte 0x70)
 #define NP_EVENT_XP_ID 0x5Fu    // ev=95, the weapon-XP event (mp_addxp)
 #define NP_EVENT_MATCH_START 0x6Du // ev=109, the match boundary (the event `ae_events.log` prints as `ev=109`)
-#define NP_EVENT_ARMORY_START 853u // ev=853, the menu's armory pick (armoryutils senduserevent)
-#define NP_KEY_GAMEMODE 8       // iw9_gamemode, the first key the pick carries
-#define NP_KEY_ACTIVATE_ID 74   // iw9_activate_id, the armory row the page showed
 #define NP_FIELD_45 0x2Du       // the game's own per-kill weapon XP, crit included
 #define NP_FIELD_44 0x2Cu       // the weapon (loot) id
 #define NP_ENTRY_ID_OFF 0x08u

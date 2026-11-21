@@ -430,22 +430,6 @@ static void test_wrapper(void)
         ok(LOGN == 1, "boundary: and ev=95 still pays on its own path (one line)", "");
         nativepay_set_match_reset_hook(NULL);
     }
-    {
-        // the armory census: ev=853 is the menu's pick, and the one line proves the payload is readable here
-        static const unsigned short ids[] = {8, 74};
-        static const long long vals[] = {2048, 75680};
-        make_event(ev, 853, ids, vals, 2);
-        nativepay_reset_for_test();
-        log_reset();
-        OBS_CALLS = 0;
-        unsigned long long r = nativepay_call(ev);
-        ok(r == 99 && OBS_CALLS == 1, "census: the 853 event reaches the client's own function once", "");
-        ok(LOGN == 1 && strcmp(log_at(0), "armory: ev=853 n=2 8=2048 74=75680") == 0,
-           "census: one line the first time the id arrives, with its count and both keys", log_at(0));
-        nativepay_call(ev);
-        ok(LOGN == 1, "census: a second 853 writes no second line", "");
-        ok(OBS_CALLS == 2, "census: and it passes through too", "");
-    }
     nativepay_set_match_reset_hook(NULL);
 }
 
@@ -1379,9 +1363,9 @@ static int mode_proxy(const wchar_t *dll)
        "proxy: the resolved module's path is under the Windows system directory", sys_a);
     ok(_wcsicmp(sys_path, ours_path) != 0, "proxy: and it is not this DLL's path", sys_a);
     // and the module called "ours" really is this build, in memory - not a stray system copy at that path
-    // (the literal is this build's banner; it moves with the banner, build 36's is 474 chars - build 27's
+    // (the literal is this build's banner; it moves with the banner, build 37's is 474 chars - build 27's
     // 490-char one formatted a 513-byte line into log_line's 512-byte buffer, docs\B27-NOLAUNCH.md 3.3)
-    ok(module_carries(ours, "proxy attached (version.dll build 36"),
+    ok(module_carries(ours, "proxy attached (version.dll build 37"),
        "proxy: the module under test carries this build's banner in its own image", "");
     ok(!module_carries(sys, "proxy attached"), "proxy: the system module does not carry it", "");
 

@@ -110,7 +110,6 @@ static volatile LONG NP_SUPPRESSED = 0;   // those the cap dropped
 static volatile LONG NP_BUSY = 0;         // one thread inside the altered window at a time
 static volatile LONG NP_CONCURRENT_NOTE = 0;
 static volatile LONG NP_CLOSING = 0;      // DllMain(DETACH) has taken over the final flush
-static volatile LONG NP_CENSUS_853 = 0;   // the one armory census line has been written
 
 static void np_lock(void)
 {
@@ -282,49 +281,6 @@ int np_u64(char *out, int cap, unsigned long long v)
 //   ev[0] = the event id, ev[1] = the entry count (dwords); entry i's id is a u16 at byte 8 + 2i and its value an
 //   i64 at byte 0x70 + 8i. `np_decode` says "this is ev=95 and it carries field 45" or it says no, and the wrapper
 //   then does what the client would have done.
-
-// one entry value by its id 1 = found
-static int np_entry(const unsigned int *ev, unsigned short want, long long *out)
-{
-    int n = 0;
-    memcpy(&n, (const unsigned char *)ev + 4, 4);
-    if (n < 0 || n > NP_ENTRY_MAX)
-    {
-        return 0;
-    }
-    if (NP_ENTRY_VAL_OFF + (long long)n * 8 > NP_RECORD_LEN)
-    {
-        return 0;
-    }
-    for (int i = 0; i < n; i++)
-    {
-        unsigned short id = 0;
-        memcpy(&id, (const unsigned char *)ev + NP_ENTRY_ID_OFF + (size_t)i * 2, 2);
-        if (id != want)
-        {
-            continue;
-        }
-        memcpy(out, (const unsigned char *)ev + NP_ENTRY_VAL_OFF + (size_t)i * 8, 8);
-        return 1;
-    }
-    return 0;
-}
-
-// one line the first time the menu ev 853 arrives
-static void np_census_armory(const unsigned int *ev)
-{
-    if (InterlockedCompareExchange(&NP_CENSUS_853, 1, 0) != 0)
-    {
-        return;
-    }
-    int n = 0;
-    long long gamemode = 0;
-    long long activate = 0;
-    memcpy(&n, (const unsigned char *)ev + 4, 4);
-    np_entry(ev, NP_KEY_GAMEMODE, &gamemode);
-    np_entry(ev, NP_KEY_ACTIVATE_ID, &activate);
-    np_logf("armory: ev=853 n=%d 8=%lld 74=%lld", n, gamemode, activate);
-}
 
 int np_decode(const unsigned int *ev, np_event *out)
 {
@@ -1073,12 +1029,6 @@ static unsigned long long np_call_inner(const unsigned int *ev)
     memcpy(&id, ev, 4);
     if (id != NP_EVENT_XP_ID)
     {
-        // the armory census runs before the boundary: one line and the event passes through untouched
-        if (id == NP_EVENT_ARMORY_START)
-        {
-            np_census_armory(ev);
-            return orig(ev);
-        }
         // The match boundary. This call site is inside the client's own dispatch loop, which runs for every event
         // before the `log_events` gate, so ev=109 arrives here whether or not the client is writing
         // `players\ae_events.log`. The reset runs first; the event itself is then passed to the client's own
@@ -1494,7 +1444,6 @@ void nativepay_reset_for_test(void)
     InterlockedExchange(&NP_SUPPRESSED, 0);
     InterlockedExchange(&NP_BUSY, 0);
     InterlockedExchange(&NP_CONCURRENT_NOTE, 0);
-    InterlockedExchange(&NP_CENSUS_853, 0);
     NP_PAY = NULL;
 }
 

@@ -1,4 +1,4 @@
-"""Offline proof of clienthook build 36 - the forced publish, the native payment, the bounded log, the token
+"""Offline proof of clienthook build 37 - the forced publish, the native payment, the bounded log, the token
 channel, the armory pick channel, the armory xp feed and the pay. Read-only
 with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
 (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
@@ -8,7 +8,7 @@ with respect to the game: nothing is installed, nothing is launched, and nothing
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 36.
+general offline proof and the banner it checks is the current one, build 37.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -264,7 +264,7 @@ def build_once():
 
 
 def main():
-    print("clienthook build 36 - the forced publish, the native payment, the bounded log, the token channel, "
+    print("clienthook build 37 - the forced publish, the native payment, the bounded log, the token channel, "
           "the armory pick, the xp feed, the pay - " + ROOT)
     print("")
     if not CLIENT:
@@ -293,8 +293,8 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 36", "version.dll build 36" in text)
-    for gone in ("version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
+    check("the banner says build 37", "version.dll build 37" in text)
+    for gone in ("version.dll build 36", "version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
                 "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
@@ -627,13 +627,8 @@ def main():
     check("the kill switch is the same mechanism as the payment's and the publish's",
           'L"%sprogression-tuning\\\\armory_off.txt"' in pk and "GetFileAttributesW(path)" in pk
           and "GetTempPathW(MAX_PATH, dir)" in pk)
-    check("the census names the event and the two payload keys the menu sends",
-          '"armory: ev=853 n=%d 8=%lld 74=%lld"' in read(os.path.join(SRC, "nativepay.c"))
-          and "#define NP_EVENT_ARMORY_START 853u" in read(os.path.join(SRC, "nativepay.h"))
-          and "#define NP_KEY_ACTIVATE_ID 74" in read(os.path.join(SRC, "nativepay.h"))
-          and "#define NP_KEY_GAMEMODE 8" in read(os.path.join(SRC, "nativepay.h")))
     check("the banner names the new channels", "pt_armory_ch" in proxy and "pt_armory_xp" in proxy
-          and "armory pay rides the award wrapper" in proxy and "version.dll build 36" in proxy)
+          and "armory pay rides the award wrapper" in proxy and "version.dll build 37" in proxy)
 
     # ---- 4f. the armory xp feed ---------------------------------------------------------------------
     print("")
@@ -754,7 +749,7 @@ def main():
     print("DRIVERS  every offline proof, with its count")
     drive(os.path.join(BUILD, "guard_test.exe"), ["self"], 19, "guard_test self")
     if os.path.isfile(CLIENT):
-        drive(os.path.join(BUILD, "nativepay_test.exe"), ["self", CLIENT], 82, "nativepay_test self")
+        drive(os.path.join(BUILD, "nativepay_test.exe"), ["self", CLIENT], 78, "nativepay_test self")
     else:
         note("nativepay_test self reads the client for its guard checks, and the game folder is a setting - "
              "KRONOS_GAME_DIR is not set, so that driver was skipped")
@@ -924,7 +919,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 36's banner", "version.dll build 36" in armed_log)
+    check("the log carries build 37's banner", "version.dll build 37" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):
