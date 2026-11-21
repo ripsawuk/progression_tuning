@@ -459,7 +459,6 @@ local function weekly_body(row, target)
     log("weekly body=empty")
     return ""
   end
-  log("weekly body=" .. clip(v, 40))
   return v
 end
 

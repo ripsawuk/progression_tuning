@@ -184,28 +184,19 @@ local function ret_rows()
     if val[a] ~= val[b] then return val[a] > val[b] end
     return a.id < b.id
   end)
-  local kind = RET_KIND
-  s.kind = kind
+  s.kind = RET_KIND
   local i = 1
-  local sample, samplen = {}, 0
   while i <= sn and s.n < RET_CAP do
     local r = src[i]
     local th, k, loot1 = ret_tiers(r.id, cols, r.cell)
     if k > 0 then
       s.n = s.n + 1
       s.rows[s.n] = { id = r.id, th = th, n = k, ref = r.ref, loot1 = loot1 }
-      if samplen < 6 then
-        samplen = samplen + 1
-        sample[samplen] = tostring(r.id)
-      end
     end
     i = i + 1
   end
   s.nzm = zm
   s.built = true
-  log("reticle rows n=" .. s.n .. " zm=" .. zm .. " mode=" .. tostring(mode) .. " kind=" .. tostring(kind)
-    .. " sample=" .. (samplen > 0 and table.concat(sample, ",") or "none") .. " cap=" .. RET_CAP
-    .. (i <= sn and (" clipped=" .. tostring(sn - i + 1)) or ""))
 end
 
 -- queues one reticle card once
@@ -235,8 +226,6 @@ local function ret_check()
       local prev = s.seen[k]
       if prev == nil then
         s.seen[k] = v
-        log("reticle prime id=" .. tostring(row.id) .. " row=" .. tostring(row.ref) .. " value="
-          .. tostring(v) .. " tiers=" .. row.n .. " hits=" .. count_passed(row.th, row.n, v))
       elseif v > prev then
         s.seen[k] = v
         local was = count_passed(row.th, row.n, prev)
@@ -244,9 +233,6 @@ local function ret_check()
         while was < now do
           was = was + 1
           local target = row.th[was]
-          log("reticle cross id=" .. tostring(row.id) .. " row=" .. tostring(row.ref) .. " value="
-            .. tostring(v) .. " was=" .. tostring(prev) .. " target=" .. tostring(target)
-            .. " tier=" .. tostring(was))
           ret_card(row, target, was, v)
         end
       elseif v < prev then

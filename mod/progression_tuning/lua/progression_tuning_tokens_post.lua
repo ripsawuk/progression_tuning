@@ -11,23 +11,12 @@ local A = S.api
 
 local function log(...) return A.log(...) end
 local function clip(...) return A.clip(...) end
-local function gstr(...) return A.gstr(...) end
 local function dv(...) return A.dv(...) end
 local function empty(...) return A.empty(...) end
 local function fn_of(...) return A.fn_of(...) end
 local function member(...) return A.member(...) end
 local function said(...) return A.said(...) end
-local function vm_mark(...) return A.vm_mark(...) end
 
--- the eight shipped token ids weapon then operator
-local TOK_IDS = { 84672, 84673, 84674, 84675, 84677, 84678, 84679, 84680 }
--- the one debug switch that stands every lock down
-local UNLOCK = { "zm_unlock_all" }
--- the published challenge text a header and chunks
-local CH_VER = "zm_ch_ver"
-local CH_PART = "zm_ch_s"
-local CH_MAX = 96
-local FIRST_TICK, RETRY_TICKS, LAST_TICK = 40, 40, 240
 -- the aeid each shipped token activates
 local AE_LOOT = {
   [48364] = 84672, [48365] = 84675, [48366] = 84673, [48367] = 84674,
@@ -44,7 +33,7 @@ local AE_EV = "onachievementactivated"
 
 local T = S.tokens
 if type(T) ~= "table" then
-  T = { done = false, n = {}, used = 0, armed = false, x = 0 }
+  T = { n = {}, used = 0, armed = false, x = 0 }
   S.tokens = T
 end
 T.p, T.w, T.sn = T.p or 0, T.w or 0, T.sn or 0
@@ -60,7 +49,6 @@ local C_SLOT = {}
 for i, l in ipairs(C_IDS) do C_SLOT[l] = i end
 -- the gsc status read only
 local ST = "pt_tokens_st"
-local ST_MS = 30000
 local HD = rawget(_G, "xhashdvar")
 local H = rawget(_G, "xhash")
 -- the menu reader and the two token end times
@@ -91,9 +79,7 @@ local function clock()
   if CLK.ms == nil then CLK.ms = fn_of(E, "GetMilliseconds") end
   if CLK.pz == nil then CLK.pz = fn_of(E, "IsPaused") end
   if CLK.fe == nil then CLK.fe = fn_of(E, "InFrontend") end
-  if not said("p2clock") then return end
-  log("tokens P2 clock ip=" .. (CLK.pz and 1 or 0) .. " inf=" .. (CLK.fe and 1 or 0)
-    .. " ms=" .. (CLK.ms and 1 or 0))
+  if not said("p2ms") then return end
   if CLK.ms == nil then log("tokens clock missing GetMilliseconds") end
   if CLK.pz == nil then log("tokens clock missing IsPaused") end
   if CLK.fe == nil then log("tokens clock missing InFrontend") end
@@ -146,21 +132,6 @@ local function chread()
   return tonumber(p), tonumber(w), tonumber(n), cparse(v), x
 end
 
--- the channel string as it stands
-local function chraw()
-  local v = dv(CH)
-  if v == nil or empty(v) then return "missing" end
-  return v
-end
-
--- says the channel string when it moved
-local function chsayraw()
-  local v = chraw()
-  if v == T.rawl then return end
-  T.rawl = v
-  log("tokens P2 raw=" .. v)
-end
-
 local DSET
 -- writes the channel and says if it landed
 local function chwrite()
@@ -178,20 +149,8 @@ local function chwrite()
   local _, _, n = chread()
   local hit = n == T.sn
   T.wpend = not hit
-  chsayraw()
   if not hit and said("p2chmiss") then log("tokens ch missing") end
   return hit
-end
-
--- says the channel when its state moved
-local function chsay(force)
-  local sig = math.floor(T.p / 60) .. "," .. math.floor(T.w / 60) .. ","
-    .. tostring(T.p == 0) .. tostring(T.w == 0) .. ","
-    .. tostring(T.paused) .. tostring(T.front)
-  if force ~= true and sig == T.sig then return end
-  T.sig = sig
-  log("tokens P2 ch=" .. tostring(T.p) .. "/" .. tostring(T.w) .. " n=" .. tostring(T.sn)
-    .. " paused=" .. (T.paused and 1 or 0) .. " front=" .. (T.front and 1 or 0))
 end
 
 local EV_OURS = setmetatable({}, { __mode = "k" })
@@ -212,15 +171,6 @@ local function xsay()
   T.xl = T.x
   log("tokens P5 perm=" .. tostring(T.x))
   evsay()
-end
-
--- says the counts when they moved
-local function csay(force)
-  local sig = "nil"
-  if T.c ~= nil then sig = table.concat(T.c, ",") end
-  if force ~= true and sig == T.csig then return end
-  T.csig = sig
-  log("tokens P4 c=" .. sig .. " src=" .. tostring(T.csrc or "seed"))
 end
 
 -- the record answer for one loot id
@@ -253,10 +203,7 @@ end
 local function cfill()
   if T.c ~= nil then return T.c end
   T.c = cseed()
-  if T.c ~= nil then
-    T.csrc = "seed"
-    csay()
-  end
+  if T.c ~= nil then T.csrc = "seed" end
   return T.c
 end
 
@@ -266,7 +213,6 @@ local function cspend(aeid)
   local i = (loot ~= nil) and C_SLOT[loot] or nil
   if i == nil or T.c == nil then return end
   if T.c[i] > 0 then T.c[i] = T.c[i] - 1 end
-  csay()
 end
 
 -- sets every count and writes the channel once
@@ -279,7 +225,6 @@ local function cset(n)
     i = i + 1
   end
   T.c, T.csrc = c, "opt"
-  csay(true)
   chwrite()
   return true
 end
@@ -307,10 +252,7 @@ local function psync()
   T.base = nil
   T.x = x or 0
   xsay()
-  if c ~= nil then
-    T.c, T.csrc = c, "chan"
-    csay()
-  end
+  if c ~= nil then T.c, T.csrc = c, "chan" end
   return true
 end
 
@@ -351,14 +293,6 @@ local function wants(keys, name)
   return ok and hit == true
 end
 
--- says the answer when the seconds moved
-local function say_end(p, w, now, ans)
-  if p == T.p3p and w == T.p3w then return end
-  T.p3p, T.p3w = p, w
-  log("tokens P3 end p=" .. tostring(p) .. " w=" .. tostring(w) .. " now=" .. tostring(now)
-    .. " ans=" .. tostring(ans))
-end
-
 -- the installed reader and its hashed key
 local function reader()
   local OP = rawget(_G, "OnlineProgression")
@@ -389,20 +323,16 @@ local function wrap_end()
     if type(keys) ~= "table" then return res end
     local p, sec = remain()
     local now = utc()
-    local ans = 0
     if now ~= nil then
       if p > 0 and wants(keys, DX_P) then
         if type(res) ~= "table" then res = {} end
         res[DX_P] = math.floor((now + p) * 1000)
-        ans = 1
       end
       if sec > 0 and wants(keys, DX_W) then
         if type(res) ~= "table" then res = {} end
         res[DX_W] = math.floor((now + sec) * 1000)
-        ans = 1
       end
     end
-    say_end(p, sec, now, ans)
     return res
   end
   if not pcall(function() OP[k] = w end) then
@@ -502,13 +432,6 @@ local LOC_NEW = "Active XP Tokens count down with in-game time"
 local LOC_LOW = string.lower(LOC_OLD)
 local LOC_OURS = setmetatable({}, { __mode = "k" })
 
--- says the override once with its count
-local function locsay()
-  T.lochit = (T.lochit or 0) + 1
-  if not said("loctxt") then return end
-  log("tokens txt key=" .. LOC_NAME .. " hit=" .. T.lochit)
-end
-
 -- the key in the shapes the menu may pass
 local function loc_key(v)
   if type(v) == "string" then
@@ -534,15 +457,9 @@ local function wrap_loc()
     return true
   end
   local w = function(s, ...)
-    if loc_key(s) then
-      locsay()
-      return LOC_NEW
-    end
+    if loc_key(s) then return LOC_NEW end
     local res = o(s, ...)
-    if type(res) == "string" and string.lower(res) == LOC_LOW then
-      locsay()
-      return LOC_NEW
-    end
+    if type(res) == "string" and string.lower(res) == LOC_LOW then return LOC_NEW end
     return res
   end
   if not pcall(function() E[k] = w end) then return false end
@@ -554,32 +471,10 @@ local function wrap_loc()
   return true
 end
 
--- the status without its heartbeat
-local function stkey(v)
-  return (string.gsub(v, "h=[^;]*;?", ""))
-end
-
--- says the gsc status when it moved
-local function stsay(front)
+-- says the status dvar is missing once
+local function stsay()
   local v = dv(ST)
-  if v == nil or empty(v) then
-    if said("p2stmiss") then log("tokens P2 st=missing") end
-    return
-  end
-  local k = stkey(v)
-  local ms, t = now_ms(), S.tick or 0
-  local due = false
-  if front ~= true then
-    if ms ~= nil then
-      due = T.stms ~= nil and (ms - T.stms) >= ST_MS
-    else
-      due = T.sttk ~= nil and (t - T.sttk) >= 120
-    end
-  end
-  if k == T.stk and not due then return end
-  T.stk = k
-  if ms ~= nil then T.stms = ms else T.sttk = t end
-  log("tokens P2 st=" .. v)
+  if (v == nil or empty(v)) and said("p2stmiss") then log("tokens P2 st=missing") end
 end
 
 -- adds one activation to its category
@@ -587,22 +482,16 @@ local function grant(id)
   local m = MINS[id]
   if m == nil then return end
   local op = OP[id] == true
-  local held = op and T.p or T.w
   if op then T.p = T.p + m * 60 else T.w = T.w + m * 60 end
-  if held > 0 then
-    log("tokens P2 stack own=" .. tostring(AE_LOOT[id]) .. " ch=" .. tostring(T.p) .. "/" .. tostring(T.w))
-  end
   chwrite()
-  chsay(true)
 end
 
 -- the countdown one tick
 local function tick_chan()
   clock()
   local front, paused = flags()
-  local moved = (front ~= T.front) or (paused ~= T.paused)
   T.front, T.paused = front, paused
-  if psync() then moved = true end
+  psync()
   local ms = now_ms()
   local live = (not front) and (not paused) and (T.p > 0 or T.w > 0) and T.x ~= 1
   local hit = false
@@ -620,35 +509,12 @@ local function tick_chan()
           if T.p > 0 then T.p = math.max(0, T.p - n) end
           if T.w > 0 then T.w = math.max(0, T.w - n) end
           hit = true
-          moved = true
         end
       end
     end
   end
   if hit or T.wpend then chwrite() end
-  if moved then chsay() end
-  stsay(front)
-end
-
--- one answer for one table and id
-local function ownof(f, id)
-  if type(f) ~= "function" then return "nil" end
-  local ok, v = pcall(f, 0, id)
-  if not ok then return "err" end
-  if v == true then return "1" end
-  if v == false then return "0" end
-  return clip(v, 8)
-end
-
--- the switch the door answers to
-local function unlock()
-  local i = 1
-  while i <= #UNLOCK do
-    local v = dv(UNLOCK[i])
-    if v ~= nil and v ~= "" and v ~= "0" then return UNLOCK[i] end
-    i = i + 1
-  end
-  return nil
+  stsay()
 end
 
 -- hands one event to the game own root
@@ -674,21 +540,17 @@ local function finish(p)
   local sets = rawget(_G, "SOUND_SETS")
   local cue = type(sets) == "table" and type(sets.popups) == "table" and sets.popups.tokenUseSuccess or nil
   local play = fn_of(rawget(_G, "Engine"), "PlaySound")
-  local snd = (play ~= nil and cue ~= nil and pcall(play, cue)) and 1 or 0
+  if play ~= nil and cue ~= nil then pcall(play, cue) end
   local set = fn_of(X, "settokenuselocked")
   if set ~= nil then pcall(set, p.c, false) end
-  local toast = 0
   local gt = fn_of(X, "gettoastdatafromachievementid")
   local notif = fn_of(rawget(_G, "NOTIFICATIONS"), "creategenericnotification")
   if gt ~= nil and notif ~= nil and p.id ~= nil then
     local okd, d = pcall(gt, p.id)
     if okd and type(d) == "table" and d.notificationRef ~= nil then
-      toast = pcall(notif, p.c, d.notificationRef, { body = d.duration }) and 1 or 0
+      pcall(notif, p.c, d.notificationRef, { body = d.duration })
     end
   end
-  local loot = p.id ~= nil and AE_LOOT[p.id] or nil
-  log("tokens Q12 done used=" .. tostring(T.used) .. " snd=" .. snd .. " toast=" .. toast
-    .. " own=" .. tostring(loot) .. "=" .. tostring(T.n[p.id]))
 end
 
 -- runs the steps on the tick after the press
@@ -701,7 +563,7 @@ end
 
 -- the kind ids this vm gives its token achievement
 local function token_kind()
-  local set, ks, ss, n = {}, {}, {}, 0
+  local set, ks, n = {}, {}, 0
   local ek = fn_of(rawget(_G, "Challenge"), "GetAEKindID")
   local h = rawget(_G, "xhash")
   local i = 1
@@ -721,7 +583,6 @@ local function token_kind()
           set[v] = name
           n = n + 1
           ks[n] = tostring(v)
-          ss[n] = name
         end
       end
       j = j + 1
@@ -731,15 +592,8 @@ local function token_kind()
   if n == 0 then
     set[AE_KIND] = "fallback"
     ks[1] = tostring(AE_KIND)
-    ss[1] = "fallback"
   end
-  local kvals, ksrc = table.concat(ks, ","), table.concat(ss, ",")
-  local line = kvals .. " src=" .. ksrc
-  if T.kline ~= line then
-    T.kline = line
-    log("tokens Q12 kind=" .. line)
-  end
-  return set, kvals
+  return set, table.concat(ks, ",")
 end
 
 -- the channel count for one activation id
@@ -829,67 +683,6 @@ local function install()
   return true
 end
 
--- the published locked ids and their count
-local function chset()
-  local ver = gstr(CH_VER)
-  if ver == nil or empty(ver) then return nil, "nover" end
-  local n = tonumber(string.match(ver, "^%d+:(%d+)$"))
-  if n == nil or n < 1 or n > CH_MAX then return nil, "ver=" .. clip(ver, 20) end
-  local parts, i = {}, 0
-  while i < n do
-    local p = gstr(CH_PART .. i)
-    if p == nil or empty(p) then return nil, "chunk" .. i end
-    parts[i + 1] = p
-    i = i + 1
-  end
-  local s = table.concat(parts)
-  local set, nl = {}, 0
-  for ln in string.gmatch(s, "[^\n]+") do
-    if string.sub(ln, 1, 1) == "l" then
-      local id = tonumber(string.sub(ln, 2))
-      if id ~= nil and set[id] == nil then
-        set[id] = true
-        nl = nl + 1
-      end
-    end
-  end
-  return { set = set, n = nl, ver = ver, bytes = #s }, nil
-end
-
--- the one diagnostic line
-local function report()
-  local loot = fn_of(rawget(_G, "Loot"), "IsOwned")
-  local prox = fn_of(rawget(_G, "PROXY_LOOT"), "IsOwned")
-  local cells, i = {}, 1
-  while i <= #TOK_IDS do
-    local id = TOK_IDS[i]
-    cells[i] = id .. "=" .. ownof(loot, id) .. "/" .. ownof(prox, id)
-    i = i + 1
-  end
-  local door = unlock()
-  local ch, why = chset()
-  local out = "tokens Q4b own=" .. table.concat(cells, ",")
-  if door ~= nil then
-    out = out .. " Q7 gate=" .. door
-  elseif ch == nil then
-    out = out .. " Q7 lset=? why=" .. why
-  else
-    local hits, nh = {}, 0
-    i = 1
-    while i <= #TOK_IDS do
-      if ch.set[TOK_IDS[i]] == true then
-        nh = nh + 1
-        hits[nh] = TOK_IDS[i]
-      end
-      i = i + 1
-    end
-    out = out .. " Q7 lset=" .. ch.n .. " hits=" .. (nh > 0 and table.concat(hits, ",") or "none")
-      .. " ver=" .. clip(ch.ver, 20) .. " bytes=" .. ch.bytes
-  end
-  out = out .. " Q12 act=" .. (T.armed and "1" or "0") .. "/" .. tostring(T.used)
-  return out .. " " .. vm_mark(), ch ~= nil
-end
-
 local function step()
   if not T.own then pcall(watch_count) end
   if not T.armed then pcall(install) end
@@ -898,19 +691,6 @@ local function step()
   if not T.loc then pcall(wrap_loc) end
   pcall(release)
   pcall(tick_chan)
-  if T.done then return end
-  local t = S.tick or 0
-  if t < FIRST_TICK then return end
-  if t > FIRST_TICK and t < LAST_TICK and (t % RETRY_TICKS) ~= 0 then return end
-  local okc, out, okp = pcall(report)
-  if not okc then
-    T.done = true
-    log("tokens Q4b own=? why=" .. clip(out, 60))
-    return
-  end
-  if okp ~= true and t < LAST_TICK then return end
-  T.done = true
-  log(out)
 end
 
 S.hooks.tokens = step
@@ -928,7 +708,6 @@ if c0 ~= nil then
 else
   cfill()
 end
-csay()
 clock()
 pcall(wrap_end)
 pcall(wrap_ev)
@@ -936,7 +715,5 @@ pcall(wrap_loc)
 
 local dp = rawget(_G, "DebugPrint") or rawget(_G, "print")
 if type(dp) == "function" then pcall(dp, "progression_tuning: part tokens armed") end
-
-chsayraw()
 
 if A.ready ~= nil then A.ready() end

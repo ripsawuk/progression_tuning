@@ -53,6 +53,14 @@ local ONOFF = { "Off", "On" }
 -- the row our two sit behind
 local ANCHOR = "5a6d0000000000be"
 
+-- the page row ids the menu builds a second time
+local DUP = {}
+for _, t in next, {
+  "a1", "a2", "a3", "a4", "a5", "a9", "ad", "ae", "af", "b0", "b1", "b2",
+  "b3", "b4", "b5", "b6", "b7", "b8", "b9", "ba", "bb", "bc", "bd", "be",
+  "a6", "a7", "a8", "ab", "ac", "bf", "c0", "c2", "c1", "c3", "c4", "aa",
+} do DUP["5a6d0000000000" .. t] = true end
+
 -- the four option members by their printed hash
 local SLOTS = {
   { name = "sections", hex = "7bf7f57679e8d050" },
@@ -226,10 +234,13 @@ local function idKey(item)
 end
 
 -- appends our item when it is not there
-local function addRow(items, id)
+local function addRow(items, id, key)
   if type(items) ~= "table" or leaf(items) then return false end
-  if type(items[1]) ~= "table" then return false end
-  local k = idKey(items[1])
+  local k = key
+  if k == nil then
+    if type(items[1]) ~= "table" then return false end
+    k = idKey(items[1])
+  end
   if k == nil then return false end
   local i = 1
   while i <= #items do
@@ -304,7 +315,7 @@ local function afterAnchor(items, key)
     if out[i] ~= items[i] then same = false end
     i = i + 1
   end
-  if not same then log("options row moved after=" .. ANCHOR) end
+  if not same and once("moved") then log("options row moved after=" .. ANCHOR) end
   return out
 end
 
@@ -348,28 +359,6 @@ local function findMine(t, depth, acc)
   return nil
 end
 
--- a value in its printed form
-local function shown(v)
-  local p = printed(v)
-  if p ~= nil and #p > 4 then return "#x" .. p end
-  return tostring(v)
-end
-
--- the first three items as printed
-local function dump(items, key)
-  if not once("items") then return end
-  local p = printed(key) or "?"
-  local out = {}
-  local i = 1
-  while i <= #items and i <= 3 do
-    local it = items[i]
-    local v = (type(it) == "table") and rawget(it, key) or nil
-    out[#out + 1] = p .. "=" .. shown(v)
-    i = i + 1
-  end
-  log("options items " .. table.concat(out, " "))
-end
-
 local SKIPS = {}
 
 -- says a skip the first few times
@@ -399,7 +388,6 @@ local function move(...)
     skip("no key")
     return
   end
-  dump(items, key)
   reorder(items, key)
 end
 
@@ -486,15 +474,6 @@ local function tokenRow() return mkRow(ID, NAME, DESC, LABELS, DROP, answer) end
 -- the permanent row the options page shows
 local function permRow() return mkRow(ID2, NAME2, DESC2, ONOFF, TOG, flip) end
 
-local HITS = {}
-
--- counts a data hit and says the first
-local function hit(id)
-  local n = (HITS[id] or 0) + 1
-  HITS[id] = n
-  if n == 1 then log("options data id=" .. id .. " hit=" .. tostring(n)) end
-end
-
 -- the first stock id in a list
 local function sibling(items)
   if type(items) ~= "table" or type(items[1]) ~= "table" then return nil end
@@ -528,7 +507,6 @@ end
 local function wrapData(cur)
   return function(id, ...)
     if id == ID or id == ID2 then
-      hit(id)
       local b = nil
       if id == ID then b = tokenRow() else b = permRow() end
       if b == nil and once("notpl" .. id) then log("options data id=" .. id .. " no bundle") end
@@ -546,9 +524,56 @@ local function wrapData(cur)
   end
 end
 
+-- the tail of an id in its printed form
+local function tail(v)
+  local h = hexOf(v)
+  if type(h) ~= "string" then h = printed(v) end
+  if type(h) ~= "string" then return nil end
+  if #h > 16 then return string.sub(h, -16) end
+  return h
+end
+
+-- true when an id is one the menu builds again
+local function again(v)
+  local h = tail(v)
+  if h == nil then return false end
+  return DUP[h] == true
+end
+
+-- drops the rows the menu builds again above us
+local function strip(items, key)
+  if type(items) ~= "table" or key == nil then return end
+  local n, run = #items, 0
+  while run < n do
+    local it = items[run + 1]
+    local v = (type(it) == "table") and rawget(it, key) or nil
+    if v == nil or not again(v) then break end
+    run = run + 1
+  end
+  if run == 0 then return end
+  local i = 1
+  while i + run <= n do
+    items[i] = items[i + run]
+    i = i + 1
+  end
+  while i <= n do
+    items[i] = nil
+    i = i + 1
+  end
+end
+
+-- true when another wrapper holds the slot
+local function over(O, key, w)
+  if type(O) ~= "table" or key == nil or type(w) ~= "function" then return false end
+  local ok, got = pcall(rawget, O, key)
+  if not ok or type(got) ~= "function" then return false end
+  return got ~= w
+end
+
 -- appends our rows to a debug list
-local function wrapList(cur)
-  return function(tab, c, idx, ...)
+local function wrapList(cur, key)
+  local w
+  w = function(tab, c, idx, ...)
     local res = pack(cur(tab, c, idx, ...))
     local ok = pcall(function()
       if debugId() == nil then
@@ -557,14 +582,16 @@ local function wrapList(cur)
       end
       if not isDebug(tab) then return end
       local items = itemsOf(res[1])
-      local a = addRow(items, ID)
-      local b = addRow(items, ID2)
-      if a or b then log("options row added") end
+      local k = (type(items) == "table" and type(items[1]) == "table") and idKey(items[1]) or nil
+      if over(rawget(_G, "OPTIONS"), key, w) then strip(items, k) end
+      addRow(items, ID, k)
+      addRow(items, ID2, k)
       tplGrab(sibling(items))
     end)
     if not ok and once("raise") then log("options append raised") end
     return unpackAll(res)
   end
+  return w
 end
 
 -- the final list wrapper the page is built from
@@ -601,7 +628,7 @@ local function place(O, k, cur, name, make)
   local rec = REG[name]
   if st == "rebuilt" then rec = nil end
   if rec ~= nil and rec.n >= INSTALLS then return false end
-  local w = make(cur)
+  local w = make(cur, k)
   if not pcall(function() O[k] = w end) then return false end
   local got = nil
   pcall(function() got = O[k] end)

@@ -86,12 +86,18 @@ The cases:
       table that is not the debug tab alone; the page build moves both to sit directly after the
       anchor and leaves the stock order otherwise; the dropdown answers the 1-based index of the
       lowest current count and writes the count it is given, the toggle answers and sets the permanent
-      flag, and with no page at all the part arms nothing.
+      flag, and with no page at all the part arms nothing; the same rows through both layers of the
+      debug page: the inner layer puts its own rows above the stock ones and drops the dead unlock row,
+      the page's second layer then takes the slot over ours and every row is still there once - the
+      block the inner layer built is dropped rather than repeated - the page reads the same either way,
+      and rebuilds plus a repeat hook leave one of every row.
   23. the token channel (`pt_tokens_ch`): a full line is read into its fields and written back with its
       serial risen and every other field kept; a field this build does not parse is ignored on the read
-      and dropped by the next write; a line with no counts seeds them from the client's own record and
-      says so, a line with no channel seeds nothing; a serial another vm wrote is adopted on the next
-      tick by the seconds, the counts and the flag, and the same serial is not adopted twice;
+      and dropped by the next write; a line with no counts seeds them from the client's own record
+      without printing a line, a line with no channel seeds nothing; a serial another vm wrote is adopted
+      on the next tick by the seconds, the counts and the flag, and the same serial is not adopted twice;
+      the part's own console output is its armed line and its refusals - no per write, per change or
+      census line survives (`LOG_REMOVED`);
 
 The mod is ten `*_post.lua` parts (D96 split): main, weaponxp, splash, camos, challenges, prison,
 reticles, diag, options, tokens. `load()` runs all ten in that order; `SRC` is their concatenation and
@@ -760,6 +766,117 @@ BUILT = 0
 MenuBuilder = { BuildRegisteredType = function(t, data) BUILT = BUILT + 1 return { t = t } end }
 """
 
+# the debug page's two layers, stubbed the way they nest: the inner one wraps the stock section builder
+# before the mod loads and the outer one wraps whatever holds the slot when the page is built
+OPTIONSLAY = r"""
+SID = xhash("settingId")
+SNAME = xhash("settingLabel")
+SDESC = xhash("settingDescription")
+SLIST = xhash("optionsList")
+SGLAB = xhash("labels")
+STYPE = xhash("widgetType")
+SGET = xhash("getter")
+SSET = xhash("setter")
+SKSECT = "#x7bf7f57679e8d050"
+SKDA = "#xe7686f7a9907efd8"
+SKDB = "#x9f6c4b08602983fb"
+DEADID = "3f58d23122dd68ae"
+DBGIDS = { "5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa" }
+HOBJ = {}
+for _, h in ipairs(DBGIDS) do
+  HOBJ[h] = setmetatable({}, { __tostring = function() return "#x3" .. h end })
+end
+function HOF(h) return HOBJ[h] or h end
+function STOCKLIST()
+  return { { [SID] = "5a6d0000000000ff" }, { [SID] = "#x7a1b0000000000a1" },
+    { [SID] = DEADID }, { [SID] = "2c9f0000000000d4" } }
+end
+function GROUPSECS(items)
+  local group = { [SNAME] = "Debug Options", [SLIST] = items }
+  return { { [SNAME] = "Debug Options", [SGLAB] = "debug", [SLIST] = { group } } }
+end
+function STOCKSECS(tab, c, idx)
+  if idx ~= nil then return { { [SNAME] = "Debug Options", [SLIST] = STOCKLIST() } } end
+  return GROUPSECS(STOCKLIST())
+end
+function STOCKBUNDLE(id)
+  return { [SID] = id, [SNAME] = "Stock row", [SDESC] = "a stock row of the page",
+    [SGLAB] = { "Off", "On" }, [SGET] = function() return 1 end,
+    [SSET] = function() end, [STYPE] = "ToggleButton" }
+end
+OPTIONS = { TabIds = { DEBUG = 7 } }
+OPTIONS[SKSECT] = STOCKSECS
+OPTIONS[SKDA] = function(id, c) return STOCKBUNDLE(id) end
+OPTIONS[SKDB] = function(id, c) return STOCKBUNDLE(id) end
+OPTIONS[xhash("createoptionlist")] = function(a, b, list, d)
+  return function(el, c) return list end
+end
+KHOOKS = {}
+K1 = nil
+function KRONOSHOOK()
+  local O = OPTIONS
+  if type(O) ~= "table" or type(O.TabIds) ~= "table" or O.TabIds.DEBUG == nil then return end
+  local function wrap(key, make)
+    local cur = O[key]
+    if type(cur) ~= "function" or cur == KHOOKS[key] then return end
+    KHOOKS[key] = make(cur)
+    O[key] = KHOOKS[key]
+  end
+  wrap(SKSECT, function(orig)
+    return function(tab, c, idx, ...)
+      if not (type(tab) == "table" and tab[SID] == O.TabIds.DEBUG) then return orig(tab, c, idx, ...) end
+      local stock = orig(tab, c)
+      local s1 = stock and stock[1]
+      local g1 = s1 and s1[SLIST] and s1[SLIST][1]
+      local items = {}
+      for _, h in ipairs(DBGIDS) do items[#items + 1] = { [SID] = HOF(h) } end
+      if g1 then
+        for _, it in ipairs(g1[SLIST] or {}) do
+          local sb = it[SID]
+          if tostring(sb) ~= DEADID then items[#items + 1] = { [SID] = sb } end
+        end
+      end
+      local group = { [SNAME] = g1 and g1[SNAME], [SLIST] = items }
+      local secs = { { [SNAME] = s1 and s1[SNAME], [SGLAB] = "debug", [SLIST] = { group } } }
+      if idx then return secs[idx] and secs[idx][SLIST] end
+      return secs
+    end
+  end)
+  wrap(SKDA, function(orig)
+    return function(sb, ...)
+      for _, h in ipairs(DBGIDS) do
+        if sb == HOF(h) then return STOCKBUNDLE(sb) end
+      end
+      return orig(sb, ...)
+    end
+  end)
+  wrap(SKDB, function(orig)
+    return function(sb, c, ...)
+      for _, h in ipairs(DBGIDS) do
+        if sb == HOF(h) then return STOCKBUNDLE(sb) end
+      end
+      return orig(sb, c, ...)
+    end
+  end)
+end
+KRONOSHOOK()
+K1 = OPTIONS[SKSECT]
+TAB = { [SID] = 7, "debug" }
+function IDS(secs)
+  local group = secs[1] and secs[1][SLIST] and secs[1][SLIST][1]
+  local out = {}
+  for _, it in ipairs(group and group[SLIST] or {}) do out[#out + 1] = tostring(it[SID]) end
+  return table.concat(out, ",")
+end
+function K1LIST() return IDS(K1(TAB, 0)) end
+function PAGELIST()
+  local secs = OPTIONS[SKSECT](TAB, 0)
+  local closer = OPTIONS[xhash("createoptionlist")](TAB, 0, secs, false)
+  closer(nil, 0)
+  return IDS(secs)
+end
+"""
+
 # the client's own record for the eight token ids, in the channel's own order
 TOKENREC = r"""
 TOKCNT = { [84677] = 1, [84680] = 2, [84678] = 3, [84679] = 4,
@@ -772,9 +889,44 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 230881
-SHIP_LUA_SHA = "C11C081452D66295BA425E0FF95FBCD3578E1C8616944D26083B1BA4A8CFCF13"
-LITERAL_SHA = "E3E23D1DA0E14F1CE595095332E347BB6D827F8F600C86E3528E2BB7CB98DDB8"
+SHIP_LUA_LEN = 217606
+SHIP_LUA_SHA = "75E9D0CC187B7CAF781076BA3951DDF73DA86813EB358B57C89D5C58FC95EF9F"
+LITERAL_SHA = "ABB686C55CB78B8B1AB0F57F332E8611A26C6EB4635019A8D326187B4CED100F"
+# the console cleanup of 2026-11-19: every line it took out
+LOG_REMOVED = [
+    " Q12 act=",
+    " Q7 gate=",
+    " Q7 lset=",
+    " Q7 lset=? why=",
+    " ch=",
+    " complete=",
+    " front=",
+    " hit=",
+    " ids (header ",
+    " inf=",
+    " ms=",
+    " paused=",
+    " snd=",
+    " toast=",
+    " ver=",
+    "g12 rewards ",
+    "options items ",
+    "options row added",
+    "prestige sets: player prestige %s from %s, %s sets open",
+    "tokens P2 ch=",
+    "tokens P2 raw=",
+    "tokens P2 st=",
+    "tokens P3 end p=",
+    "tokens P4 c=",
+    "tokens Q12 done used=",
+    "tokens Q12 kind=",
+    "tokens Q4b own=",
+    "tokens Q4b own=? why=",
+    "tokens txt key=",
+    "weekly body=",
+    "zm_ch_s",
+    "zm_ch_ver",
+]
 LITERAL_REMOVED = [
     " (locks ",
     " ah=",
@@ -819,7 +971,6 @@ LITERAL_ADDED = [
     " child ",
     " children=",
     " col=",
-    " complete=",
     " complete=false progress=",
     " complete=true progress=",
     " computed and it keeps the client's own answer",
@@ -840,7 +991,6 @@ LITERAL_ADDED = [
     " fork429=",
     " head=",
     " hex=",
-    " ids (header ",
     " ids=",
     " is ",
     " is a prestige reward for ",
@@ -1038,7 +1188,6 @@ LITERAL_ADDED = [
     "false",
     "foreign ref",
     "g12",
-    "g12 rewards ",
     "gamer_profile",
     "gcamo:carried:",
     "generalChallenge",
@@ -1086,7 +1235,6 @@ LITERAL_ADDED = [
     "part main armed ",
     "path",
     "prestige lock: the weapon list is longer than ",
-    "prestige sets: player prestige %s from %s, %s sets open",
     "prison",
     "progression_tuning: part camos armed",
     "progression_tuning: part challenges armed",
@@ -1134,7 +1282,6 @@ LITERAL_ADDED = [
     "weaponProgression",
     "weaponxp",
     "weekgate",
-    "weekly body=",
     "weekly body=empty",
     "weekly card id=",
     "weekly header native=",
@@ -1166,21 +1313,8 @@ LITERAL_ADDED = [
     "zm_unlock_weapons",
     "zm_unlock_wildcards",
     # the two rows parts: the page's own members, the two ids, the channel and its log lines
-    " Q12 act=",
-    " Q7 gate=",
-    " Q7 lset=",
-    " Q7 lset=? why=",
     " aeid=",
-    " ch=",
-    " front=",
-    " hit=",
-    " inf=",
     " kd=",
-    " ms=",
-    " paused=",
-    " snd=",
-    " toast=",
-    " ver=",
     " wraps=",
     " no bundle",
     "4849F2616A844C09",
@@ -1239,9 +1373,7 @@ LITERAL_ADDED = [
     "options anchor missing",
     "options armed",
     "options data id=",
-    "options items ",
     "options move skip ",
-    "options row added",
     "options row moved after=",
     "options slot ",
     "progression_tuning: part options armed",
@@ -1253,21 +1385,9 @@ LITERAL_ADDED = [
     "sections",
     "seed",
     "settokenuselocked",
-    "tokens P2 ch=",
-    "tokens P2 raw=",
-    "tokens P2 st=",
-    "tokens P3 end p=",
     "tokens P3 wrap=1",
-    "tokens P4 c=",
     "tokens P5 perm=",
     "tokens P6 event=",
-    "tokens Q12 done used=",
-    "tokens Q12 kind=",
-    "tokens Q4b own=",
-    "tokens Q4b own=? why=",
-    "tokens txt key=",
-    "zm_ch_s",
-    "zm_ch_ver",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
@@ -1397,6 +1517,12 @@ def count_line(lines, needle):
     return sum(1 for ln in lines if needle in ln)
 
 
+def num(rt, expr):
+    """A lua number, with a nil read as zero - the parts leave a zero out of their own tables."""
+    v = rt.eval(expr)
+    return 0 if v is None else int(v)
+
+
 def pump(rt, n):
     return rt.eval("PUMP(%d)" % n)
 
@@ -1419,11 +1545,8 @@ COMMENT_KEEP = frozenset([
 COMMENT_DEBT = frozenset([])
 # the retired words the tokens part carries as reads of the client's own channel, and not as its own
 TOKENS_RESIDUE_KEEP = [
-    '"zm_ch_ver"',
-    '"zm_ch_s"',
     "-- the token channel the gsc reads",
     "-- the gsc status read only",
-    "-- says the gsc status when it moved",
 ]
 
 
@@ -1575,7 +1698,7 @@ def static_checks():
           LUA_TEXT[MAIN].count('{ key = "') == 3
           and all('key = "%s"' % k in LUA_TEXT[MAIN] for k in ("ret", "sea", "gs")))
     have = literals(SRC)
-    gone = sorted(set(LITERAL_REMOVED) & have)
+    gone = sorted(set(LITERAL_REMOVED + LOG_REMOVED) & have)
     dig = hashlib.sha256(("\n".join(sorted(have)) + "\n").encode()).hexdigest().upper()
     arm = [n for n in LUA_FILES if ("part " + n[len("progression_tuning_"):-len("_post.lua")] + " armed")
            not in LUA_TEXT[n]]
@@ -1728,9 +1851,9 @@ def payload_cases(lua51):
     check("payload: two guns are read", has_line(lines, "paid source dll - ptsplash_paid carries 2 gun(s)"),
           " | ".join(lines[:6]))
     check("payload: gun A primes at the level its total reaches",
-          has_line(lines, "prime sat_pi_atlas lv=1 total=1200"))
+          num(rt, "ProgressionTuning.guns['sat_pi_atlas'].level") == 1)
     check("payload: gun B primes on its own ladder",
-          has_line(lines, "prime sat_sh_shepherd lv=0 total=300"))
+          num(rt, "ProgressionTuning.guns['sat_sh_shepherd'].level") == 0)
 
     rt2 = new_rt(lua51, pre='SET_PAID("v1;88929:12x:1;102705:300")')
     pump(rt2, 2)
@@ -1754,7 +1877,8 @@ def two_guns(lua51):
     rt = new_rt(lua51, pre='SET_PAID("v1;88929:900:900")')
     pump(rt, 2)
     lines = lines_of(rt)
-    check("two guns: the first sighting primes 0", has_line(lines, "prime sat_pi_atlas lv=0 total=900"))
+    check("two guns: the first sighting primes 0",
+          num(rt, "ProgressionTuning.guns['sat_pi_atlas'].level") == 0)
     check("two guns: nothing is drawn at the prime", rt.eval("NEVENTS()") == 0)
 
     rt.execute('SET_PAID("v1;88929:1050:1050;102705:600:600")')
@@ -1762,7 +1886,7 @@ def two_guns(lua51):
     l = lines_of(rt)
     check("two guns: A crosses to level 1", has_line(l, "sat_pi_atlas crossed 1 row 54499"), " | ".join(l[-6:]))
     check("two guns: B primes at level 1 on its own ladder",
-          has_line(l, "prime sat_sh_shepherd lv=1 total=600"))
+          num(rt, "ProgressionTuning.guns['sat_sh_shepherd'].level") == 1)
     check("two guns: one banner for A", rt.eval("NAMED('completed_challenge')") == 1,
           str(rt.eval("NAMED('completed_challenge')")))
 
@@ -1781,7 +1905,7 @@ def resume(lua51):
     pump(rt, 3)
     lines = lines_of(rt)
     check("resume: the profile's own level is primed from the total",
-          has_line(lines, "prime sat_pi_atlas lv=3 total=3400"), " | ".join(lines[:6]))
+          num(rt, "ProgressionTuning.guns['sat_pi_atlas'].level") == 3, " | ".join(lines[:6]))
     check("resume: nothing is replayed", rt.eval("NEVENTS()") == 0)
 
     rt.execute('SET_PAID("v1;88929:4600:4600")')
@@ -1802,7 +1926,8 @@ def resume(lua51):
 def crossing(lua51):
     rt = new_rt(lua51, pre='SET_PAID("v1;88929:999:999")')
     pump(rt, 3)
-    check("crossing: 999 is level 0", has_line(lines_of(rt), "prime sat_pi_atlas lv=0 total=999"))
+    check("crossing: 999 is level 0",
+          num(rt, "ProgressionTuning.guns['sat_pi_atlas'].level") == 0)
     check("crossing: 999 draws nothing", rt.eval("NEVENTS()") == 0)
 
     rt.execute('SET_PAID("v1;88929:999:999")')
@@ -1882,11 +2007,17 @@ def extras(lua51):
     rt = new_rt(lua51, pre='SET_PAID("v1;102705:1793:1793")')
     pump(rt, 122)
     lines = lines_of(rt)
-    check("extras: the heartbeat carries the payload's own figures",
-          has_line(lines, "hb tick=") and has_line(lines, "total=1793") and has_line(lines, "psrc=dll"),
-          " | ".join([ln for ln in lines if "hb " in ln]))
-    check("extras: the heartbeat names the gun and its level",
-          has_line(lines, "first=sat_sh_shepherd") and has_line(lines, "lv=2"))
+    check("extras: the payload is read into the part's own state, with the dll as its source",
+          num(rt, "ProgressionTuning.paidN") == 1
+          and num(rt, "ProgressionTuning.paid[102705].total") == 1793
+          and rt.eval("ProgressionTuning.paidon") is True
+          and rt.eval("ProgressionTuning.paidsaid") == "dll",
+          "%s / %s" % (rt.eval("ProgressionTuning.paidN"), rt.eval("ProgressionTuning.paidsaid")))
+    check("extras: the gun it pays binds its own ref and its ladder's level, with no line at all",
+          rt.eval("ProgressionTuning.lootgun[102705].ref") == "sat_sh_shepherd"
+          and num(rt, "ProgressionTuning.lootgun[102705].level") == 2
+          and count_line(lines, "hb tick=") == 0,
+          " | ".join([ln for ln in lines if "hb " in ln][:2]))
 
     rt2 = new_rt(lua51, pre='SET_PAID("v1;88929:999:999") SET_NOTIF(1)')
     pump(rt2, 3)
@@ -1976,8 +2107,10 @@ def g11_reader(lua51, ls):
     rt.execute("CLEAR_SCOPE()")
     pump(rt, 8)
     check("g11: an absent scope dvar changes nothing", rt.eval("ASK_P(2)") is True)
-    check("g11: going back to locksmith says so once",
-          count_line(lines_of(rt), "g11 scope locksmith - 4203 ids") == 1)
+    check("g11: going back to locksmith prints nothing and leaves the door on the client's type",
+          count_line(lines_of(rt), "g11 scope locksmith") == 0
+          and rt.eval("ASK_P(2)") is True,
+          " | ".join([ln for ln in lines_of(rt) if "scope" in ln]))
     check("g11: the acceptance ids are still locked after the scope went back",
           all(rt.eval("ASK_P(%d)" % i) is False for i in eight))
 
@@ -2341,9 +2474,9 @@ def g12_door(lua51, ls):
     pump(rt, 1)
     lines = lines_of(rt)
 
-    want = "g12 rewards %d ids (header %d:33:65536)" % (len(rewards), len(rewards))
-    check("g12: the reader says the reward set's size and its header",
-          has_line(lines, want), " | ".join([x for x in lines if "g12 " in x][:4]))
+    check("g12: the reader keeps the reward set without printing a line naming it",
+          count_line(lines, "g12 rewards") == 0,
+          " | ".join([x for x in lines if "g12 " in x][:4]))
     check("g12: and the set it kept is that payload's own",
           int(rt.eval("G11('setn')")) == len(rewards), str(rt.eval("G11('setn')")))
 
@@ -2362,8 +2495,9 @@ def g12_door(lua51, ls):
     for i in card + store + dflt:
         rt.eval("ASK_L(%d)" % i)
         rt.eval("ASK_P(%d)" % i)
-    check("g12: the reward line is printed once, not per ask",
-          count_line(lines_of(rt), "g12 rewards") == 1,
+    check("g12: no reward line is printed, however many times the door is asked",
+          count_line(lines_of(rt), "g12 rewards") == 0
+          and int(rt.eval("G11('setn')")) == len(rewards),
           str(count_line(lines_of(rt), "g12 rewards")))
 
     rt2 = new_rt(lua51, frontend=True, src=False)
@@ -2422,7 +2556,9 @@ def g12_door(lua51, ls):
     check("g12: a later read of the static set changes nothing",
           int(rt4.eval("G11('setn')")) == 2 and ask is False,
           "%s / %s" % (rt4.eval("G11('setn')"), ask))
-    check("g12: and the latch is said once", count_line(lines_of(rt4), "g12 rewards 2 ids") == 1,
+    check("g12: and the latch prints nothing while the set stands",
+          count_line(lines_of(rt4), "g12 rewards") == 0
+          and int(rt4.eval("G11('setn')")) == 2,
           str(count_line(lines_of(rt4), "g12 rewards")))
 
     rt5 = new_rt(lua51, frontend=True, src=False)
@@ -3040,7 +3176,8 @@ def diag_neutral(lua51):
         kept = [ln for ln in lines_of(rt)
                 if "rc1diag:" not in ln and "door id=" not in ln and "lock door:" not in ln
                 and "card table " not in ln]
-        cards = sorted(ln for ln in lines_of(rt) if "card table " in ln)
+        cards = (int(rt.eval("G11('cardK')") or 0),
+                 len([ln for ln in lines_of(rt) if "card table " in ln and "why=" not in ln]))
         return ask, askl, events, kept, touch, cards
 
     off = run(False)
@@ -3050,8 +3187,9 @@ def diag_neutral(lua51):
     check("diag: the events are the same, in the same order", off[2] == on[2], "%s vs %s" % (off[2], on[2]))
     check("diag: every other line is identical", off[3] == on[3],
           " | ".join(sorted(set(off[3]) ^ set(on[3]))[:3]))
-    check("diag: the same tables load, and only their first-ask line moves",
-          off[5] == on[5] and len(off[5]) >= 1, " | ".join(off[5] + on[5]))
+    check("diag: the same tables load, on or off, and neither run prints a census line",
+          off[5] == on[5] and off[5][1] == 0,
+          "%s vs %s" % (str(off[5]), str(on[5])))
     check("diag: a locked ask still never reaches the previous function, on or off",
           off[4] == on[4] and on[4] == (0, 0), "%s vs %s" % (off[4], on[4]))
     check("diag: a banner and its attachment card still draw with it on",
@@ -3559,9 +3697,9 @@ def g32_cards(lua51):
           and reads(boot, "seas") == 0 and reads(boot, "gs") == 0,
           "%d / %d / %d / %d" % (reads(boot, "ccprestige"), reads(boot, "ret"),
                                  reads(boot, "seas"), reads(boot, "gs")))
-    check("g32 cards: and the boot names that one table, with no lazy table in the log",
-          count_line(lb, "card table ") == 1
-          and has_line(lb, "card table callingCardPrestigeChallenges rows=1 ids=1 src=handle"),
+    check("g32 cards: and the boot prints no card table line, its one read left in the state alone",
+          count_line(lb, "card table ") == 0
+          and boot.eval("G11('cardK')") is None and reads(boot, "ccprestige") == 2,
           " | ".join([x for x in lb if "card table" in x][:3]))
     check("g32 cards: the prestige table is read for its id and prestige columns alone",
           boot.eval("table.concat(COLNUM['ccprestige'], ',')") == "0,14",
@@ -3582,11 +3720,10 @@ def g32_cards(lua51):
            for f in ("ret", "seas", "gs", "ccprestige")] == [0] * 4,
           str([int(rt.eval("(ROWREADS['%s'] or 0)" % f))
                for f in ("ret", "seas", "gs", "ccprestige")]))
-    check("g32 cards: the three lazy tables name their own rows and ids",
-          count_line(lines, "card table ") == 4
-          and has_line(lines, "card table reticleChallenges rows=2 ids=4 src=handle")
-          and has_line(lines, "card table seasonalChallenges rows=1 ids=1 src=handle")
-          and has_line(lines, "card table gunsmithChallenges rows=2 ids=2 src=handle"),
+    check("g32 cards: the three lazy tables join their ids and print no line",
+          count_line(lines, "card table ") == 0
+          and rt.eval("G11('cardK')") == 3
+          and [reads(rt, f) for f in ("ret", "seas", "gs")] == [1, 1, 1],
           " | ".join([x for x in lines if "card table" in x]))
     check("g32 cards: the ids join one reward set and it counts three tables",
           rt.eval("G11('cardK')") == 3
@@ -3620,7 +3757,7 @@ def g32_cards(lua51):
     again = one.eval("LOAD_CARD('gs')")
     check("g32 cards: and a second ask for it reads nothing and moves nothing",
           again is True and reads(one, "gs") == 1 and int(one.eval("G11('epoch')")) == e1
-          and count_line(lines_of(one), "card table gunsmithChallenges") == 1,
+          and count_line(lines_of(one), "card table ") == 0,
           "%s / %d / %d" % (again, reads(one, "gs"), int(one.eval("G11('epoch')"))))
     check("g32 cards: a key that is no table of ours loads nothing",
           one.eval("LOAD_CARD('master')") is False and reads(one, "ret") == 0,
@@ -3688,9 +3825,8 @@ def g32_cards(lua51):
           " | ".join(blk[3:]))
     check("g32 cards: QB19 - one header naming the tables that answered, then the five cards",
           has_line(blk, "QB19 cards=3/3") and count_line(blk, "QB19 ") == 6, str(len(blk)))
-    check("g32 cards: QB19 - it prints after the card tables report, not before them",
-          [i for i, x in enumerate(all4) if "QB19 cards=" in x][0]
-          > [i for i, x in enumerate(all4) if "card table " in x][-1],
+    check("g32 cards: QB19 - the header sees all three tables and no table line is printed at all",
+          has_line(blk, "QB19 cards=3/3") and count_line(all4, "card table ") == 0,
           " | ".join([x for x in all4 if "card table " in x or "QB19 cards=" in x][-2:]))
     check("g32 cards: QB19 - it is outside the second block and the block still closes",
           count_line(rb_lines(all4), "QB19 ") == 0 and rb_end(rb_lines(all4)) == len(rb_lines(all4)),
@@ -3807,14 +3943,14 @@ def g32_card_files(lua51):
     calls = int(rt.eval("GETFILECALLS"))
     check("g32 files: a table that carries its own file keeps it and its getter is never called",
           calls == 0
-          and has_line(lines, "card table reticleChallenges rows=1 ids=1 src=handle"),
+          and rt.eval("G11('cardK')") == 3,
           "getfile=%d" % calls)
     check("g32 files: the raise behind that getter costs no table",
-          rt.eval("G11('cardK')") == 3 and count_line(lines, "card table ") == 4,
+          rt.eval("G11('cardK')") == 3 and count_line(lines, "card table ") == 0,
           " | ".join([x for x in lines if "card " in x][:5]))
-    check("g32 files: each of the four tables is named once and no why is printed",
-          all(count_line(lines, "card table " + n) == 1 for n in CARD_TABLES)
-          and count_line(lines, "why=") == 0,
+    check("g32 files: the four tables are read and no line names any of them",
+          count_line(lines, "card table ") == 0 and count_line(lines, "why=") == 0
+          and rt.eval("G11('gset2')[117486]") is True,
           " | ".join([x for x in lines if "card " in x][:5]))
 
 
@@ -3822,8 +3958,9 @@ def g32_card_path(lua51):
     path = "ae/sat_ae_autogen_reticle_challenges.csv"
     rt = card_vm(lua51, CARD_ROWS_PATH + CARD_TYPES, [117486, 200020, 112409, 126988], 85)
     lines = lines_of(rt)
-    check("g32 path: a table with no handle lands on its own stringtable",
-          has_line(lines, "card table reticleChallenges rows=1 ids=1 src=path"),
+    check("g32 path: a table with no handle lands on its own stringtable, and no line names it",
+          count_line(lines, "card table ") == 0
+          and rt.eval("COLNUM['%s'] ~= nil" % path) is True,
           " | ".join([x for x in lines if "card table" in x][:4]))
     col = rt.eval("COLNUM['%s'][1]" % path)
     check("g32 path: the path read carries that table's own loot column", col == 5, str(col))
@@ -3838,8 +3975,9 @@ def g32_card_miss(lua51):
     rt = card_vm(lua51, CARD_ROWS_MISS + CARD_TYPES + READ_COUNT,
                  [117486, 200020, 112409, 126988], 86, cards=False)
     lines = lines_of(rt)
-    check("g32 miss: at boot only the prestige table is named",
-          count_line(lines, "card table ") == 1 and count_line(lines, "why=") == 0,
+    check("g32 miss: at boot no table is named and no why is printed",
+          count_line(lines, "card table ") == 0 and count_line(lines, "why=") == 0
+          and rt.eval("G11('cardK')") is None,
           " | ".join([x for x in lines if "card " in x][:2]))
     check("g32 miss: a refused table answers false and names its error, type and column",
           rt.eval("LOAD_CARD('gs')") is False
@@ -3995,10 +4133,10 @@ def g32_newtables(lua51):
     rt = card_vm(lua51, NEW_ROWS + NEW_TYPES + READ_COUNT,
                  [240001, 240003, 240010, 240020, 126988], 90)
     lines = lines_of(rt)
-    check("w1 tables: each of the three lazy tables loads and names its own rows",
-          has_line(lines, "card table reticleChallenges rows=1 ids=3 src=handle")
-          and has_line(lines, "card table seasonalChallenges rows=1 ids=1 src=handle")
-          and has_line(lines, "card table gunsmithChallenges rows=1 ids=2 src=handle"),
+    check("w1 tables: each of the three lazy tables loads and joins its own rows, with no line",
+          count_line(lines, "card table ") == 0
+          and rt.eval("G11('cardK')") == 3
+          and rt.eval("G11('gset2')[240010]") is True,
           " | ".join([x for x in lines if "card table " in x][1:]))
     check("w1 tables: the set carries every id of the three tables",
           rt.eval("G11('cardK')") == 3
@@ -4014,8 +4152,8 @@ def g32_newtables(lua51):
     rt2 = card_vm(lua51, RET_FULL + CARD_TYPES, [126988], 91)
     l2 = lines_of(rt2)
     path = "ae/sat_ae_autogen_reticle_challenges.csv"
-    check("w1 path: the path read asks that table's own loot column",
-          has_line(l2, "card table reticleChallenges rows=1 ids=1 src=path")
+    check("w1 path: the path read asks that table's own loot column and prints no line",
+          count_line(l2, "card table ") == 0
           and rt2.eval("COLNUM['%s'][1]" % path) == 5,
           str(rt2.eval("COLNUM['%s'][1]" % path)))
     check("w1 path: the card it pays joins the set and its table counts as loaded",
@@ -4487,8 +4625,9 @@ def g32_prestige_sets(lua51):
           "%s / %s" % (rt.eval("ASK_CS(%d)" % three), rt.eval("ASK_CS(%d)" % five)))
     check("g32 sets: an id that is no prestige row is answered by the client untouched",
           rt.eval("ASK_CS(%d)" % plain) == 0, str(rt.eval("ASK_CS(%d)" % plain)))
-    check("g32 sets: the one line names the prestige, its source and the sets it opens",
-          has_line(lines_of(rt), "prestige sets: player prestige 1 from prestige, 1 sets open"),
+    check("g32 sets: no line names the prestige, and the sets it opens are the state's own",
+          count_line(lines_of(rt), "prestige sets:") == 0
+          and rt.eval("ASK_CS(%d)" % one) == 1 and rt.eval("ASK_CS(%d)" % three) == 4,
           " | ".join([x for x in lines_of(rt) if "prestige sets:" in x][:2]))
     cols = rt.eval("table.concat(COLNUM['ccprestige'], ',')")
     check("g32 sets: the map is built from the id and prestige columns alone",
@@ -4530,8 +4669,9 @@ def g32_prestige_sets(lua51):
     check("g32 sets: with no prestige native the dvar the hud reads answers instead",
           dvar.eval("ASK_CS(%d)" % three) == 1 and dvar.eval("ASK_CS(%d)" % five) == 4,
           "%s / %s" % (dvar.eval("ASK_CS(%d)" % three), dvar.eval("ASK_CS(%d)" % five)))
-    check("g32 sets: and the line says where the number came from",
-          has_line(lines_of(dvar), "prestige sets: player prestige 3 from dvar, 2 sets open"),
+    check("g32 sets: and it prints no line at all, the dvar path proved by the answer",
+          count_line(lines_of(dvar), "prestige sets:") == 0
+          and dvar.eval("ASK_CS(%d)" % one) == 1,
           " | ".join([x for x in lines_of(dvar) if "prestige sets:" in x][:2]))
 
     late = new_rt(lua51, frontend=True, src=False)
@@ -5832,7 +5972,7 @@ def weekly_gaps(lua51):
     l = lines_of(rt)
     check("G1: the subtitle is the one the client's own call answers",
           rt.eval("EV(1).options.bodyText") == "ELIMINATE AN ELITE ZOMBIE"
-          and has_line(l, "weekly body=ELIMINATE AN ELITE ZOMBIE"),
+          and count_line(l, "weekly body=") == 0,
           "%s | %s" % (rt.eval("EV(1).options.bodyText"),
                        " | ".join([x for x in l if "weekly body=" in x][:2])))
     check("G1: and it is asked with the controller, the row's own id and its own kind",
@@ -5849,9 +5989,9 @@ def weekly_gaps(lua51):
     pump(rl, 12)
     rl.execute("SET_CHAL_PROGRESS(60330, 3)")
     pump(rl, 60)
-    check("G1: the logged body is the first forty characters",
-          has_line(lines_of(rl), "weekly body=" + "Z" * 40 + "...")
-          and rl.eval("EV(1).options.bodyText") == "Z" * 60,
+    check("G1: the whole body goes out and nothing prints it",
+          rl.eval("EV(1).options.bodyText") == "Z" * 60
+          and count_line(lines_of(rl), "weekly body=") == 0,
           " | ".join([x for x in lines_of(rl) if "weekly body=" in x][:2]))
 
     rc = new_rt(lua51, src=False)
@@ -6220,7 +6360,7 @@ SET_OC(55001, 0, 0)
     rt = new_rt(lua51, pre=FLAT + ' SET_PAID("v1;98753:460:1")')
     pump(rt, 4)
     check("A3: the Flatline's own total on the first sighting is level 0",
-          has_line(lines_of(rt), "prime sat_me_shockbaton lv=0 total=460"),
+          num(rt, "ProgressionTuning.guns['sat_me_shockbaton'].level") == 0,
           " | ".join([x for x in lines_of(rt) if "prime sat_me_shockbaton" in x][:3]))
     for tot in (480, 500, 560, 880, 980):
         rt.execute('SET_PAID("v1;98753:%d:%d")' % (tot, tot))
@@ -6238,8 +6378,10 @@ SET_OC(55001, 0, 0)
     pump(rt2, 5)
     l2 = lines_of(rt2)
     check("A3: the 1911 at 4,009 reads own=3 off the client's own record and primes silently at 3",
-          has_line(l2, "prime sat_pi_alcor own=3 total=4009 picked=5/minxp")
-          and has_line(l2, "prime sat_pi_alcor lv=3 total=4009"),
+          num(rt2, "ProgressionTuning.guns['sat_pi_alcor'].own") == 3
+          and num(rt2, "ProgressionTuning.guns['sat_pi_alcor'].n") == 5
+          and rt2.eval("ProgressionTuning.guns['sat_pi_alcor'].src") == "minxp"
+          and num(rt2, "ProgressionTuning.guns['sat_pi_alcor'].level") == 3,
           " | ".join([x for x in l2 if "prime sat_pi_alcor" in x][:3]))
     check("A3: and the silent prime draws nothing", rt2.eval("NEVENTS()") == 0, str(rt2.eval("NEVENTS()")))
     pump(rt2, 4)
@@ -6280,7 +6422,7 @@ SET_OC(55001, 0, 0)
     a = [x for x in lines_of(rt2) if "prime sat_pi_alcor own=" in x][:1]
     b = [x for x in lines_of(rt3) if "prime sat_pi_alcor own=" in x][:1]
     check("A3: the pick is the same whether it runs before or after the wrapper arms",
-          len(a) == 1 and a == b and has_line(lines_of(rt3), "prime sat_pi_alcor lv=3 total=4009"),
+          a == b and num(rt3, "ProgressionTuning.guns['sat_pi_alcor'].level") == 3,
           "%s vs %s" % (a, b))
     rt3.execute('SET_PAID("v1;125186:4600:3")')
     pump(rt3, 8)
@@ -6292,13 +6434,15 @@ SET_OC(55001, 0, 0)
     rt4 = new_rt(lua51, pre=AL + ' SET_LEVEL("sat_pi_alcor", 1) SET_PAID("v1;125186:4009:1")')
     pump(rt4, 5)
     check("A3: a pick the client's own record does not reproduce is refused, and says so",
-          has_line(lines_of(rt4), "picked=0/none") and rt4.eval("NEVENTS()") == 0,
+          rt4.eval("ProgressionTuning.guns['sat_pi_alcor'].ladder") is None
+          and rt4.eval("NEVENTS()") == 0,
           " | ".join([x for x in lines_of(rt4) if "picked=" in x][:2]))
     rt4.execute('SET_LEVEL("sat_pi_alcor", 3)')
     rt4.execute('SET_PAID("v1;125186:4009:2")')
     pump(rt4, 5)
     check("A3: the next payment retries and primes - no deadlock",
-          has_line(lines_of(rt4), "prime sat_pi_alcor lv=3 total=4009") and rt4.eval("NEVENTS()") == 0,
+          num(rt4, "ProgressionTuning.guns['sat_pi_alcor'].level") == 3
+          and rt4.eval("NEVENTS()") == 0,
           " | ".join([x for x in lines_of(rt4) if "prime sat_pi_alcor" in x][:3]))
     rt4.execute('SET_PAID("v1;125186:4600:3")')
     pump(rt4, 8)
@@ -6321,7 +6465,8 @@ SET_OC(55001, 0, 0)
     rt5.execute('SET_PAID("v1;50101:90:2")')
     pump(rt5, 5)
     check("A3: once the list rises and the record agrees the same gun primes",
-          has_line(lines_of(rt5), "prime sat_reach_test lv=0 total=90") and rt5.eval("NEVENTS()") == 0,
+          num(rt5, "ProgressionTuning.guns['sat_reach_test'].level") == 0
+          and rt5.eval("NEVENTS()") == 0,
           " | ".join([x for x in lines_of(rt5) if "prime sat_reach_test" in x][:3]))
     rt5.execute('SET_PAID("v1;50101:150:3")')
     pump(rt5, 8)
@@ -6340,8 +6485,9 @@ SET_OC(55002, 0, 0)
     rt6 = new_rt(lua51, pre=BIG + ' SET_PAID("v1;50102:3500:1")')
     pump(rt6, 5)
     check("A3: a list longer than the gun's own maximum is clamped to that maximum",
-          has_line(lines_of(rt6), "prime sat_big_test own=3 total=3500 picked=3/minxp")
-          and has_line(lines_of(rt6), "prime sat_big_test lv=3 total=3500"),
+          num(rt6, "ProgressionTuning.guns['sat_big_test'].own") == 3
+          and num(rt6, "ProgressionTuning.guns['sat_big_test'].n") == 3
+          and num(rt6, "ProgressionTuning.guns['sat_big_test'].level") == 3,
           " | ".join([x for x in lines_of(rt6) if "prime sat_big_test" in x][:3]))
     rt6.execute('SET_PAID("v1;50102:7000:2")')
     pump(rt6, 8)
@@ -6375,17 +6521,20 @@ SET_OC(55001, 0, 0)
     pump(rt, 4)
     l = lines_of(rt)
     check("A: the Flatline primes at level 0 on the row's own first rung, not on the bundle's costs",
-          has_line(l, "prime sat_me_shockbaton lv=0 total=260"),
+          num(rt, "ProgressionTuning.guns['sat_me_shockbaton'].level") == 0,
           " | ".join([x for x in l if "prime " in x][:3]))
     check("A: and the pick names the row's own cell - the per-level cost list is not a candidate at all",
-          has_line(l, "picked=5/csv") and count_line(l, "/weapon") == 0,
+          num(rt, "ProgressionTuning.guns['sat_me_shockbaton'].n") == 5
+          and rt.eval("ProgressionTuning.guns['sat_me_shockbaton'].src") == "csv"
+          and count_line(l, "/weapon") == 0,
           " | ".join([x for x in l if "picked=" in x][:3]))
     check("A: 260 XP draws nothing", rt.eval("NEVENTS()") == 0)
     for tot in (300, 360, 440):
         rt.execute('SET_PAID("v1;98753:%d:%d")' % (tot, tot))
         pump(rt, 8)
     check("A: 300, 360 and 440 are all still level 0 - the ten false banners are gone",
-          rt.eval("NEVENTS()") == 0 and has_line(lines_of(rt), "prime sat_me_shockbaton lv=0 total=260"),
+          rt.eval("NEVENTS()") == 0
+          and num(rt, "ProgressionTuning.guns['sat_me_shockbaton'].level") == 0,
           str(rt.eval("NEVENTS()")))
     rt.execute('SET_PAID("v1;98753:1000:999")')
     pump(rt, 8)
@@ -6399,7 +6548,9 @@ SET_OC(55001, 0, 0)
     rt2 = new_rt(lua51, pre=AL + ' SET_PAID("v1;125186:3329:1")')
     pump(rt2, 4)
     check("A: the 1911 still primes from its own minxp ladder at the level the client reports",
-          has_line(lines_of(rt2), "prime sat_pi_alcor lv=2 total=3329 ladder=5/minxp"),
+          num(rt2, "ProgressionTuning.guns['sat_pi_alcor'].level") == 2
+          and num(rt2, "ProgressionTuning.guns['sat_pi_alcor'].n") == 5
+          and rt2.eval("ProgressionTuning.guns['sat_pi_alcor'].src") == "minxp",
           " | ".join([x for x in lines_of(rt2) if "prime sat_pi_alcor" in x][:2]))
     rt2.execute('SET_PAID("v1;125186:3429:2")')
     pump(rt2, 8)
@@ -6413,14 +6564,16 @@ SET_OC(55001, 0, 0)
     pump(rt3, 4)
     l = lines_of(rt3)
     check("A: a list that does not strictly rise is not a ladder - the pick refuses it and says why",
-          has_line(l, "picked=0/none") and has_line(l, "no ladder answers for sat_reach_test (own 0)"),
+          rt3.eval("ProgressionTuning.guns['sat_reach_test'].ladder") is None
+          and has_line(l, "no ladder answers for sat_reach_test (own 0)"),
           " | ".join([x for x in l if ("picked=" in x or "no ladder" in x)][:3]))
     check("A: and that refusal draws nothing", rt3.eval("NEVENTS()") == 0)
     rt3.execute('SET_MINXP("sat_reach_test", { 100, 200, 300 })')
     rt3.execute('SET_PAID("v1;50101:90:2")')
     pump(rt3, 8)
     check("A: the refusal is not kept - the next payment picks the ladder that now exists and primes",
-          has_line(lines_of(rt3), "prime sat_reach_test lv=0 total=90") and rt3.eval("NEVENTS()") == 0,
+          num(rt3, "ProgressionTuning.guns['sat_reach_test'].level") == 0
+          and rt3.eval("NEVENTS()") == 0,
           " | ".join([x for x in lines_of(rt3) if "prime sat_reach_test" in x][:3]))
     rt3.execute('SET_PAID("v1;50101:150:3")')
     pump(rt3, 8)
@@ -6433,13 +6586,15 @@ SET_OC(55001, 0, 0)
     rt4 = new_rt(lua51, pre=AL + ' SET_LEVEL("sat_pi_alcor", 3) SET_PAID("v1;125186:4600:1")')
     pump(rt4, 4)
     check("A: a stale own level refuses the pick instead of handing back an unverified ladder",
-          has_line(lines_of(rt4), "picked=0/none") and rt4.eval("NEVENTS()") == 0,
+          rt4.eval("ProgressionTuning.guns['sat_pi_alcor'].ladder") is None
+          and rt4.eval("NEVENTS()") == 0,
           " | ".join([x for x in lines_of(rt4) if "picked=" in x][:2]))
     rt4.execute('SET_LEVEL("sat_pi_alcor", 4)')
     rt4.execute('SET_PAID("v1;125186:4600:2")')
     pump(rt4, 8)
     check("A: when own catches up the pick is made and the level is primed, never announced late",
-          has_line(lines_of(rt4), "prime sat_pi_alcor lv=4 total=4600") and rt4.eval("NEVENTS()") == 0,
+          num(rt4, "ProgressionTuning.guns['sat_pi_alcor'].level") == 4
+          and rt4.eval("NEVENTS()") == 0,
           " | ".join([x for x in lines_of(rt4) if "prime sat_pi_alcor" in x][:3]))
     rt4.execute('SET_PAID("v1;125186:5800:3")')
     pump(rt4, 8)
@@ -6632,10 +6787,14 @@ def camo_splash(lua51):
     pump(rt, 12)
     l = lines_of(rt)
     check("B: the paid weapon's own camo row is the watch set, read from the client",
-          has_line(l, "camo watch id=57201 ref=sat_pi_atlas tiers=3 first=100 last=300"),
+          num(rt, "ProgressionTuning.camo.rows['sat_pi_atlas'].id") == 57201
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_atlas'].n") == 3
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_atlas'].th[1]") == 100
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_atlas'].th[3]") == 300,
           " | ".join([x for x in l if "camo watch" in x][:2]))
     check("B: the first sighting primes silently, so a row already past a tier draws nothing",
-          has_line(l, "camo prime id=57201 row=sat_pi_atlas value=90 tiers=3 hits=0")
+          num(rt, "ProgressionTuning.camo.seen['57201']") == 90
+          and count_line(l, "camo prime") == 0
           and rt.eval("NEVENTS()") == 0, " | ".join([x for x in l if "camo prime" in x][:2]))
     rt.execute("SET_CAMO_PROGRESS(57201, 100)")
     pump(rt, 24)
@@ -6649,7 +6808,9 @@ def camo_splash(lua51):
     check("B: the line names the row, the target it crossed and the route",
           has_line(l, "camo card id=57201 row=sat_pi_atlas target=100 route=A"),
           " | ".join([x for x in l if "camo card" in x][:2]))
-    check("B: and the crossing itself is one line", count_line(l, "camo cross id=57201") == 1,
+    check("B: and the crossing is counted once and prints no line of its own",
+          count_line(l, "camo cross id=") == 0
+          and num(rt, "ProgressionTuning.camo.crossN") == 1,
           " | ".join([x for x in l if "camo cross" in x][:2]))
     rt.execute("SET_CAMO_PROGRESS(57201, 90)")
     pump(rt, 12)
@@ -6683,7 +6844,9 @@ def camo_splash(lua51):
     load(rt2)
     pump(rt2, 12)
     check("B: a row already complete at match start does not pop",
-          rt2.eval("NEVENTS()") == 0 and has_line(lines_of(rt2), "camo prime id=57201"),
+          rt2.eval("NEVENTS()") == 0
+          and num(rt2, "ProgressionTuning.camo.seen['57201']") == 150
+          and count_line(lines_of(rt2), "camo prime") == 0,
           " | ".join([x for x in lines_of(rt2) if "camo prime" in x][:2]))
     rt2.execute("SET_CAMO_PROGRESS(57201, 200)")
     pump(rt2, 24)
@@ -6788,8 +6951,13 @@ function SET_CHAL_PROGRESS(id, v) OC[tostring(id)] = { xp = v, rank = 0 } end
     pump(rt, 12)
     l = lines_of(rt)
     check("D: the active daily and weekly rows are the watch set, read from the client",
-          has_line(l, "chal watch n=2 daily=1 weekly=1 tries=1 why=ok")
-          and has_line(l, "daily prime id=53310 row=sat_daily_zm_ch_p1_kills_melee value=40 target=75"),
+          num(rt, "ProgressionTuning.chal.n") == 2
+          and num(rt, "ProgressionTuning.chal.dailyN") == 1
+          and num(rt, "ProgressionTuning.chal.weeklyN") == 1
+          and num(rt, "ProgressionTuning.chal.rows[1].id") == 53310
+          and num(rt, "ProgressionTuning.chal.rows[1].th[1]") == 75
+          and num(rt, "ProgressionTuning.chal.seen['53310']") == 40
+          and count_line(l, "chal watch") == 0,
           " | ".join([x for x in l if ("chal watch" in x or "daily prime" in x)][:3]))
     check("D: the first sighting primes silently", rt.eval("NEVENTS()") == 0, str(rt.eval("NEVENTS()")))
     rt.execute("SET_CHAL_PROGRESS(53310, 75)")
@@ -6835,7 +7003,8 @@ function SET_CHAL_PROGRESS(id, v) OC[tostring(id)] = { xp = v, rank = 0 } end
     load(rt2)
     pump(rt2, 12)
     check("D: a daily already complete at match start does not pop",
-          rt2.eval("NEVENTS()") == 0 and has_line(lines_of(rt2), "daily prime id=53310"),
+          rt2.eval("NEVENTS()") == 0
+          and num(rt2, "ProgressionTuning.chal.seen['53310']") == 75,
           " | ".join([x for x in lines_of(rt2) if "daily prime" in x][:2]))
 
     rt3 = new_rt(lua51, src=False, pre="SET_TOGGLE('pt_daily', 0)")
@@ -6965,12 +7134,16 @@ def camo_zm_rows(lua51):
     l = lines_of(rt)
     check("E: the mode key is mapped to the client's own camo challenge mode before the call",
           rt.eval("SEENMODE") == 2, str(rt.eval("SEENMODE")))
-    check("E: in a Zombies match the watched row is the ZM row, and the multiplayer row is not watched",
-          has_line(l, "camo watch id=68970") and not has_line(l, "camo watch id=68922")
+    check("E: in a Zombies match the watched row is the ZM row, and the multiplayer row is not",
+          num(rt, "ProgressionTuning.camo.rows['sat_pi_alcor'].id") == 68970
           and not has_line(l, "68922"),
           " | ".join([x for x in l if "camo watch" in x][:2]))
-    check("E: the watch line names the row, its targets and the mode it was asked for",
-          has_line(l, "camo watch id=68970 ref=sat_pi_alcor tiers=3 first=100 last=300 mode=2 key=12"),
+    check("E: the watched row keeps the targets and the mode it was asked for",
+          num(rt, "ProgressionTuning.camo.rows['sat_pi_alcor'].n") == 3
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_alcor'].th[1]") == 100
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_alcor'].th[3]") == 300
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_alcor'].mode") == 2
+          and count_line(l, "camo watch id=") == 0,
           " | ".join([x for x in l if "camo watch id=" in x][:1]))
     check("E: the first sighting primes the ZM row silently", rt.eval("NEVENTS()") == 0,
           str(rt.eval("NEVENTS()")))
@@ -6985,7 +7158,8 @@ def camo_zm_rows(lua51):
           has_line(l, "camo card id=68970 row=sat_pi_alcor target=100 route=A value=100 tier=1"),
           " | ".join([x for x in l if "camo card" in x][:2]))
     check("E: and no card is ever drawn for the multiplayer row",
-          not has_line(l, "camo card id=68922") and count_line(l, "camo cross id=68970") == 1,
+          not has_line(l, "camo card id=68922")
+          and num(rt, "ProgressionTuning.camo.crossN") == 1,
           " | ".join([x for x in l if "camo cross" in x][:2]))
     rt.execute("SET_CAMO_PROGRESS(68970, 200)")
     pump(rt, 24)
@@ -7013,8 +7187,11 @@ def camo_zm_rows(lua51):
     load(rt2)
     pump(rt2, 12)
     check("E: a mode key the client's map does not name falls back to its own mp, not to no mode",
-          rt2.eval("SEENMODE") == 1 and has_line(lines_of(rt2), "camo watch id=68922 ref=sat_pi_alcor tiers=3"
-                                                               " first=5 last=20 mode=1 key=99"),
+          rt2.eval("SEENMODE") == 1
+          and int(rt2.eval("ProgressionTuning.camo.rows['sat_pi_alcor'].id")) == 68922
+          and int(rt2.eval("ProgressionTuning.camo.rows['sat_pi_alcor'].th[1]")) == 5
+          and int(rt2.eval("ProgressionTuning.camo.rows['sat_pi_alcor'].th[3]")) == 20
+          and int(rt2.eval("ProgressionTuning.camo.rows['sat_pi_alcor'].mode")) == 1,
           " | ".join([x for x in lines_of(rt2) if "camo watch id=" in x][:1]))
 
 
@@ -7057,14 +7234,19 @@ def weekly_rows(lua51):
     pump(rt, 12)
     l = lines_of(rt)
     check("F: the weeklies come from the client's own WeeklyChallenge list, one level deep",
-          has_line(l, "chal watch n=3 daily=1 weekly=2 tries=1 why=ok"),
+          num(rt, "ProgressionTuning.chal.n") == 3
+          and num(rt, "ProgressionTuning.chal.dailyN") == 1
+          and num(rt, "ProgressionTuning.chal.weeklyN") == 2
+          and count_line(l, "chal watch") == 0,
           " | ".join([x for x in l if "chal watch" in x][:2]))
     check("F: and the client is asked for the incomplete rows only",
           rt.eval("WEEKOPT") is not None and rt.eval("WEEKOPT.includeComplete") is False,
           str(rt.eval("WEEKOPT")))
     check("F: the weekly rows are watched with their own ids, kinds and targets",
-          has_line(l, "chal watch row id=60330 kind=585 ref=sat_weekly_zm_s1w1_kills target=3")
-          and has_line(l, "chal watch row id=60325 kind=585"),
+          num(rt, "ProgressionTuning.chal.rows[2].id") == 60330
+          and num(rt, "ProgressionTuning.chal.rows[2].kind") == 585
+          and num(rt, "ProgressionTuning.chal.rows[2].th[1]") == 3
+          and num(rt, "ProgressionTuning.chal.rows[3].id") == 60325,
           " | ".join([x for x in l if "chal watch row" in x][:3]))
     rt.execute("SET_CHAL_PROGRESS(60330, 3)")
     pump(rt, 24)
@@ -7111,8 +7293,10 @@ end
     l2 = lines_of(rt2)
     check("F: without WeeklyChallenge in the VM, the week buckets getweeklychallenges answers are read "
           "one level down",
-          has_line(l2, "chal watch n=2 daily=1 weekly=1 tries=1 why=ok")
-          and has_line(l2, "chal watch row id=60330 kind=585 ref=sat_weekly_zm_s1w1_kills target=3"),
+          num(rt2, "ProgressionTuning.chal.n") == 2
+          and num(rt2, "ProgressionTuning.chal.weeklyN") == 1
+          and num(rt2, "ProgressionTuning.chal.rows[2].id") == 60330
+          and num(rt2, "ProgressionTuning.chal.rows[2].th[1]") == 3,
           " | ".join([x for x in l2 if "chal watch" in x][:3]))
     rt2.execute("SET_CHAL_PROGRESS(60330, 3)")
     pump(rt2, 24)
@@ -7266,10 +7450,17 @@ def week_sweep(lua51):
     pump(rt, 24)
     l = lines_of(rt)
     check("G: the sweep holds the client's whole weekly list, past the old window of nine",
-          has_line(l, "chal sweep src=fork kind=585,590,592,429 n=12 done=0 prog=12"),
+          num(rt, "ProgressionTuning.chal.sweep.n") == 12
+          and num(rt, "ProgressionTuning.chal.sweep.done") == 0
+          and num(rt, "ProgressionTuning.chal.sweep.prog") == 12
+          and rt.eval("ProgressionTuning.chal.sweep.src") == "fork"
+          and count_line(l, "chal sweep") == 0,
           " | ".join([x for x in l if "chal sweep" in x][:2]))
-    check("G: and it names each weekly kind it swept with that kind's row count",
-          has_line(l, "chal sweep kinds zm_weekly=585 weekly=590 mastery=592 sticker=429 rows=9/0/3/0"),
+    check("G: and it sweeps the four kinds the client names, counted per kind",
+          num(rt, "ProgressionTuning.chal.sweep.kinds[1]") == 585
+          and num(rt, "ProgressionTuning.chal.sweep.kinds[2]") == 590
+          and num(rt, "ProgressionTuning.chal.sweep.kinds[3]") == 592
+          and int(rt.eval("#ProgressionTuning.chal.sweep.kinds")) == 4,
           " | ".join([x for x in l if "chal sweep kinds" in x][:1]))
     check("G: the first sweep primes silently, so no weekly is carded at match start",
           rt.eval("NEVENTS()") == 0, str(rt.eval("NEVENTS()")))
@@ -7281,11 +7472,12 @@ def week_sweep(lua51):
     check("G: every one of the twelve completions is carded, so no cap can hide one",
           rt.eval("NAMED('add_message_splash_manager')") == 9
           and rt.eval("NAMED('completed_challenge')") == 3
-          and count_line(l, "chal week cross id=") == 12
+          and num(rt, "ProgressionTuning.chal.crossN") == 12
+          and count_line(l, "chal week cross id=") == 0
           and not has_line(l, "cards this match"),
           "%s / %s / %s" % (rt.eval("NAMED('add_message_splash_manager')"),
                             rt.eval("NAMED('completed_challenge')"),
-                            count_line(l, "chal week cross id=")))
+                            num(rt, "ProgressionTuning.chal.crossN")))
 
     rt = new_rt(lua51, src=False)
     rt.execute(PRE)
@@ -7327,7 +7519,9 @@ def week_sweep(lua51):
     pump(rt, 24)
     l = lines_of(rt)
     check("G: a weekly already complete when the sweep primes draws nothing",
-          has_line(l, "chal sweep src=fork kind=585,590,592,429 n=1 done=1 prog=1")
+          num(rt, "ProgressionTuning.chal.sweep.n") == 1
+          and num(rt, "ProgressionTuning.chal.sweep.done") == 1
+          and num(rt, "ProgressionTuning.chal.sweep.prog") == 1
           and rt.eval("NEVENTS()") == 0,
           " | ".join([x for x in l if "chal sweep" in x][:1]))
 
@@ -7341,18 +7535,17 @@ def week_sweep(lua51):
     pump(rt, 24)
     l = lines_of(rt)
     check("G: without the store call the client's own weekly list is the source, by presence",
-          has_line(l, "chal sweep src=list kind=585,590,592,429 n=2 done=0 prog=2"),
+          rt.eval("ProgressionTuning.chal.sweep.src") == "list"
+          and num(rt, "ProgressionTuning.chal.sweep.n") == 2,
           " | ".join([x for x in l if "chal sweep" in x][:1]))
     rt.execute("SET_COMPLETE(70300)")
     rt.execute("DROP_WEEK_LIST()")
     pump(rt, 40)
     l = lines_of(rt)
     check("G: a weekly that disappears from that list is carded as a completion",
-          count_line(l, "chal week cross id=70300 ref=sat_weekly_zm_list_a was=1 now=gone") == 1
-          and has_line(l, "weekly card id=70300 row=sat_weekly_zm_list_a kind=585 target=4 value=4 route=B")
-          and has_line(l, "chal week cross id=70300 ref=sat_weekly_zm_list_a was=1 now=gone v=4/4"
-                          " complete=true"),
-          " | ".join([x for x in l if "chal week cross" in x][:2]))
+          has_line(l, "weekly card id=70300 row=sat_weekly_zm_list_a kind=585 target=4 value=4 route=B")
+          and count_line(l, "chal week cross id=") == 0,
+          " | ".join([x for x in l if "chal week cross" in x or " card id=" in x][:2]))
 
     rt = new_rt(lua51, src=False)
     rt.execute(PRE)
@@ -7365,11 +7558,10 @@ def week_sweep(lua51):
     rt.execute("DROP_WEEK_LIST()")
     pump(rt, 32)
     l = lines_of(rt)
-    check("G: a vanished weekly the game calls incomplete is not carded, and the line says so",
-          count_line(l, "chal week cross id=70500") == 1
-          and has_line(l, "chal week cross id=70500 ref=sat_weekly_zm_neg_a was=1 now=gone v=4/4"
-                          " complete=false")
-          and not has_line(l, "weekly card id=70500")
+    check("G: a vanished weekly the game calls incomplete is not carded",
+          not has_line(l, "weekly card id=70500")
+          and num(rt, "ProgressionTuning.chal.crossN") == 1
+          and count_line(l, "chal week cross id=") == 0
           and rt.eval("NEVENTS()") == 0,
           " | ".join([x for x in l if "chal week cross" in x or " card id=" in x][:3]))
 
@@ -7384,11 +7576,10 @@ def week_sweep(lua51):
     pump(rt, 32)
     l = lines_of(rt)
     check("G: a vanished weekly whose record is gone too is carded once, as unknown",
-          count_line(l, "chal week cross id=70600") == 1
-          and has_line(l, "chal week cross id=70600 ref=sat_weekly_zm_gone_a was=1 now=gone v=4/4"
-                          " complete=unknown")
-          and has_line(l, "weekly card id=70600 row=sat_weekly_zm_gone_a kind=585 target=4 value=4"
-                          " route=B"),
+          has_line(l, "weekly card id=70600 row=sat_weekly_zm_gone_a kind=585 target=4 value=4"
+                      " route=B")
+          and num(rt, "ProgressionTuning.chal.crossN") == 1
+          and count_line(l, "chal week cross id=") == 0,
           " | ".join([x for x in l if "chal week cross" in x or " card id=" in x][:3]))
 
     rt = new_rt(lua51, src=False)
@@ -7405,8 +7596,6 @@ def week_sweep(lua51):
     check("G: with no gate in the VM one line says so and the vanished row is carded as today",
           count_line(l, "chal week gate - no Challenge.IsChallengeComplete in this VM,"
                         " the vanished row is carded") == 1
-          and has_line(l, "chal week cross id=70700 ref=sat_weekly_zm_nogate_a was=1 now=gone v=4/4"
-                          " complete=unknown")
           and has_line(l, "weekly card id=70700 row=sat_weekly_zm_nogate_a kind=585 target=4 value=4"
                           " route=B"),
           " | ".join([x for x in l if "chal week cross" in x or "chal week gate" in x][:3]))
@@ -7449,9 +7638,10 @@ end
     pump(rt, 24)
     l = lines_of(rt)
     check("G: the sweep asks for the sticker book kind beside the three weeklies",
-          has_line(l, "chal sweep src=fork kind=585,590,592,429 n=1 done=0 prog=1 sample=52508")
-          and has_line(l, "chal sweep kinds zm_weekly=585 weekly=590 mastery=592 sticker=429"
-                          " rows=0/0/0/1"),
+          num(rt, "ProgressionTuning.chal.sweep.n") == 1
+          and int(rt.eval("#ProgressionTuning.chal.sweep.kinds")) == 4
+          and num(rt, "ProgressionTuning.chal.sweep.kinds[4]") == 429
+          and count_line(l, "chal sweep") == 0,
           " | ".join([x for x in l if "chal sweep" in x][:2]))
     check("G: a sticker book row is never asked for a weekly row",
           rt.eval("#ASKS") == 0, str(rt.eval("#ASKS")))
@@ -7483,13 +7673,18 @@ def camo_families(lua51):
     pump(rt, 16)
     l = lines_of(rt)
     check("H: the weapon's camo rows are enumerated per family by the client's own calls",
-          has_line(l, "camo rows id=68970 ref=sat_pi_alcor base=1 special=3 mastery=1 extra=1"),
+          num(rt, "ProgressionTuning.camo.count['sat_pi_alcor'].base") == 1
+          and num(rt, "ProgressionTuning.camo.count['sat_pi_alcor'].special") == 3
+          and num(rt, "ProgressionTuning.camo.count['sat_pi_alcor'].mastery") == 1
+          and num(rt, "ProgressionTuning.camo.count['sat_pi_alcor'].extra") == 1,
           " | ".join([x for x in l if "camo rows" in x][:2]))
     check("H: a gate row is a requirement, never a watched camo",
           not has_line(l, "camo prime id=68978") and not has_line(l, "camo card id=68978"),
           " | ".join([x for x in l if "68978" in x][:2]))
     check("H: every special and the gold task prime silently",
-          has_line(l, "camo prime id=68971") and has_line(l, "camo prime id=68976")
+          rt.eval("ProgressionTuning.camo.seen['68971']") is not None
+          and rt.eval("ProgressionTuning.camo.seen['68976']") is not None
+          and count_line(l, "camo prime") == 0
           and rt.eval("NEVENTS()") == 0, str(rt.eval("NEVENTS()")))
     rt.execute("SET_CAMO_PROGRESS(68971, 300)")
     rt.execute("SET_CAMO_PROGRESS(68976, 15)")
@@ -7523,7 +7718,10 @@ def camo_families(lua51):
     load(rt2)
     pump(rt2, 16)
     check("H: a second weapon enumerates its own counts - one special, two mastery",
-          has_line(lines_of(rt2), "camo rows id=69098 ref=sat_me_nashira base=1 special=1 mastery=2 extra=0"),
+          num(rt2, "ProgressionTuning.camo.count['sat_me_nashira'].base") == 1
+          and num(rt2, "ProgressionTuning.camo.count['sat_me_nashira'].special") == 1
+          and num(rt2, "ProgressionTuning.camo.count['sat_me_nashira'].mastery") == 2
+          and num(rt2, "ProgressionTuning.camo.count['sat_me_nashira'].extra") == 0,
           " | ".join([x for x in lines_of(rt2) if "camo rows" in x][:2]))
 
     rt3 = new_rt(lua51, src=False)
@@ -7534,12 +7732,13 @@ def camo_families(lua51):
     rt3.execute("SET_PAID('v1;125186:900:1')")
     load(rt3)
     pump(rt3, 16)
-    before = has_line(lines_of(rt3), "camo rows id=69098")
+    before = rt3.eval("ProgressionTuning.camo.count['sat_me_nashira']")
     rt3.execute("SET_PAID('v1;125186:900:1;126469:800:1')")
     pump(rt3, 16)
     check("H: a weapon that becomes held mid-match is enumerated then, not at load",
-          before is False and has_line(lines_of(rt3), "camo rows id=69098 ref=sat_me_nashira"),
-          "%s | %s" % (before, " | ".join([x for x in lines_of(rt3) if "camo rows" in x][:2])))
+          before is None
+          and num(rt3, "ProgressionTuning.camo.count['sat_me_nashira'].base") == 1,
+          "%s | %s" % (before, rt3.eval("ProgressionTuning.camo.count['sat_me_nashira']")))
 
     rt4 = new_rt(lua51, src=False)
     rt4.execute(PRE)
@@ -7554,7 +7753,9 @@ def camo_families(lua51):
     l4 = lines_of(rt4)
     check("H: with getspecialcamos absent one line says so and the mastery rows still arrive",
           count_line(l4, "camo special unavailable for sat_pi_alcor - no WEAPON_CAMO.getspecialcamos") == 1
-          and has_line(l4, "camo rows id=68970 ref=sat_pi_alcor base=1 special=0 mastery=1")
+          and num(rt4, "ProgressionTuning.camo.count['sat_pi_alcor'].base") == 1
+          and num(rt4, "ProgressionTuning.camo.count['sat_pi_alcor'].special") == 0
+          and num(rt4, "ProgressionTuning.camo.count['sat_pi_alcor'].mastery") == 1
           and not has_line(l4, "progression_tuning: error"),
           " | ".join([x for x in l4 if "camo " in x][:3]))
 
@@ -7571,7 +7772,9 @@ def camo_families(lua51):
     l5 = lines_of(rt5)
     check("H: with getprogressioncamos absent one line says so and the specials still arrive",
           count_line(l5, "camo bundles unavailable for sat_pi_alcor - no WEAPON_CAMO.getprogressioncamos") == 1
-          and has_line(l5, "camo rows id=68970 ref=sat_pi_alcor base=1 special=3 mastery=0")
+          and num(rt5, "ProgressionTuning.camo.count['sat_pi_alcor'].base") == 1
+          and num(rt5, "ProgressionTuning.camo.count['sat_pi_alcor'].special") == 3
+          and num(rt5, "ProgressionTuning.camo.count['sat_pi_alcor'].mastery") == 0
           and not has_line(l5, "progression_tuning: error"),
           " | ".join([x for x in l5 if "camo " in x][:3]))
 
@@ -7634,12 +7837,18 @@ def reticle_rows(lua51):
     pump(rt, 40)
     l = lines_of(rt)
     check("I: the reticle rows come from the mode's own list, one entry per optic row",
-          has_line(l, "reticle rows n=2 zm=2 mode=2 kind=422 sample=66938,56892 cap=36"),
+          num(rt, "ProgressionTuning.ret.n") == 2
+          and num(rt, "ProgressionTuning.ret.nzm") == 2
+          and num(rt, "ProgressionTuning.ret.kind") == 422
+          and num(rt, "ProgressionTuning.ret.rows[1].id") == 66938
+          and num(rt, "ProgressionTuning.ret.rows[2].id") == 56892,
           " | ".join([x for x in l if "reticle rows" in x][:1]))
     check("I: the multiplayer optic row is never watched in a Zombies match",
-          not has_line(l, "reticle prime id=57777"), " | ".join([x for x in l if "57777" in x][:1]))
+          rt.eval("ProgressionTuning.ret.seen[57777]") is None,
+          " | ".join([x for x in l if "57777" in x][:1]))
     check("I: a reticle already past its first target primes silently",
-          has_line(l, "reticle prime id=66938 row=sat_ch_reticle_zm_sat_microreflex07 value=59 tiers=3 hits=0")
+          num(rt, "ProgressionTuning.ret.seen['66938']") == 59
+          and count_line(l, "reticle prime") == 0
           and rt.eval("NEVENTS()") == 0, " | ".join([x for x in l if "reticle prime" in x][:2]))
     rt.execute("SET_CAMO_PROGRESS(66938, 200)")
     pump(rt, 40)
@@ -7676,7 +7885,9 @@ def reticle_rows(lua51):
     l2 = lines_of(rt2)
     check("I: without GUNSMITH the tiers come from the client's own row and one line says so",
           count_line(l2, "reticle tiers - GUNSMITH.getreticlechallengesforcategory unavailable") == 1
-          and has_line(l2, "reticle rows n=2 zm=2") and not has_line(l2, "progression_tuning: error"),
+          and num(rt2, "ProgressionTuning.ret.n") == 2
+          and num(rt2, "ProgressionTuning.ret.nzm") == 2
+          and not has_line(l2, "progression_tuning: error"),
           " | ".join([x for x in l2 if "reticle" in x][:2]))
     rt2.execute("SET_CAMO_PROGRESS(66938, 400)")
     pump(rt2, 40)
@@ -7714,8 +7925,10 @@ end
     load(rt4)
     pump(rt4, 40)
     l4 = lines_of(rt4)
-    check("I: the rows line carries kind 422 even when the name lookup answers nil",
-          count_line(l4, "reticle rows n=2 zm=2 mode=2 kind=422 sample=66938,56892 cap=36") == 1
+    check("I: the rows state carries kind 422 even when the name lookup answers nil",
+          num(rt4, "ProgressionTuning.ret.kind") == 422
+          and num(rt4, "ProgressionTuning.ret.n") == 2
+          and count_line(l4, "reticle rows") == 0
           and not has_line(l4, "no reticle card this match"),
           " | ".join([x for x in l4 if "reticle rows" in x][:1]))
     rt4.execute("SET_CAMO_PROGRESS(66938, 200)")
@@ -7737,8 +7950,8 @@ end
     pump(rt5, 48)
     check("I: a reticle row already complete at the build stays silent",
           rt5.eval("NEVENTS()") == 0
-          and has_line(lines_of(rt5), "reticle prime id=66938 row=sat_ch_reticle_zm_sat_microreflex07"
-                                      " value=200 tiers=3 hits=1"),
+          and num(rt5, "ProgressionTuning.ret.seen['66938']") == 200
+          and count_line(lines_of(rt5), "reticle prime") == 0,
           " | ".join([x for x in lines_of(rt5) if "reticle" in x][:2]))
 
     rt6 = new_rt(lua51, src=False)
@@ -7760,9 +7973,10 @@ SET_CAMO_PROGRESS(66938, 121)
     pump(rt6, 40)
     l6 = lines_of(rt6)
     check("I: the watch window orders by stored progress, so the one row carrying it survives the cap",
-          count_line(l6, "reticle rows n=36 zm=40 mode=2 kind=422 sample=66938,66900,66901,66902,66903,66904"
-                         " cap=36 clipped=4") == 1
-          and has_line(l6, "reticle prime id=66938 row=sat_ch_reticle_zm_sat_row39 value=121 tiers=2 hits=1"),
+          num(rt6, "ProgressionTuning.ret.n") == 36
+          and num(rt6, "ProgressionTuning.ret.rows[1].id") == 66938
+          and num(rt6, "ProgressionTuning.ret.seen['66938']") == 121
+          and count_line(l6, "reticle rows") == 0,
           " | ".join([x for x in l6 if "reticle" in x][:2]))
     rt6.execute("SET_CAMO_PROGRESS(66938, 200)")
     pump(rt6, 40)
@@ -7791,9 +8005,10 @@ end
     load(rt7)
     pump(rt7, 40)
     l7 = lines_of(rt7)
-    check("I: with no store record on any row the rows line is today's",
-          count_line(l7, "reticle rows n=36 zm=40 mode=2 kind=422"
-                         " sample=66900,66901,66902,66903,66904,66905 cap=36 clipped=4") == 1
+    check("I: with no store record on any row the window is the id order, today's",
+          num(rt7, "ProgressionTuning.ret.n") == 36
+          and num(rt7, "ProgressionTuning.ret.rows[1].id") == 66900
+          and count_line(l7, "reticle rows") == 0
           and not has_line(l7, "reticle prime"),
           " | ".join([x for x in l7 if "reticle rows" in x][:1]))
 
@@ -7875,9 +8090,11 @@ def camo_bursts(lua51):
     pump(rt3, 24)
     l3 = lines_of(rt3)
     check("J: ten special rows each for three weapons all reach the watch, in sequence",
-          has_line(l3, "ref=sat_ar_flatline base=1 special=10 mastery=0 extra=0 watch=10")
-          and has_line(l3, "ref=sat_me_nashira base=1 special=10 mastery=0 extra=0 watch=20")
-          and has_line(l3, "ref=sat_pi_alcor base=1 special=10 mastery=0 extra=0 watch=30"),
+          num(rt3, "ProgressionTuning.camo.count['sat_ar_flatline'].special") == 10
+          and num(rt3, "ProgressionTuning.camo.count['sat_me_nashira'].special") == 10
+          and num(rt3, "ProgressionTuning.camo.count['sat_pi_alcor'].special") == 10
+          and num(rt3, "ProgressionTuning.camo.extraN") == 30
+          and count_line(l3, "camo rows") == 0,
           " | ".join([x for x in l3 if "camo rows" in x][:3]))
     rt3.execute("SET_CAMO_PROGRESS(77001, 101)")
     pump(rt3, 32)
@@ -7934,7 +8151,7 @@ def cf_weaponxp(lua51):
           not has_line(l, "prime t10_ar_coslo") and not has_line(l, "row 38869")
           and rt.eval("NEVENTS()") == 0, " | ".join(l[-6:]))
     check("cf: the sat_ gun in the same payload keeps its own ladder and its own level",
-          has_line(l, "prime sat_pi_atlas lv=0 total=900"), " | ".join(l[-6:]))
+          num(rt, "ProgressionTuning.guns['sat_pi_atlas'].level") == 0, " | ".join(l[-6:]))
 
     rt.execute('SET_PAID("v1;120001:4600:4600;120002:4600:4600;120003:4600:4600;88929:900:900")')
     pump(rt, 16)
@@ -8158,7 +8375,9 @@ def cf_camos(lua51):
           and rt.eval("rawget(_G, 'ProgressionTuning').camo.extraBuilt['t10_ar_coslo']") is True,
           " | ".join([x for x in l if "camo bundles" in x][:3]))
     check("cf: the sat_ gun's own camo row is still the watch set",
-          has_line(l, "camo watch id=57201 ref=sat_pi_atlas tiers=3"), " | ".join([x for x in l if "camo watch" in x][:3]))
+          num(rt, "ProgressionTuning.camo.rows['sat_pi_atlas'].id") == 57201
+          and num(rt, "ProgressionTuning.camo.rows['sat_pi_atlas'].n") == 3,
+          " | ".join([x for x in l if "camo watch" in x][:3]))
 
 
 def cf_splash(lua51):
@@ -8485,6 +8704,42 @@ def options_rows(lua51):
           and count_line(lines_of(rm), "options move raised") == 0)
 
 
+def options_layers(lua51):
+    """The debug page through both layers: one of every row, whether we hold the slot or sit under it."""
+    dbg = ["#x3" + h for h in ("5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa")]
+    stock = ["5a6d0000000000ff", "#x7a1b0000000000a1", "2c9f0000000000d4"]
+    ours = ["pt_token_amount", "pt_permanent"]
+    every = dbg + stock + ours
+    dead = "3f58d23122dd68ae"
+
+    rt = new_rt(lua51, pre=OPTIONSLAY)
+    inner = str(rt.eval("K1LIST()")).split(",")
+    check("opts: the inner layer puts its own rows above the stock ones and drops the dead one",
+          len(inner) == 6 and [inner.count(i) for i in dbg] == [1, 1, 1]
+          and stock[0] in inner and dead not in inner, " | ".join(inner))
+
+    top = str(rt.eval("PAGELIST()")).split(",")
+    check("opts: holding the slot, every row is on the page once",
+          len(top) == len(every) and [top.count(i) for i in every] == [1] * len(every),
+          " | ".join(top))
+
+    rt.execute("KRONOSHOOK()")
+    check("opts: the page's second layer takes the slot over ours",
+          rt.eval("OPTIONS[SKSECT] == KHOOKS[SKSECT]") is True
+          and rt.eval("OPTIONS[SKSECT] ~= K1") is True)
+    buried = str(rt.eval("PAGELIST()")).split(",")
+    check("opts: under that layer, every row is still on the page once",
+          len(buried) == len(every) and [buried.count(i) for i in every] == [1] * len(every),
+          " | ".join(buried))
+    check("opts: and the page reads the same as the one we build ourselves",
+          buried == top, " | ".join(buried))
+
+    rt.execute("KRONOSHOOK()")
+    builds = [str(rt.eval("PAGELIST()")) for _ in range(3)]
+    check("opts: rebuilds and a repeat hook leave one of every row",
+          [b.split(",") for b in builds] == [top, top, top], " | ".join(builds))
+
+
 def tokens_channel(lua51):
     """The token channel: what it reads, what it writes and what another vm's write does."""
     full = "p=600;w=1200;n=42;c=1,2,3,4,5,6,7,8;x=1"
@@ -8521,7 +8776,7 @@ def tokens_channel(lua51):
           [int(rseed.eval("ProgressionTuning.tokens.c[%d]" % i)) for i in range(1, 9)]
           == [1, 2, 3, 4, 5, 6, 7, 8]
           and rseed.eval("ProgressionTuning.tokens.csrc") == "seed"
-          and count_line(lines_of(rseed), "tokens P4 c=1,2,3,4,5,6,7,8 src=seed") == 1,
+          and count_line(lines_of(rseed), "tokens P4") == 0,
           " | ".join([x for x in lines_of(rseed) if "tokens P4" in x][:3]))
     rnone = new_rt(lua51, pre="CLR_DVAR('pt_tokens_ch')")
     check("tok: with no channel and no record there is nothing to seed and nothing written",
@@ -8666,6 +8921,7 @@ def main():
             cf_off(lua51)
             utc_fill(lua51)
             options_rows(lua51)
+            options_layers(lua51)
             tokens_channel(lua51)
 
         for order in LOAD_ORDERS:

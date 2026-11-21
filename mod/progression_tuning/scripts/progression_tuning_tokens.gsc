@@ -23,7 +23,6 @@ progression_tuning_tokens_main()
     level.pt_tok_stage = 0;
     level.pt_tok_ready = 0;
     level.pt_tok_tries = 0;
-    level.pt_tok_sig = "";
     level.pt_tok_last = gettime();
     progression_tuning_tokens_stage(1);
     logstring("pt tokens gsc armed ns unverified");
@@ -57,7 +56,6 @@ progression_tuning_tokens_main()
         }
         progression_tuning_tokens_players();
         progression_tuning_tokens_band();
-        progression_tuning_tokens_diag();
         progression_tuning_tokens_status();
     }
 }
@@ -300,16 +298,4 @@ progression_tuning_tokens_status()
     s = s + ";r=" + int(level.pt_tok_rtot) + ";wm=" + int(level.pt_tok_wtot) + ";cw=" + getdvarint(@"hash_827c38f8b953c541", 0);
     s = s + ";cd=" + cd + ";b=" + progression_tuning_tokens_bands() + ";n=" + level.pt_tok_n + ";x=" + level.pt_tok_x;
     setdvar("pt_tokens_st", s);
-}
-
-// change only console lines
-progression_tuning_tokens_diag()
-{
-    sig = level.pt_tok_r + "|" + level.pt_tok_w + "|" + level.pt_tok_rtot + "|" + level.pt_tok_wtot;
-    if (sig == level.pt_tok_sig)
-    {
-        return;
-    }
-    level.pt_tok_sig = sig;
-    logstring("pt tokens gsc p=" + level.pt_tok_r + " w=" + level.pt_tok_w + " rank=" + level.pt_tok_rtot + " wpn=" + level.pt_tok_wtot + " band=" + progression_tuning_tokens_bandtext());
 }

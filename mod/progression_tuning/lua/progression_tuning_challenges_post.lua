@@ -9,7 +9,6 @@ if S.parts[PART] == true then return end
 S.parts[PART] = true
 local A = S.api
 local function log(...) return A.log(...) end
-local function clip(...) return A.clip(...) end
 local function said(...) return A.said(...) end
 local function vlog(...) return A.vlog(...) end
 local function member(...) return A.member(...) end
@@ -230,17 +229,6 @@ local function chal_rows()
     end
   end
   if s.n > 0 or s.tries >= 4 then s.built = true end
-  if s.tries == 1 or s.n > 0 then
-    log("chal watch n=" .. s.n .. " daily=" .. s.dailyN .. " weekly=" .. s.weeklyN
-      .. " tries=" .. s.tries .. " why=" .. tostring(s.why or "ok"))
-    local wi = 1
-    while wi <= s.n and wi <= 6 do
-      local row = s.rows[wi]
-      log("chal watch row id=" .. tostring(row.id) .. " kind=" .. tostring(row.kind)
-        .. " ref=" .. clip(tostring(row.ref), 34) .. " target=" .. tostring(row.th[1]))
-      wi = wi + 1
-    end
-  end
 end
 
 -- queues one daily card once
@@ -319,20 +307,6 @@ local function week_target(row)
   return t
 end
 
--- eight ids for the sweep line
-local function sweep_sample(t)
-  local ids, m = {}, 0
-  for id in pairs(t) do
-    if m < 8 then
-      m = m + 1
-      ids[m] = tostring(id)
-    end
-  end
-  if m < 1 then return "none" end
-  table.sort(ids)
-  return table.concat(ids, ",")
-end
-
 -- sweeps every weekly row and cards the crossings
 local function chal_sweep()
   local s = S.chal
@@ -341,7 +315,6 @@ local function chal_sweep()
   local ch = rawget(_G, "Challenge")
   local names = { "ae_kind_zm_weekly", "ae_kind_weekly", "ae_kind_weekly_mastery" }
   local kinds, nk = {}, 0
-  local byname = {}
   local ek = fn_of(ch, "GetAEKindID")
   if ek ~= nil then
     local i = 1
@@ -350,7 +323,6 @@ local function chal_sweep()
       if okk and tonumber(v) ~= nil then
         nk = nk + 1
         kinds[nk] = tonumber(v)
-        byname[i] = tonumber(v)
       end
       i = i + 1
     end
@@ -360,7 +332,6 @@ local function chal_sweep()
   local now, nn = {}, 0
   local done_n, prog_n = 0, 0
   local src = nil
-  local counts = {}
   -- folds one store slice into the sweep
   local function take(t, kind)
     if type(t) ~= "table" then return 0 end
@@ -387,7 +358,7 @@ local function chal_sweep()
     while i <= nk do
       local okk, tt = pcall(fork, 0, kinds[i])
       if okk and type(tt) == "table" then
-        counts[kinds[i]] = take(tt, kinds[i])
+        take(tt, kinds[i])
         src = "fork"
       end
       i = i + 1
@@ -431,37 +402,10 @@ local function chal_sweep()
   end
   sw.src = src
   sw.kinds = kinds
-  -- the three kinds as text
-  local function kind_txt()
-    if nk < 1 then return "none" end
-    local out = {}
-    local i = 1
-    while i <= nk do
-      out[i] = tostring(kinds[i])
-      i = i + 1
-    end
-    return table.concat(out, ",")
-  end
-  -- how many rows each kind handed over
-  local function rows_txt()
-    local out = {}
-    local i = 1
-    while i <= nk do
-      out[i] = tostring(counts[kinds[i]] or 0)
-      i = i + 1
-    end
-    if nk < 1 then return "0/0/0" end
-    return table.concat(out, "/")
-  end
   if not sw.primed then
     sw.primed = true
     sw.prev = now
     sw.n, sw.done, sw.prog = nn, done_n, prog_n
-    log("chal sweep src=" .. src .. " kind=" .. kind_txt() .. " n=" .. nn
-      .. " done=" .. done_n .. " prog=" .. prog_n .. " sample=" .. sweep_sample(now))
-    log("chal sweep kinds zm_weekly=" .. tostring(byname[1]) .. " weekly=" .. tostring(byname[2])
-      .. " mastery=" .. tostring(byname[3]) .. " sticker=" .. tostring(KIND_STICKER)
-      .. " rows=" .. rows_txt())
     return
   end
   local prev = sw.prev
@@ -503,8 +447,6 @@ local function chal_sweep()
       local kind = e.k or KIND_WEEKLY
       local v = e.v or 0
       s.crossN = s.crossN + 1
-      log("chal week cross id=" .. tostring(id) .. " ref=" .. clip(tostring(ref), 34) .. " was="
-        .. tostring(wst) .. " now=" .. tostring(e.st) .. " v=" .. tostring(v) .. "/" .. tostring(t))
       chal_card({ id = id, ref = ref, kind = kind }, t, 1, v)
     end
     i = i + 1
@@ -540,8 +482,6 @@ local function chal_sweep()
       if t == nil then t = was.v end
       if t == nil then t = 0 end
       s.crossN = s.crossN + 1
-      log("chal week cross id=" .. tostring(id) .. " ref=" .. clip(tostring(was.ref or "-"), 34)
-        .. " was=1 now=gone v=" .. tostring(t) .. "/" .. tostring(t) .. " complete=" .. complete)
       if complete ~= "false" then
         chal_card({ id = id, ref = was.ref or "-", kind = was.k or KIND_WEEKLY }, t, 1, t)
       end
@@ -551,8 +491,6 @@ local function chal_sweep()
   sw.prev = now
   if nn ~= sw.n then
     sw.n, sw.done, sw.prog = nn, done_n, prog_n
-    log("chal sweep src=" .. src .. " kind=" .. kind_txt() .. " n=" .. nn
-      .. " done=" .. done_n .. " prog=" .. prog_n .. " sample=" .. sweep_sample(now))
   end
 end
 

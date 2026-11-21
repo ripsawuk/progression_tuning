@@ -245,11 +245,6 @@ local function camo_extra()
               j = j + 1
             end
             s.extraBuilt[ref] = true
-            log("camo rows id=" .. tostring(base ~= nil and base.id or 0) .. " ref=" .. clip(ref, 28)
-              .. " base=" .. tostring(counts.base) .. " special=" .. tostring(counts.special)
-              .. " mastery=" .. tostring(counts.mastery) .. " extra=" .. tostring(counts.extra)
-              .. " watch=" .. tostring(s.extraN)
-              .. (n > CAMO_EXTRA_PER and (" clipped=" .. tostring(n - CAMO_EXTRA_PER)) or ""))
           elseif s.extraTries[ref] >= 3 then
             s.extraBuilt[ref] = true
             log("camo rows id=" .. tostring(base ~= nil and base.id or 0) .. " ref=" .. clip(ref, 28)
@@ -295,9 +290,6 @@ local function camo_watch()
             s.rows[ref] = row
             s.n = s.n + 1
             s.mode, s.key = row.mode, row.key
-            log("camo watch id=" .. tostring(row.id) .. " ref=" .. clip(ref, 28) .. " tiers=" .. row.n
-              .. " first=" .. tostring(row.th[1]) .. " last=" .. tostring(row.th[row.n])
-              .. " mode=" .. tostring(row.mode) .. " key=" .. tostring(row.key))
           elseif s.tries[ref] == 1 then
             log("camo watch " .. clip(ref, 28) .. " - " .. tostring(why))
           end
@@ -332,9 +324,6 @@ local function camo_step(row)
     local prev = s.seen[k]
     if prev == nil then
       s.seen[k] = v
-      log("camo prime id=" .. tostring(row.id) .. " row=" .. tostring(row.ref) .. " value="
-        .. tostring(v) .. " tiers=" .. row.n .. " hits=" .. count_passed(row.th, row.n, v)
-        .. " raw=" .. rec_fields(rec))
     elseif v > prev then
       s.seen[k] = v
       local was = count_passed(row.th, row.n, prev)
@@ -343,9 +332,6 @@ local function camo_step(row)
         was = was + 1
         local target = row.th[was]
         note_cross(s, k .. ":" .. tostring(target))
-        log("camo cross id=" .. tostring(row.id) .. " row=" .. tostring(row.ref) .. " value="
-          .. tostring(v) .. " was=" .. tostring(prev) .. " target=" .. tostring(target)
-          .. " tier=" .. tostring(was))
         camo_card(row, target, was, v)
       end
     elseif v < prev then

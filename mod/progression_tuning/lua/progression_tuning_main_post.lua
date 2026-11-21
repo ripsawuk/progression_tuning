@@ -6,8 +6,6 @@ local TOGGLE_TICKS = 8
 local PAID_EVERY = 2
 local PAID_MAX = 8
 local PAID_LOG_CAP = 4
-local HB_TICKS = 120
-local HB_CAP = 60
 local LIVE_POLL_TICKS = 8
 
 local lastMsg
@@ -58,7 +56,6 @@ local DEF = {
   lootref = {},
   lootgun = {},
   foreign = {},
-  hb = 0,
   front = nil,
   diag = false,
   picksaid = {},
@@ -217,7 +214,7 @@ local function toggle(name, default_on)
   return v == "1", how .. "=" .. v
 end
 
--- reads every switch and says what changed
+-- reads every switch
 local function refresh_toggles()
   local on, ohow = toggle("pt_on", true)
   local lv, lw = toggle("pt_level", true)
@@ -225,16 +222,8 @@ local function refresh_toggles()
   local cm, cw = toggle("pt_camo", true)
   local dy, dw = toggle("pt_daily", true)
   local lg, gw = toggle("pt_log", false)
-  local prev = S.toggles
   S.toggles = { on = on, level = lv, attach = at, camo = cm, chal = dy, log = lg,
                 how = { on = ohow, level = lw, attach = aw, camo = cw, chal = dw, log = gw } }
-  if prev ~= nil and (prev.on ~= on or prev.level ~= lv or prev.attach ~= at
-      or prev.camo ~= cm or prev.chal ~= dy or prev.log ~= lg) then
-    log("toggles: on " .. (on and "on" or "off") .. ", level " .. (lv and "on" or "off")
-      .. ", attach " .. (at and "on" or "off")
-      .. ", camo " .. (cm and "on" or "off") .. ", daily " .. (dy and "on" or "off")
-      .. ", log " .. (lg and "on" or "off"))
-  end
 end
 
 -- is the mod on and this switch too
@@ -530,7 +519,6 @@ local GPARTS = 33
 local GHEXLEN = 65536
 local GMAXID = 0x3FFFF
 local GREBUILD_TICKS = 8
-local GSUMMARY_TICKS = 240
 local GN_GET = "GetDvarString"
 local GN_UNLOCKED = "isunlockedwithid"
 local GN_ARM, GN_VER, GN_SCOPE = "zm_g11_arm", "zm_g11_ver", "kronos_g11_scope"
@@ -848,7 +836,6 @@ local GD = {
   gen = 0,
   epoch = 0,
   ready = 0,
-  lastSum = 0,
   skips = 0,
   noClock = false,
   n = 0,
@@ -994,7 +981,7 @@ local function gcardcell(cell, set, n)
 end
 
 -- the prestige set rule by row
-local GC = { map = {}, lvl = nil, said = nil, off = false, tick = nil, retry = 0, armed = false }
+local GC = { map = {}, lvl = nil, off = false, tick = nil, retry = 0, armed = false }
 local GCSTATE, GCSW = "getchallengestate", { "zm_unlock_cards", "zm_unlock_all" }
 local GS_ON, GS_DONE, GS_OFF = 1, 3, 4
 
@@ -1002,7 +989,7 @@ local GS_ON, GS_DONE, GS_OFF = 1, 3, 4
 local function gpsets()
   if GC.tick == S.tick then return GC.lvl, GC.off end
   GC.tick = S.tick
-  local p, src = nil, "prestige"
+  local p = nil
   local f = fcache(rawget(_G, "PRESTIGE"), "getplayerprestigelevel")
   if f ~= nil then
     local ok, v = pcall(f, 0)
@@ -1011,20 +998,12 @@ local function gpsets()
   if p == nil then
     local v = dvi("zm_local_prestige")
     if v == nil then v = tonumber(dv("zm_local_prestige")) end
-    if v ~= nil then p, src = math.floor(v), "dvar" end
+    if v ~= nil then p = math.floor(v) end
   end
   GC.lvl, GC.off = p, false
   for i = 1, #GCSW do
     local v = dv(GCSW[i])
     if v ~= nil and v ~= "" and v ~= "0" then GC.off = true end
-  end
-  local k = 0
-  for _, lv in pairs(GC.map) do
-    if p ~= nil and lv <= p then k = k + 1 end
-  end
-  if p ~= nil and GC.said ~= p .. src .. k then
-    GC.said = p .. src .. k
-    log(string.format("prestige sets: player prestige %s from %s, %s sets open", p, src, k))
   end
   return p, GC.off
 end
@@ -1088,14 +1067,13 @@ gloadcard = function(key)
     local c = GCARDS[i]
     if c.key == key then
       if c.ok then return true end
-      local set, m, r, src = gcardread(c)
+      local set = gcardread(c)
       if set == nil then return false end
       c.ok = true
       G.gset2 = G.gset2 or {}
       for id in pairs(set) do G.gset2[id] = true end
       G.cardK = (G.cardK or 0) + 1
       G.epoch = G.epoch + 1
-      log("card table " .. c.name .. " rows=" .. r .. " ids=" .. m .. " src=" .. src)
       return true
     end
     i = i + 1
@@ -1108,21 +1086,15 @@ gcardboot = function()
   if GC.prow then return end
   local colf = gcardcol()
   if colf == nil then return end
-  local file, src = gcardfile(GCARDP, "id")
+  local file = gcardfile(GCARDP, "id")
   local okp, ids = pcall(colf, file, GCARDP.cols.id)
   local okq, lvs = pcall(colf, file, GCARDP.cols.prestige)
   if not okp or not okq or type(ids) ~= "table" or type(lvs) ~= "table" then return end
   GC.prow = true
-  local r, m = 0, 0
   for j, idv in pairs(ids) do
     local id, p = tonumber(idv), tonumber(lvs[j])
-    if id ~= nil and p ~= nil then
-      GC.map[math.floor(id)] = math.floor(p)
-      m = m + 1
-    end
-    r = r + 1
+    if id ~= nil and p ~= nil then GC.map[math.floor(id)] = math.floor(p) end
   end
-  log("card table " .. GCARDP.name .. " rows=" .. r .. " ids=" .. m .. " src=" .. src)
 end
 
 -- follows the retired scope switch
@@ -1136,7 +1108,6 @@ local function greadScope()
     end
   elseif G.scopeAll then
     G.scopeAll = false
-    log("g11 scope locksmith - " .. GSCOPE_N .. " ids")
   end
 end
 
@@ -1182,7 +1153,6 @@ local function greadset()
   if string.len(hex) ~= GHEXLEN then return end
   G.sethex, G.setn = hex, tonumber(serial)
   G.epoch = G.epoch + 1
-  log("g12 rewards " .. G.setn .. " ids (header " .. v .. ")")
 end
 
 -- rebuilds the lock bitmap when the serial moves
@@ -1247,14 +1217,6 @@ local function grefresh()
   G.badver = nil
   log("g11 rebuilt from serial " .. G.serial
     .. (typepair() and " types=attachment,camo,reticle" or " types=scope-fallback"))
-end
-
--- a line for the serials the rebuild skipped
-local function gsummary()
-  if G.skips > 0 and S.tick - G.lastSum >= GSUMMARY_TICKS then
-    log("g11 skipped " .. G.skips .. " unchanged serials")
-    G.skips, G.lastSum = 0, S.tick
-  end
 end
 
 -- cuts the dll payload into guns
@@ -1440,29 +1402,11 @@ A.poll = LIVE_POLL_TICKS
 A.gstr, A.bit, A.scope, A.scopeN = gstr, glockedNow, GLOCKSMITH, GSCOPE_N
 A.greward, A.gset = greward, function() return G.sethex, G.setn end
 A.cards = function() return G.cardK, #GCARDS end
-A.gmaxid, A.refresh, A.sum = GMAXID, grefresh, gsummary
+A.gmaxid, A.refresh = GMAXID, grefresh
 A.loadcard = gloadcard
 A.door_install, A.door_missing, A.door_retry = ginstall, gmissing, gensureWrapped
 A.door0 = { pr = fn_of(rawget(_G, "PROGRESSION"), GN_UNLOCKED),
             lo = fn_of(rawget(_G, "LOOT"), GN_UNLOCKED) }
-
--- one line every thirty seconds
-local function heartbeat()
-  if S.hb >= HB_CAP then return end
-  local e = S.paidorder[1]
-  if e == nil then return end
-  local ent = S.paid[e]
-  local g = S.lootgun[e]
-  S.hb = S.hb + 1
-  local line = "hb tick=" .. tostring(S.tick) .. " paid=" .. tostring(S.paidsaid) .. " n=" .. tostring(S.paidN)
-    .. " first=" .. clip(tostring(g ~= nil and g.ref or e), 28) .. " total=" .. tostring(ent.total)
-    .. " match=" .. tostring(ent.match) .. " psrc=dll"
-  if g ~= nil then
-    line = line .. " lv=" .. tostring(g.level) .. " row=" .. tostring(g.id)
-      .. " ladder=" .. tostring(g.n) .. "/" .. tostring(g.src)
-  end
-  log(line .. " " .. vm_mark())
-end
 
 -- the match own tick
 local function tick_match()
@@ -1472,7 +1416,6 @@ local function tick_match()
   if S.paidon and S.tick % LIVE_POLL_TICKS == 0 then pcall(live_install) end
   pcall(scan_all)
   pcall(flush)
-  if S.tick % HB_TICKS == 0 then pcall(heartbeat) end
 end
 
 local timerEl

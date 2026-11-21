@@ -34,7 +34,6 @@ local GMAX_TICKS = 480
 local GPOLL_TICKS = 8
 
 local function grefresh(...) return A.refresh(...) end
-local function gsummary(...) return A.sum(...) end
 local function glockedNow(...) return A.bit(...) end
 local function greward(...) return A.greward(...) end
 local function ginstall(...) return A.door_install(...) end
@@ -1109,7 +1108,6 @@ local function gtick()
   else
     if G.n % GPOLL_TICKS == 0 then
       pcall(grefresh)
-      pcall(gsummary)
       pcall(gvalinstall)
       pcall(gtokwatch)
     end

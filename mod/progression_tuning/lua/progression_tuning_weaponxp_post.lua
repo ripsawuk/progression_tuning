@@ -24,7 +24,6 @@ local function resolve_gun(...) return A.resolve_gun(...) end
 local function ours(...) return A.ours(...) end
 
 local MINXP_MAX = 40
-local PICK_SAY_CAP = 3
 
 local function enqueue(what, fn)
   local d = S.draw
@@ -345,22 +344,6 @@ local function step_gun(g, ent)
     local t, n, src, info = pick_ladder(g.ref, total)
     if t ~= nil then g.ladder, g.n, g.src = t, n, src end
     g.own = info.own
-    if S.diag or (S.toggles ~= nil and S.toggles.log) then
-      local k = S.picksaid[g.ref] or 0
-      if k < PICK_SAY_CAP then
-        S.picksaid[g.ref] = k + 1
-        local parts, i = {}, 1
-        while i <= info.cn and i <= 4 do
-          local c = info.cands[i]
-          parts[#parts + 1] = tostring(c[2]) .. "/" .. tostring(c[3]) .. ":"
-            .. tostring(count_passed(c[1], c[2], total))
-          i = i + 1
-        end
-        log("prime " .. clip(g.ref, 28) .. " own=" .. tostring(info.own) .. " total=" .. tostring(total)
-          .. " picked=" .. tostring(n) .. "/" .. tostring(src)
-          .. " cands=" .. (#parts > 0 and table.concat(parts, " ") or "none"))
-      end
-    end
   end
   if g.ladder == nil then
     if said("nolvl:" .. tostring(g.ref)) then
@@ -373,9 +356,6 @@ local function step_gun(g, ent)
   if not g.primed then
     g.primed = true
     g.level = lv
-    log("prime " .. clip(g.ref, 28) .. " lv=" .. tostring(lv) .. " total=" .. tostring(total)
-      .. " ladder=" .. tostring(g.n) .. "/" .. tostring(g.src) .. " - the profile's own total on the first"
-      .. " sighting, so the levels it already holds are not announced again")
     return
   end
   if lv <= g.level then return end
