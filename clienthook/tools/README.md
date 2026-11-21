@@ -21,6 +21,9 @@ source tree, the image's strings, the package scan, the client's own bytes, and 
 | `detour_test.c` | `src\master.c` + `src\resolve.c` | `test_detour.py` |
 | `pubxp_test.c` | `src\pubxp.c` | `test_build24.py` |
 | `publish_test.c` | `src\publish.c` | `test_build24.py` |
+| `tokens_test.c` | `src\tokens.c` + `src\g11.c` | `test_build24.py` |
+| `pick_test.c` | `src\pick.c` + `src\g11.c` + `src\resolve.c` | `test_build24.py` |
+| `armory_test.c` | `src\armory.c` + `src\g11.c` + `src\resolve.c` | `test_build24.py` |
 | `nativepay_test.c` | `src\nativepay.c` + `src\resolve.c` | `test_nativepay.py`, `test_build24.py` |
 | `resolve_check.c` | `src\resolve.c`, over a PE file on disk | `test_resolve.py` |
 | `guard_test.c` | the shipped `src\proxy_main.c` | `test_build24.py` |

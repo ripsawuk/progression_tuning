@@ -36,6 +36,8 @@
 #include "publish.h"
 #include "resolve.h"
 #include "tokens.h"
+#include "pick.h"
+#include "armory.h"
 
 void ch_logf(const char *fmt, ...);
 
@@ -348,6 +350,12 @@ static int g11_arm(HMODULE client)
     // cannot take it down with it
     tokens_arm(reg, salt, off);
 
+    // the armory pick channel: same register, same hash, same slot, its value from its own file
+    pick_arm(reg, salt, off);
+
+    // the armory xp feed: same register, same hash, same slot, its value from the mod's gsc at a level start
+    armory_arm(reg, salt, off);
+
     // Find all 35 - and create any that are not there, through the client's own register-or-find. The default
     // is the SENTINEL, so a dvar this call creates is indistinguishable from one the mod's GSC made and the
     // canary below passes for both; asking with the probe default here would make the hook refuse itself.
@@ -492,8 +500,10 @@ static DWORD WINAPI g11_thread(LPVOID unused)
     for (;;)
     {
         Sleep(250);
-        // the token channel's persistence rides this tick: no thread of its own, and a no-op until it armed
+        // the channels ride this tick: no thread of their own, and a no-op until each has armed
         tokens_tick();
+        pick_tick();
+        armory_tick();
         if (G11_OFF)
         {
             continue;
@@ -1578,6 +1588,10 @@ void ch_frame_start(void)
     // and the match boundary: the same call site sees ev=109 before the client's `log_events` gate, which is the
     // only boundary signal that exists with the stock `log_events 0`.
     nativepay_set_match_reset_hook(pubxp_match_reset);
+    // and the armory pay: the wrapper calls it after every event the client dispatches, on the same thread and
+    // under the same store lock, which is the only place the client's own award can be handed a row's private
+    // trigger. It gates itself on the feed being live and the pick naming one of our rows.
+    nativepay_set_pay_hook(armory_pay);
     // one line, once, so a reader of the log knows what the boundary depends on
     ch_logf("frame: the match boundary comes from the payment's call site - with the payment hook off, the "
             "published per-match figures do not reset");

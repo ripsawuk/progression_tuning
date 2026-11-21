@@ -75,6 +75,7 @@ static char NP_DIR[MAX_PATH] = {0};          // the DLL's own directory, ASCII, 
 static wchar_t NP_TEMPDIR[MAX_PATH] = {0};   // override for np_off_present() (the test passes a scratch dir)
 static np_paid_fn NP_PAID = NULL;            // the publish hook (NULL = no reader attached)
 static np_reset_fn NP_RESET = NULL;          // the match-boundary hook (NULL = the boundary is not observed here)
+static np_pay_fn NP_PAY = NULL;              // the armory pay seam (NULL = nothing pays from this wrapper)
 static void *NP_GATE = NULL;                 // the mutex shared with master.c's installer
 
 void nativepay_set_paid_hook(np_paid_fn fn)
@@ -85,6 +86,11 @@ void nativepay_set_paid_hook(np_paid_fn fn)
 void nativepay_set_match_reset_hook(np_reset_fn fn)
 {
     NP_RESET = fn;
+}
+
+void nativepay_set_pay_hook(np_pay_fn fn)
+{
+    NP_PAY = fn;
 }
 
 void nativepay_set_install_gate(void *mutex)
@@ -104,6 +110,7 @@ static volatile LONG NP_SUPPRESSED = 0;   // those the cap dropped
 static volatile LONG NP_BUSY = 0;         // one thread inside the altered window at a time
 static volatile LONG NP_CONCURRENT_NOTE = 0;
 static volatile LONG NP_CLOSING = 0;      // DllMain(DETACH) has taken over the final flush
+static volatile LONG NP_CENSUS_853 = 0;   // the one armory census line has been written
 
 static void np_lock(void)
 {
@@ -275,6 +282,50 @@ int np_u64(char *out, int cap, unsigned long long v)
 //   ev[0] = the event id, ev[1] = the entry count (dwords); entry i's id is a u16 at byte 8 + 2i and its value an
 //   i64 at byte 0x70 + 8i. `np_decode` says "this is ev=95 and it carries field 45" or it says no, and the wrapper
 //   then does what the client would have done.
+
+// one entry value by its id 1 = found
+static int np_entry(const unsigned int *ev, unsigned short want, long long *out)
+{
+    int n = 0;
+    memcpy(&n, (const unsigned char *)ev + 4, 4);
+    if (n < 0 || n > NP_ENTRY_MAX)
+    {
+        return 0;
+    }
+    if (NP_ENTRY_VAL_OFF + (long long)n * 8 > NP_RECORD_LEN)
+    {
+        return 0;
+    }
+    for (int i = 0; i < n; i++)
+    {
+        unsigned short id = 0;
+        memcpy(&id, (const unsigned char *)ev + NP_ENTRY_ID_OFF + (size_t)i * 2, 2);
+        if (id != want)
+        {
+            continue;
+        }
+        memcpy(out, (const unsigned char *)ev + NP_ENTRY_VAL_OFF + (size_t)i * 8, 8);
+        return 1;
+    }
+    return 0;
+}
+
+// one line the first time the menu ev 853 arrives
+static void np_census_armory(const unsigned int *ev)
+{
+    if (InterlockedCompareExchange(&NP_CENSUS_853, 1, 0) != 0)
+    {
+        return;
+    }
+    int n = 0;
+    long long gamemode = 0;
+    long long activate = 0;
+    memcpy(&n, (const unsigned char *)ev + 4, 4);
+    np_entry(ev, NP_KEY_GAMEMODE, &gamemode);
+    np_entry(ev, NP_KEY_ACTIVATE_ID, &activate);
+    np_logf("armory: ev=853 n=%d 8=%lld 74=%lld", n, gamemode, activate);
+}
+
 int np_decode(const unsigned int *ev, np_event *out)
 {
     if (ev == NULL || out == NULL)
@@ -1005,7 +1056,9 @@ static unsigned char *np_tramp_alloc(unsigned char *client, unsigned char *site,
 // 6. the wrapper the call site is repointed at
 // =======================================================================================================
 
-unsigned long long nativepay_call(const unsigned int *ev)
+// The client's own dispatch, untouched. Renamed so the wrapper below can run the armory pay after it returns:
+// that is the only place a payment can be made with the client's own award, on the drain thread, lock held.
+static unsigned long long np_call_inner(const unsigned int *ev)
 {
     np_fn orig = NP_ORIG;
     if (orig == NULL)
@@ -1020,6 +1073,12 @@ unsigned long long nativepay_call(const unsigned int *ev)
     memcpy(&id, ev, 4);
     if (id != NP_EVENT_XP_ID)
     {
+        // the armory census runs before the boundary: one line and the event passes through untouched
+        if (id == NP_EVENT_ARMORY_START)
+        {
+            np_census_armory(ev);
+            return orig(ev);
+        }
         // The match boundary. This call site is inside the client's own dispatch loop, which runs for every event
         // before the `log_events` gate, so ev=109 arrives here whether or not the client is writing
         // `players\ae_events.log`. The reset runs first; the event itself is then passed to the client's own
@@ -1096,6 +1155,20 @@ unsigned long long nativepay_call(const unsigned int *ev)
             np_logf("nativepay: note - the pair read %d/%d after the call, expected the restored %d/%d", *NP_KILL,
                     *NP_CRIT, kill_before, crit_before);
         }
+    }
+    return rv;
+}
+
+// The wrapper the client's call site is repointed at. The client's own dispatch runs first and unchanged; the
+// armory pay then runs once, after it returned and while the store lock is still held. A seam that pays nothing
+// (NULL) costs one load and one branch, which is what every launch before this one does.
+unsigned long long nativepay_call(const unsigned int *ev)
+{
+    unsigned long long rv = np_call_inner(ev);
+    np_pay_fn pay = NP_PAY;
+    if (pay != NULL)
+    {
+        pay(NP_ORIG, NP_KILL, NP_CRIT);
     }
     return rv;
 }
@@ -1421,6 +1494,8 @@ void nativepay_reset_for_test(void)
     InterlockedExchange(&NP_SUPPRESSED, 0);
     InterlockedExchange(&NP_BUSY, 0);
     InterlockedExchange(&NP_CONCURRENT_NOTE, 0);
+    InterlockedExchange(&NP_CENSUS_853, 0);
+    NP_PAY = NULL;
 }
 
 // Called from DllMain(DLL_PROCESS_DETACH). Bounded: at most ~20 ms, and it gives up rather than deadlock.

@@ -28,6 +28,32 @@ written. The hook registers that dvar at boot from `cod25\players\tokens.txt` an
 whenever it changes - one ASCII line, written through a temporary file and a rename. The `players` folder is the
 client's own: the hook reads it and never makes it.
 
+**It reads the armory XP feed.** The level thread of the mod's own GSC publishes the operator's pre-cap rank XP for
+the match as `pt_armory_xp` - `s=<match serial>;x=<xp this match>;h=<beat>`. The hook registers that dvar at boot,
+reads it on its 250 ms thread, resets when the serial moves or when the beat goes back (a level load leaves `s` at 1),
+and writes one `armory: feed` line when the total moves, at most once a second. `armory: live=0` marks the level
+thread's end. The kill switch is `%TEMP%\progression-tuning\armory_feed_off.txt`.
+
+**It pays that XP into the active armory row.** What the match earned and this process has not paid is held in the
+client's own award amount - `0x2775F4`, the same int the field-45 payment uses - and the client's own award function
+is called once with it, naming the row by the pick's private trigger out of the record's own trigger list. The credit
+is the row's rise read back from `row+0x560`, never the amount held, and every line the pay writes is posted to the
+250 ms thread so nothing opens a file on the client's drain thread. One look a second, only while the feed's beat is
+inside its two-second window, only for the active pick, and only while that row is not complete. A completion is
+logged, and it posts one advance request for that row: the pick's own 250 ms tick then moves `a=` to the next row in
+the queue whose own status is not complete, writes `players\pt_armory.txt`, pushes the merged line into
+`pt_armory_ch`, and says `armory: advance <from> -> <to>` - or, with nothing left to earn, `a=0` and
+`armory: queue done`. The pay itself still opens no file. A fault in that one call restores both globals and latches
+the pay off for the process. The kill switch is `%TEMP%\progression-tuning\armory_pay_off.txt`; the advance has its
+own, `%TEMP%\progression-tuning\armory_advance_off.txt`, which leaves the pay running and the pick where it is.
+
+**It keeps the armory pick alive.** The Armory's pick has the same problem: the press happens in the front end and
+the row has to outlive the process. The hook registers `pt_armory_ch` at boot from `cod25\players\pt_armory.txt` -
+`a=<row>` and the advance queue `q=<row,row,...>` in the game's own order - adopts every press the mod writes to
+that dvar, keeps the file in step, and moves the pick on when the row it names is paid to completion. One line is
+said the first time the menu's ev=853 reaches the hook, which is what decides whether the pick can be read from the
+event itself.
+
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the
 byte it changed and reads it back. One byte, and the decision is the client's own, not ours.
@@ -78,7 +104,9 @@ or skip with a `SKIP` line.
     src\publish.c           the forced publish's pure half: the page check, the guard, the window, the kill switch
     src\g11.c               the lock payload's pure half: hex, split, header, name hash, canary
     src\tokens.c            the token channel's dvar and its file: the one-line form, the tmp-and-rename write
+    src\pick.c              the armory pick channel's dvar and its file, the queue and the advance
+    src\armory.c            the armory xp feed, and the pay that rides the client's own award
     src\master.c            the master-prestige level byte, at its call sites
-    src\nativepay.c         the five bytes at the award's call site
+    src\nativepay.c         the five bytes at the award's call site, and the seams the frame hangs on them
     src\pubxp.c             the paid-XP text, the per-gun ledger and the record lookup
     src\version_proxy.def   the 17 export names

@@ -41,6 +41,9 @@
 //   byte 0x70  i64  entry value [i]       (8 bytes each, from byte 0x70)
 #define NP_EVENT_XP_ID 0x5Fu    // ev=95, the weapon-XP event (mp_addxp)
 #define NP_EVENT_MATCH_START 0x6Du // ev=109, the match boundary (the event `ae_events.log` prints as `ev=109`)
+#define NP_EVENT_ARMORY_START 853u // ev=853, the menu's armory pick (armoryutils senduserevent)
+#define NP_KEY_GAMEMODE 8       // iw9_gamemode, the first key the pick carries
+#define NP_KEY_ACTIVATE_ID 74   // iw9_activate_id, the armory row the page showed
 #define NP_FIELD_45 0x2Du       // the game's own per-kill weapon XP, crit included
 #define NP_FIELD_44 0x2Cu       // the weapon (loot) id
 #define NP_ENTRY_ID_OFF 0x08u
@@ -108,6 +111,12 @@ void nativepay_set_paid_hook(np_paid_fn fn);
 // the paid hook applies: memory only, no file I/O.
 typedef void (*np_reset_fn)(void);
 void nativepay_set_match_reset_hook(np_reset_fn fn);
+// The armory pay seam: called once for every event the client dispatches, AFTER the client's own function has
+// returned and while its store lock is still held - the one place a payment can be made with the client's own
+// award. It is handed the resolved award function and the two ints that award reads as its amount. Memory only,
+// no file I/O: armory.c holds the pair for exactly one call and posts what it paid to the frame thread.
+typedef void (*np_pay_fn)(np_fn orig, int *kill, int *crit);
+void nativepay_set_pay_hook(np_pay_fn fn);
 // An optional mutex held across the 5-byte store, shared with master.c's installer so the two thread-freeze
 // windows cannot overlap. The DLL passes one HANDLE to this and to master_install; NULL is a no-op.
 void nativepay_set_install_gate(void *mutex);

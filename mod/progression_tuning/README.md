@@ -1,6 +1,6 @@
 # The mod - `progression_tuning`
 
-A Kronos mod folder for Call of Duty: Black Ops 7 Zombies. It is UI Lua and one GSC script: no game file is
+A Kronos mod folder for Call of Duty: Black Ops 7 Zombies. It is UI Lua and two GSC scripts: no game file is
 written by the mod, and it displays what the client hook's payload says rather than computing XP of its own.
 
     mod.json                              name, version, the toggles, one description
@@ -15,8 +15,9 @@ written by the mod, and it displays what the client hook's payload says rather t
     lua\progression_tuning_tokens_post.lua    the XP token channel: counts, countdown, activation, the menu reads
     lua\progression_tuning_diag_post.lua      the temporary `rc1diag` block, `pt_diag` off by default
     scripts\progression_tuning_tokens.gsc     the script side of the token channel: the native XP multipliers
+    scripts\progression_tuning_armory.gsc     the armory XP feed: the operator's pre cap match xp in `pt_armory_xp`
 
-Kronos loads every `*_post.lua` in the folder as its own chunk, and the folder's `scripts\` script as its own
+Kronos loads every `*_post.lua` in the folder as its own chunk, and each file in the folder's `scripts\` as its own
 GSC program. `main` is required: it holds the registry and the API the other parts call, and it is the part that
 reports `core absent - no part <name>` when one is missing. The eight feature parts are optional - delete one
 and its feature is simply absent, the rest keep running.
@@ -37,3 +38,10 @@ the client's own record and are not kept.
 The two rows the part adds to Debug Options come from `progression_tuning_options_post.lua`: `XP Token Amount`
 sets every level and weapon token count at once, and `Enable Double XP` holds double XP on without using a
 token up.
+
+## The armory XP feed
+
+`scripts\progression_tuning_armory.gsc` is a script of its own, with no part in `pt_tokens_*`. Once per half
+second inside a match it reads the operator's own pre cap rank xp field and writes the running total to
+`pt_armory_xp` as `s=<match serial>;x=<xp this match>;h=<beat>`. The hook registers that dvar at boot and reads
+it; the script writes no file, no store and no player data.

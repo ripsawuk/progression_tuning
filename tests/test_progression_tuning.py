@@ -8,7 +8,9 @@ Two halves, both read-only. Nothing is installed, no game folder is written, not
     of every identifier the removed features used, and the absence of any script part;
   * a dry run of the Lua under a stubbed Kronos VM (Lua 5.1 via lupa) whose members are keyed by
     xhash, the way the client stores them (D47), whose Dvar answers by xhashdvar(name), and whose two
-    contexts are the menu (Engine.InFrontend true) and a match (false).
+    contexts are the menu (Engine.InFrontend true) and a match (false). Its clock is `PUMP(n)`: one
+    round fires every queued wait once, so two independent 250 ms timers each get n steps and neither
+    steals the other's slot.
 
 The cases:
 
@@ -98,14 +100,58 @@ The cases:
       on the next tick by the seconds, the counts and the flag, and the same serial is not adopted twice;
       the part's own console output is its armed line and its refusals - no per write, per change or
       census line survives (`LOG_REMOVED`);
+  24. the armory schedule gate: the gate answers released for a row in the 76 with a future
+      start stamp while `CoD.GetUTC` is zero, the client's own answer stands for every other row
+      (all of its values), a raising gate on another row gives the client's own refusal rather than
+      an error, loading the file twice wraps nothing twice, and a match VM arms on the same gate and
+      answer; with no gate in the table
+      its own retry timer keeps trying and then says one `gate=missing` line and stops; the part
+      arms on that timer alone, in a VM with no main part in it and with no main hook registered.
+      And the pick (C31 a3): the client's own press runs first and its values come back unchanged,
+      the row it acted on is read from the focus item, the active tile or the last tile focused
+      and only when it is one of the 76, 52813 answers that row from a copied record with the
+      client's own table untouched and a record the client already activated passing through, every
+      other id is the client's own answer, the client's raises are swallowed into the safe answer,
+      the channel is
+      written and read back only when the hook put a line in it, a pick it already carries is adopted
+      at arm, and a pick the hook registers after the arm is taken on a later tick of the part's own
+      timer or in the 52813 answer itself, said once and with no write before it;
+      a press under a padded hash is still found, and a match VM records its press too.
+      And the versions (C87 a4): the table's 39 rows and 456 ids, 147 under the attachment rows and 309
+      under the weapon rows, the 1911's own four and its six blueprints among them, each reading
+      locked until its row is done or its own switch is on, a blueprint ignoring unlock_blueprints, a
+      version ask costing no completion read, and a blueprint of a gun outside the 76 left to the door.
+      And the crafting table: a match VM wraps the game's own item lock once, under its plain name or
+      its hash, so the four streaks the armory sells read locked at the table until their row is done
+      or their switch is on, every other item keeps the game's own answer (asked exactly once), a
+      raising lock answers locked and still opens an earned streak, a menu VM says `craft=n/a` and
+      wraps nothing, a match VM with no table says `craft=missing`, and the three load orders agree.
+      And the arm timer (C87 a5): its retry runs on past a pick already seeded at the arm until the gate,
+      the answer, the door, the ownership getter, the blueprint test and the vm's own piece are in, says
+      one `armory late` line naming the ones that arrived after the arm line and never one a tick, and
+      rests once the pick is seeded; a vm with no door keeps it waiting for one. And the ownership getter
+      (`PROXY_LOOT.IsOwned`, C87 a5/a6/a7): the 76 base ids and the 147 attachment versions answer not owned
+      until their row is done or their switch is on, the 309 blueprints answer owned at all times so the
+      builds list always shows them while the door still padlocks them and the gun's blueprint test still
+      reads not owned until the row is earned, every other id is the getter's own answer asked exactly once,
+      a plain and a hashed slot and a table rebuilt after the arm are all wrapped, a raising getter
+      answers not owned rather than raising, a vm with no getter says `own=missing`, and the three load
+      orders agree. And the blueprint test (`PROGRESSION.ownsBlueprintOfWeapon`, C87 a6): an armory gun
+      reads not owned while its row is incomplete, opens when that row is done or the weapon or
+      everything switch is on and shuts again with the row, a gun outside the 76 keeps the client's own
+      answer, a ref the loot table does not name is delegated, the wrapped answer is one value that never
+      rethrows, a plain and a hashed slot are both wrapped and one wrapper stays, a vm with no member
+      says `obw=missing`, and the three load orders agree.
 
-The mod is ten `*_post.lua` parts (D96 split): main, weaponxp, splash, camos, challenges, prison,
-reticles, diag, options, tokens. `load()` runs all ten in that order; `SRC` is their concatenation and
-every whole-mod check reads it. The diagnostic is quarantined in its own part: `shipping()` is the nine
-parts that ship, because the diag part legitimately names the features the shipping code must not.
-Everything else, including every static ban on IO, still scans all of it. The token part reads its
-channel at chunk scope, so the reversed order arms it last, and it carries four retired words the file
-rule and the residue scan allow by name, each pinned in `static_checks`.
+The mod is eleven `*_post.lua` parts (D96 split): main, weaponxp, splash, camos, challenges, prison,
+reticles, armory, diag, options, tokens. `load()` runs all eleven in that order; `SRC` is their
+concatenation and every whole-mod check reads it. The diagnostic is quarantined in its own part:
+`shipping()` is the ten parts that ship, because the diag part legitimately names the features the
+shipping code must not. Everything else, including every static ban on IO, still scans all of it. The
+token part reads its channel at chunk scope, so the reversed order arms it last, and it carries four
+retired words the file rule and the residue scan allow by name, each pinned in `static_checks`. The
+armory part arms where its gate and answer are, or on a timer of its own, and carries its own arm
+wording, pinned in `PART_ARM`.
 
 Run:  python -I tests\\test_progression_tuning.py
 """
@@ -128,10 +174,11 @@ CAMOS = "progression_tuning_camos_post.lua"
 CHALLENGES = "progression_tuning_challenges_post.lua"
 PRISON = "progression_tuning_prison_post.lua"
 RETICLES = "progression_tuning_reticles_post.lua"
+ARMORY = "progression_tuning_armory_post.lua"
 DIAG = "progression_tuning_diag_post.lua"
 OPTIONS = "progression_tuning_options_post.lua"
 TOKENS = "progression_tuning_tokens_post.lua"
-LUA_FILES = [MAIN, WEAPONXP, SPLASH, CAMOS, CHALLENGES, PRISON, RETICLES, DIAG, OPTIONS, TOKENS]
+LUA_FILES = [MAIN, WEAPONXP, SPLASH, CAMOS, CHALLENGES, PRISON, RETICLES, ARMORY, DIAG, OPTIONS, TOKENS]
 SHIP_FILES = [n for n in LUA_FILES if n != DIAG]
 TEXT_FILES = LUA_FILES
 # the two rows parts arm last in the reversed order: the token part reads its channel at chunk scope, and
@@ -143,12 +190,18 @@ LOAD_ORDERS = {
     "reversed": ([n for n in sorted(LUA_FILES, reverse=True) if n not in CORE_LAST] + CORE_LAST),
 }
 LOAD_ORDER = "harness"
+# the line each part prints when it arms, where it carries its own wording
+PART_ARM = {ARMORY: '"armory armed "'}
 
 PARTS, HEXLEN, PARTLEN = 33, 65536, 2000
 MAXID = 0x3FFFF
 LS_COUNT = 4203
 LS_SHA = "EC5C1479DE844E725AC0569A348B0349826783B1C0CC7598F0C949451A349581"
 ACCEPT = [89575, 96171, 96192, 96202, 102671, 126597, 126619, 111457]
+# the tokens script is rc1.4 prep's file byte for byte, the armory xp feed is a script of its own
+TOKENS_GSC_LEN = 8559
+TOKENS_GSC_SHA = "63EFBB2B9032C392FED53501124F77E85B3F0E15332415BF0796A2BBECDF06DC"
+ARMORY_GSC = "progression_tuning_armory.gsc"
 TOGGLES = ["pt_on", "pt_level", "pt_attach", "pt_camo", "pt_daily", "pt_log"]
 REMOVED = [
     "RETIC", "badge", "Badge", "Mastery", "dedupe", "DEDUPE", "_DataSources", "NearestToCompletion",
@@ -159,8 +212,10 @@ REMOVED = [
     "ptsplash_u", "ptsplash_d", "ptsplash_m", "ptsplash_n", "ptsplash_v", "ptsplash_wxp", "zm_ch_",
     "XP_MODE", "weapon_xp_kill", "kill", "crit", "award", "parse_snapshot", "acc_for", "acc_now",
     "tier_at", "tier_in", "gsc", "progression_tuning_splash", "g14_splash",
-    "g11_locks", "e3_armory", "g10_armory", "Armory", "armory",
+    "g11_locks", "e3_armory", "g10_armory",
 ]
+# the armory words belong to the armory part alone (its own check below)
+ARMORY_WORDS = ["Armory", "armory"]
 
 # the game's own card tables, read by name - not residue of a removed feature
 CARD_TABLES = ["reticleChallenges", "seasonalChallenges", "gunsmithChallenges",
@@ -289,10 +344,15 @@ end }
 function PUMP(n)
   local fired = 0
   for _ = 1, n do
-    local h = table.remove(QUEUE, 1)
-    if h == nil then break end
+    local now = {}
+    for i = 1, #QUEUE do now[i] = QUEUE[i] end
+    if #now == 0 then break end
+    QUEUE = {}
     fired = fired + 1
-    if type(h.onComplete) == "function" then h.onComplete() end
+    for i = 1, #now do
+      local h = now[i]
+      if type(h.onComplete) == "function" then h.onComplete() end
+    end
   end
   return fired
 end
@@ -889,9 +949,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 217606
-SHIP_LUA_SHA = "75E9D0CC187B7CAF781076BA3951DDF73DA86813EB358B57C89D5C58FC95EF9F"
-LITERAL_SHA = "ABB686C55CB78B8B1AB0F57F332E8611A26C6EB4635019A8D326187B4CED100F"
+SHIP_LUA_LEN = 265744
+SHIP_LUA_SHA = "9D6E68D5C102319000956FEEADCFE5BD73FEC20AB9D4AE786D41855ADC1D2202"
+LITERAL_SHA = "DD963B731F83C54F97498222D5C5DD11AC7ABA10D9C65AC6BC1C51E879B3C77B"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -929,7 +989,9 @@ LOG_REMOVED = [
 ]
 LITERAL_REMOVED = [
     " (locks ",
+    " 153766=",
     " ah=",
+    " b=",
     " err=",
     " gi=",
     " in scope)",
@@ -937,11 +999,26 @@ LITERAL_REMOVED = [
     " isp=",
     " len=",
     " locks=",
+    " plain=",
     " playing=",
+    "v4",
+    "v5",
+    "v8",
     "Challenge.GetAEKindID refused ae_kind_reticle",
+    "GL_HACK",
     "GetSoundLengthMS",
+    "GetWeaponBlueprints",
     "IsSoundPlaying",
+    "armory check bp ",
+    "armory check bp missing",
+    "armory check door 151472=",
+    "armory check list win=",
+    "armory check owned 151472=",
+    "armory check progression 151472=",
+    "getweaponmpref",
+    "isunlocked",
     "no Challenge.GetAEKindID in this VM",
+    "sat_sm_civet",
     "sndprobe alias=",
     "sndprobe: no PlaySound in this vm",
     "sndprobe: raised alias=",
@@ -951,15 +1028,24 @@ LITERAL_REMOVED = [
     "uin_jup_master_challenge_complete",
     "uin_jup_master_challenge_complete_music",
     "uin_loadout_hilite",
+    "withid",
 ]
 LITERAL_ADDED = [
     " ",
     " - not one of ours, so no row is read for it",
+    " (seeded late)",
     " - the camo map is truncated and",
+    " (advanced)",
     " 101644 b=",
     " 131708 b=",
     " agree=",
     " aliases=",
+    "answer",
+    "armory card ",
+    "armory late ",
+    "armory picture wrapped for ",
+    "armory name wrapped for ",
+    " weapon loots",
     " belongs to ",
     " bit0=",
     " bit1=",
@@ -974,10 +1060,17 @@ LITERAL_ADDED = [
     " complete=false progress=",
     " complete=true progress=",
     " computed and it keeps the client's own answer",
+    " craft=",
+    " card=",
+    "craft",
     " csv=",
     " ctl=",
     " cum=",
     "CLUA",
+    "COMMON_ITEM",
+    "GetItemSpawnEntryImageByID",
+    "getbwimage",
+    "armory craft lock raised - answering locked",
     "card lock: ",
     "card lock: purchasable probe missing ",
     "cardbuy",
@@ -989,6 +1082,7 @@ LITERAL_ADDED = [
     " file=",
     " firstNum=",
     " fork429=",
+    "gate",
     " head=",
     " hex=",
     " ids=",
@@ -1002,7 +1096,9 @@ LITERAL_ADDED = [
     " l92066=",
     " left as the client answers it",
     " live=",
+    " list=",
     " lock=",
+    "lock",
     " lvl=",
     " lvl=1 reward=",
     " max=",
@@ -1010,6 +1106,7 @@ LITERAL_ADDED = [
     " names ",
     " native=",
     " none",
+    "n/a",
     " not kept",
     " num=",
     " opacity=",
@@ -1017,6 +1114,7 @@ LITERAL_ADDED = [
     " our=",
     " pct=",
     " prestigeRef=",
+    "press",
     " r92066=",
     " ranks=",
     " reward=",
@@ -1036,6 +1134,9 @@ LITERAL_ADDED = [
     " tbl315=",
     " tbl422=",
     " types=attachment,camo,reticle",
+    " vars=",
+    " vm=",
+    "v11",
     " why=",
     " wkhead=",
     " wlevel=",
@@ -1045,6 +1146,7 @@ LITERAL_ADDED = [
     "/absent",
     "0x%x%x%x%x%x%x%x%x",
     "0x7dc362a78cf1d3d3",
+    "+",
     "2=",
     "3",
     "3=",
@@ -1087,6 +1189,8 @@ LITERAL_ADDED = [
     "IsLootUseableOnCurrentPlatform",
     "IsReward",
     "IsUnlocked",
+    "isitemlocked",
+    "itemref",
     "LOAD_SCREEN",
     "MP",
     "Medal",
@@ -1097,6 +1201,7 @@ LITERAL_ADDED = [
     "OPERATOR_SKIN",
     "PAGEDBATTLEPASS.",
     "PERK",
+    "PurchaseMenuUtils",
     "PLAYERCARD",
     "QB1 ",
     "QB1 done=none",
@@ -1152,6 +1257,7 @@ LITERAL_ADDED = [
     "ae/sat_ae_autogen_reticle_challenges.csv",
     "ae/sat_ae_autogen_seasonal_challenges.csv",
     "ae/sat_gs_challenges.csv",
+    "ae_kind_armory",
     "ae_kind_reticle_cer",
     "ans",
     "b",
@@ -1247,6 +1353,7 @@ LITERAL_ADDED = [
     "pt_diagb",
     "raised",
     "rbdiag",
+    " refused",
     "ret",
     "reticle",
     "reticleChallenges",
@@ -1388,6 +1495,16 @@ LITERAL_ADDED = [
     "tokens P3 wrap=1",
     "tokens P5 perm=",
     "tokens P6 event=",
+    " q=",
+    "%d+",
+    ",",
+    ";q=",
+    "Challenge",
+    "IsChallengeComplete",
+    "^a=(%d+)",
+    "getcachedarmoryachievements",
+    "id",
+    "q=([%d,]+)",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
@@ -1657,26 +1774,26 @@ def static_checks():
           and 'displayLocation = "dailyNotification"' in LUA_TEXT[SPLASH])
     check("order: the alphabetical replay is the order the client arms the parts in",
           [n[len("progression_tuning_"):-len("_post.lua")] for n in LOAD_ORDERS["alphabetical"]]
-          == ["camos", "challenges", "diag", "main", "options", "prison", "reticles", "splash",
-              "tokens", "weaponxp"],
+          == ["armory", "camos", "challenges", "diag", "main", "options", "prison", "reticles",
+              "splash", "tokens", "weaponxp"],
           " | ".join(LOAD_ORDERS["alphabetical"]))
     check("order: the harness order is a fourth, different order",
           LOAD_ORDERS["harness"] != LOAD_ORDERS["alphabetical"]
           and LOAD_ORDERS["harness"] != LOAD_ORDERS["reversed"]
           and len(set(tuple(v) for v in LOAD_ORDERS.values())) == 3)
-    check("order: the reversed replay keeps the eight original parts reversed and the two new last",
+    check("order: the reversed replay keeps the nine original parts reversed and the two new last",
           LOAD_ORDERS["reversed"][-2:] == CORE_LAST
           and LOAD_ORDERS["reversed"][:-2] == [n for n in sorted(LUA_FILES, reverse=True)
                                                if n not in CORE_LAST],
           " | ".join(LOAD_ORDERS["reversed"]))
-    check("lua: the diagnostic's arm gate still counts eight parts, and there are ten",
+    check("lua: the diagnostic's arm gate still counts eight parts, and there are eleven",
           "for _ in pairs(S.parts) do n = n + 1 end" in LUA_TEXT[MAIN]
-          and "if n < 8 then return end" in LUA_TEXT[MAIN] and len(LUA_FILES) == 10)
+          and "if n < 8 then return end" in LUA_TEXT[MAIN] and len(LUA_FILES) == 11)
     first = tokens_first()
     check("order: the token part read before the part that fills its api raises at chunk scope",
           first in (None, "lupa absent") or "dv' (a nil value)" in first, str(first)[-80:])
 
-    scan = ship.replace('"RETICLE"', "")
+    scan = ship.replace('"RETICLE"', "").replace(LUA_TEXT[ARMORY], "")
     for name in CARD_TABLES + CARD_PATHS + UNLOCK_DVARS:
         scan = scan.replace('"%s"' % name, "")
     for word in TOKENS_RESIDUE_KEEP:
@@ -1686,6 +1803,10 @@ def static_checks():
           all(sum(LUA_TEXT[n].count(w) for n in LUA_FILES) == 1 for w in TOKENS_RESIDUE_KEEP)
           and all(w in LUA_TEXT[TOKENS] for w in TOKENS_RESIDUE_KEEP),
           " | ".join(w for w in TOKENS_RESIDUE_KEEP if LUA_TEXT[TOKENS].count(w) != 1))
+    others = [n for n in SHIP_FILES if n != ARMORY
+              and any(w in LUA_TEXT[n] for w in ARMORY_WORDS)]
+    check("lua: the armory words live in the armory part alone",
+          others == [], " | ".join(others))
     drop = [k for k in DROPPED_CARDS + DROPPED_PATHS if k in ship]
     check("lua: the four dropped card tables are named nowhere in the shipped parts",
           drop == [], " | ".join(drop))
@@ -1700,24 +1821,50 @@ def static_checks():
     have = literals(SRC)
     gone = sorted(set(LITERAL_REMOVED + LOG_REMOVED) & have)
     dig = hashlib.sha256(("\n".join(sorted(have)) + "\n").encode()).hexdigest().upper()
-    arm = [n for n in LUA_FILES if ("part " + n[len("progression_tuning_"):-len("_post.lua")] + " armed")
-           not in LUA_TEXT[n]]
+    arm = [n for n in LUA_FILES if PART_ARM.get(n, "part " + n[len("progression_tuning_"):-len("_post.lua")]
+                                                 + " armed") not in LUA_TEXT[n]]
     check("lua: none of the removed identifiers appears, the literal set is the split's own, and every part arms",
           not found and not gone and dig == LITERAL_SHA and set(LITERAL_ADDED) <= have and arm == [],
           ", ".join(found + gone + arm) or "%d literals %s" % (len(have), dig[:16]))
 
+    # two parts write one dvar each, the armory pick channel and the token channel; every other part stays write-free
+    writes = ship.replace(LUA_TEXT[ARMORY], "")
     for token, why in (("SetDvar", "writes a dvar"), ("io.", "file IO"), ("os.", "OS calls"),
                        ("dofile", "runs a file"), ("loadfile", "loads a file"),
                        ("loadstring", "compiles a string"), ("require", "loads a module"),
                        ("debug.", "debug library")):
-        body = SRC.replace('"SetDvarString"', "") if token == "SetDvar" else SRC
+        body = writes.replace('"SetDvarString"', "") if token == "SetDvar" else SRC
         check("lua: no %r (%s)" % (token, why), token not in body)
-    check("lua: the one dvar write is the token channel, and the tokens part is the only one holding it",
-          [n for n in LUA_FILES if "SetDvar" in LUA_TEXT[n]] == [TOKENS]
-          and LUA_TEXT[TOKENS].count('"SetDvarString"') == 1
-          and '"SetDvarString"' not in ship.replace(LUA_TEXT[TOKENS], "")
+    check("lua: the two dvar writes are the armory channel and the token channel, one part each",
+          [n for n in LUA_FILES if "SetDvar" in LUA_TEXT[n]] == [ARMORY, TOKENS]
+          and LUA_TEXT[ARMORY].count("SetDvar") == 1 and where("pt_armory_ch") == [ARMORY]
+          and LUA_TEXT[ARMORY].count('"pt_armory_ch"') == 1
+          and [n for n in LUA_FILES if '"SetDvarString"' in LUA_TEXT[n]] == [ARMORY, TOKENS]
+          and sum(LUA_TEXT[n].count('"SetDvarString"') for n in LUA_FILES) == 2
           and '"PlaySound"' in LUA_TEXT[TOKENS] and SRC.count('"PlaySound"') == 1,
           " | ".join(n for n in LUA_FILES if "SetDvar" in LUA_TEXT[n]))
+    check("lua: the queue is the game's own armory list filtered to ours and its own completion answer",
+          '"getcachedarmoryachievements"' in LUA_TEXT[ARMORY]
+          and '"IsChallengeComplete"' in LUA_TEXT[ARMORY] and "MINE[id]" in LUA_TEXT[ARMORY])
+    check("lua: the seed reads a merged line and the writer keeps the queue it read",
+          'string.match(v, "^a=(%d+)")' in LUA_TEXT[ARMORY]
+          and 'string.match(v, "q=([%d,]+)")' in LUA_TEXT[ARMORY]
+          and 'val = val .. ";q=" .. join(q)' in LUA_TEXT[ARMORY])
+    check("lua: one channel writer, so the arm and the press cannot disagree",
+          LUA_TEXT[ARMORY].count("dchput(") == 3 and LUA_TEXT[ARMORY].count("return dchput(val)") == 1,
+          "%d call(s)" % LUA_TEXT[ARMORY].count("dchput("))
+    check("lua: the armory part never rethrows - every call through is a pcall with a safe answer",
+          "error(" not in LUA_TEXT[ARMORY] and LUA_TEXT[ARMORY].count("pcall(orig") == 9
+          and "if not res[1] then return false end" in LUA_TEXT[ARMORY]
+          and "if not res[1] then return end" in LUA_TEXT[ARMORY]
+          and "if not res[1] then return nil end" in LUA_TEXT[ARMORY]
+          and "if not res[1] then return {} end" in LUA_TEXT[ARMORY]
+          and "if not ok then return 0 end" in LUA_TEXT[ARMORY]
+          and "if not ok then return false end" in LUA_TEXT[ARMORY]
+          and "local ok, locked = pcall(orig, c, item, ...)" in LUA_TEXT[ARMORY]
+          and "local ok, v = pcall(orig, id, ...)" in LUA_TEXT[ARMORY],
+          "%d error call(s), %d call(s) through" % (LUA_TEXT[ARMORY].count("error("),
+                                                    LUA_TEXT[ARMORY].count("pcall(orig")))
 
     texts = {n: LUA_TEXT[n] for n in LUA_FILES}
     texts[DIAG] = diag_quarantine()
@@ -1764,12 +1911,15 @@ def static_checks():
     check("lua: no reader walks the 65536-char payload to count it",
           "gcountLocks" not in SRC and "gcountScope" not in SRC and "GBITS" not in SRC
           and "for i = 1, GHEXLEN" not in SRC)
-    check("lua: no new timer, and the only dispatchers are the splash queue and the token event",
-          SRC.count(":Wait(") == 2 and "CreateEventTimer" not in SRC
-          and where(":Wait(") == [MAIN] and SRC.count("local function fire(") == 2
+    check("lua: no new timer, and the only dispatchers are the splash queue, the token event and the armory card",
+          SRC.count(":Wait(") == 3 and "CreateEventTimer" not in SRC
+          and where(":Wait(") == [MAIN, ARMORY]
+          and LUA_TEXT[MAIN].count(":Wait(") == 2 and LUA_TEXT[ARMORY].count(":Wait(") == 1
+          and SRC.count("local function fire(") == 2
           and where("local function fire(") == [SPLASH, TOKENS]
-          and where("ProcessEvent") == [SPLASH, TOKENS]
+          and where("ProcessEvent") == [SPLASH, ARMORY, TOKENS]
           and SRC.count("ProcessEvent") == (LUA_TEXT[SPLASH].count("ProcessEvent")
+                                            + LUA_TEXT[ARMORY].count("ProcessEvent")
                                             + LUA_TEXT[TOKENS].count("ProcessEvent")),
           "%d waits in %s, %d fire, %d ProcessEvent" % (
               SRC.count(":Wait("), "/".join(where(":Wait(")), SRC.count("local function fire("),
@@ -1777,11 +1927,15 @@ def static_checks():
     check("lua: the wrapper is add-only - a raised call falls through",
           "if ok and answer then return false end" in SRC and "return o(c, id, ...)" in SRC)
     check("lua: the display half answers each record getter exactly once",
-          ship.count('"getchallengeprogress"') == 2 and ship.count('"getchallengedefaultprogress"') == 2
+          ship.count('"getchallengeprogress"') == 3 and ship.count('"getchallengedefaultprogress"') == 2
           and SRC.count('wrap_member(OC, "getchallengeprogress",') == 1
           and where('wrap_member(OC, "getchallengeprogress",') == [WEAPONXP]
           and SRC.count('wrap_member(OC, "getchallengedefaultprogress",') == 1
-          and where('wrap_member(OC, "getchallengedefaultprogress",') == [WEAPONXP],
+          and where('wrap_member(OC, "getchallengedefaultprogress",') == [WEAPONXP]
+          and LUA_TEXT[ARMORY].count('"getchallengeprogress"') == 1
+          and "if tonumber(id) ~= ACTIVATION then" in LUA_TEXT[ARMORY]
+          and "local res = pack(pcall(orig, c, id, ...))" in LUA_TEXT[ARMORY]
+          and "if not res[1] then return nil end" in LUA_TEXT[ARMORY],
           "%d / %d, wrapped in %s" % (ship.count('"getchallengeprogress"'),
                                       ship.count('"getchallengedefaultprogress"'),
                                       "/".join(where('wrap_member(OC, "getchallengeprogress",'))))
@@ -1839,6 +1993,46 @@ def static_checks():
     storing = [n for n in scripts if "nengine_store_" in shipped[n]]
     check("gsc: no shipped script calls nengine_store_ (the g10 store crash, D42/D43)",
           storing == [], ", ".join(storing))
+
+    tkraw = open(os.path.join(SCRIPTS_DIR, "progression_tuning_tokens.gsc"), "rb").read()
+    check("gsc: the tokens script is rc1.3's file byte for byte",
+          len(tkraw) == TOKENS_GSC_LEN and hashlib.sha256(tkraw).hexdigest().upper() == TOKENS_GSC_SHA,
+          "%d B %s" % (len(tkraw), hashlib.sha256(tkraw).hexdigest().upper()))
+
+    ar = shipped.get(ARMORY_GSC, "")
+    check("gsc: the armory script runs one level thread and arms it once",
+          ar.count("level thread ") == 1 and ar.count("autoexec ") == 1,
+          "%d thread(s), %d autoexec" % (ar.count("level thread "), ar.count("autoexec ")))
+    endon = ar.find('level endon("end_game");')
+    first_state = ar.find("level.pt_arm_prev = -1;")
+    check("gsc: the armory thread stands down on end_game before any state it keeps",
+          endon != -1 and first_state != -1 and endon < first_state, "endon at %d" % endon)
+    check("gsc: the feed's four fields start on level, the serial from its own dvar",
+          ar.count("level.pt_arm_prev = -1;") == 1 and ar.count("level.pt_arm_acc = 0;") == 1
+          and ar.count("level.pt_arm_beat = 0;") == 1
+          and ar.count('level.pt_arm_s = int(getdvar("pt_armory_s", "0")) + 1;') == 1
+          and ar.count('setdvar("pt_armory_s", level.pt_arm_s + "");') == 1)
+    feed = re.search(r"\nprogression_tuning_armory_feed\(\)\s*\n?\{(.*?)\n\}", ar, re.S)
+    body = feed.group(1) if feed else ""
+    check("gsc: the feed reads the operator's pre cap rank xp field",
+          'p.var_8b69ecbd466a79fa["rankxp"]' in body and "x = int(x);" in body)
+    check("gsc: the feed's total lives on level, never in a bare local",
+          "level.pt_arm_acc = level.pt_arm_acc + (x - level.pt_arm_prev);" in body
+          and "level.pt_arm_prev = x;" in body
+          and "level.pt_arm_beat = level.pt_arm_beat + 1;" in body)
+    check("gsc: the feed publishes the hook's dvar with the three fields",
+          'setdvar("pt_armory_xp", "s=" + level.pt_arm_s + ";x=" + level.pt_arm_acc + ";h=" + level.pt_arm_beat);'
+          in body)
+    loop = ar.find("while (true)")
+    call = ar.find("progression_tuning_armory_feed();")
+    wait = ar.find("wait 0.5;")
+    check("gsc: the feed is called from the one loop, after its wait, with no thread of its own",
+          loop != -1 and wait != -1 and loop < wait < call and ar.count("progression_tuning_armory_feed();") == 1)
+    check("gsc: the armory script writes dvars only, no store, no playerdata, no notify",
+          ar.count("setdvar(") == 2 and "nengine_store_" not in ar and "setplayerdata" not in ar
+          and "notify(" not in ar, "%d setdvar" % ar.count("setdvar("))
+    check("gsc: the armory script never reads or writes the token channel",
+          "pt_tokens" not in ar)
 
     info("lua %d B sha256 %s" % (len(SRC.encode()), hashlib.sha256(SRC.encode()).hexdigest().upper()))
     info("mod.json %d B" % os.path.getsize(MODJSON))
@@ -2282,8 +2476,8 @@ def g11_order_and_cap(lua51, ls):
           count_line(l3, "g11 waiting for PROGRESSION / LOOT") >= 1
           and count_line(l3, "card table ") == 0
           and count_line(l3, "g11 gave up wrapping - PROGRESSION / LOOT") == 1, " | ".join(l3))
-    check("g11 order: the timer keeps running after the cap (the display half needs it)",
-          int(rt2.eval("QUEUED()")) == 1, str(rt2.eval("QUEUED()")))
+    check("g11 order: the main timer and the armory watch both keep running after the cap",
+          int(rt2.eval("QUEUED()")) == 2, str(rt2.eval("QUEUED()")))
     check("g11 order: giving up leaves nothing wrapped",
           int(rt2.eval("G11('wrappers')")) == 0, str(rt2.eval("G11('wrappers')")))
 
@@ -2326,7 +2520,7 @@ def s1_door(lua51, ls):
     camo = [131708, 131545]
     camo_r = [131546]
     attach = [126608, 140701]
-    plain = [(125186, 2), (200000, 11)]
+    plain = [(150003, 2), (200000, 11)]
     nobit = [150010, 150011]
     lit = inscope + outside + camo + camo_r + attach + [i for i, _t in plain]
     rewards = inscope + outside + camo_r + attach
@@ -2335,7 +2529,7 @@ def s1_door(lua51, ls):
     rt = new_rt(lua51, frontend=True, src=False)
     lua_slabs(rt, slabs)
     lua_rslabs(rt, slabs_of(rewards))
-    rt.execute("SET_TYPE(125186, 2)")
+    rt.execute("SET_TYPE(150003, 2)")
     rt.execute("SET_TYPE(200000, 11)")
     for i in camo + camo_r:
         rt.execute("SET_TYPE(%d, 13)" % i)
@@ -2369,7 +2563,7 @@ def s1_door(lua51, ls):
           rt.eval("ASK_P(%d)" % plain[1][0]) is False and rt.eval("ASK_L(%d)" % plain[1][0]) is False,
           str(rt.eval("ASK_L(%d)" % plain[1][0])))
     before = int(rt.eval("LCALLS"))
-    rt.eval("ASK_L(125186)")
+    rt.eval("ASK_L(150003)")
     check("s1: and that answer is the previous function's, not a false close",
           int(rt.eval("LCALLS")) - before == 1, str(int(rt.eval("LCALLS")) - before))
     check("s1: an id with no bit at all reads unchanged on both doors",
@@ -8806,6 +9000,2113 @@ def tokens_channel(lua51):
           ro.eval('Engine[xhash("GetUTC")]()') == 1763520000
           and count_line(lines_of(ro), "progression_tuning: utc fill armed") == 1,
           str(ro.eval('Engine[xhash("GetUTC")]()')))
+ARMORY_FIX = r"""
+UTC = 0
+GATE_CALLS = 0
+PRESS_CALLS = 0
+FOCUS_CALLS = 0
+PRESS_RAISE = false
+OC_RAISE = false
+OCREC = {}
+OC_ORIG = OnlineChallenges[xhash("getchallengeprogress")]
+OnlineChallenges[xhash("getchallengeprogress")] = function(c, id)
+  if OC_RAISE then error("client record raised") end
+  local r = OCREC[tostring(id)]
+  if r ~= nil then return r end
+  return OC_ORIG(c, id)
+end
+Dvar[xhash("SetDvarString")] = function(k, v) if DVARS[k] ~= nil then DVARS[k] = v end end
+GATEKEY = "#x0A6376439B2D40DC"
+CoD = {}
+CoD[xhash("GetUTC")] = function() return UTC end
+function NODE(v) return { GetValue = function(self, c) return v end } end
+function HNODE(v) return { [xhash("GetValue")] = function(self, c) return v end } end
+function UDMODEL(achv, ref)
+  local p = newproxy(true)
+  local raw = { [xhash("armory_button_data")] = { [xhash("achievement_id")] = NODE(achv) } }
+  if ref ~= nil then raw[xhash("item_ref")] = NODE(ref) end
+  getmetatable(p).__index = raw
+  return p
+end
+function TILE(achv, ref)
+  local t = { armory_button_data = { achievement_id = NODE(achv) } }
+  if ref ~= nil then t.item_ref = NODE(ref) end
+  return t
+end
+function TREE()
+  local src = {}
+  src[xhash("frontend")] = {}
+  src[xhash("frontend")][xhash("armory")] = {}
+  return src
+end
+ARMORY = {}
+ORIG = function(c, row)
+  GATE_CALLS = GATE_CALLS + 1
+  if not row then return false end
+  local start = row.progressSchedule_start
+  if start == nil or tostring(start) == "" then return true end
+  return tonumber(start) < CoD[xhash("GetUTC")]()
+end
+ARMORY[GATEKEY] = ORIG
+ARMORY[xhash("setactiveitem")] = function(menu, c)
+  PRESS_CALLS = PRESS_CALLS + 1
+  if PRESS_RAISE then error("client press raised") end
+  return "client-ret", 7
+end
+ARMORY[xhash("setfocuseddatasource")] = function(c, tile) FOCUS_CALLS = FOCUS_CALLS + 1 end
+_DataSources = TREE()
+function SIDE() return _DataSources[xhash("frontend")][xhash("armory")] end
+function SET_FOCUS(id, ref) SIDE()[xhash("armory_select_focus_item")] = NODE(TILE(id, ref)) end
+function SET_ACTIVE(id, ref) SIDE()[xhash("armory_active_item")] = NODE(TILE(id, ref)) end
+function SET_HNODE(id, ref) SIDE()[xhash("armory_select_focus_item")] = HNODE(TILE(id, ref)) end
+function SET_UD(id, ref) SIDE()[xhash("armory_select_focus_item")] = NODE(UDMODEL(id, ref)) end
+function SET_PLAIN(id, ref)
+  _DataSources = { frontend = { armory = { armory_select_focus_item = NODE(TILE(id, ref)) } } }
+end
+function CLR_FOCUS() _DataSources = TREE() end
+function EL(id, ref) return { GetDataSource = function() return TILE(id, ref) end } end
+function ROW(id, start) return { id = id, progressSchedule_start = start } end
+function ASK(id, start) return ARMORY[GATEKEY](0, ROW(id, start)) end
+function ASK_ORIG(id, start) return ORIG(0, ROW(id, start)) end
+function ASKC() return GATE_CALLS end
+function SNAP()
+  SNAPED = ARMORY[GATEKEY]
+  SNAPP = ARMORY[xhash("setactiveitem")]
+  SNAPO = OnlineChallenges[xhash("getchallengeprogress")]
+end
+function SAME()
+  return ARMORY[GATEKEY] == SNAPED and ARMORY[xhash("setactiveitem")] == SNAPP
+    and OnlineChallenges[xhash("getchallengeprogress")] == SNAPO
+end
+function SET_UTC(v) UTC = v end
+PKEY = nil
+function PADPRESS()
+  local k = xhash("setactiveitem")
+  local v = ARMORY[k]
+  ARMORY[k] = nil
+  PKEY = "#x00" .. string.sub(k, 3)
+  ARMORY[PKEY] = v
+end
+function PRESS(el)
+  local a, b = ARMORY[PKEY or xhash("setactiveitem")](el or {}, 0)
+  return tostring(a) .. "," .. tostring(b)
+end
+function PRESS_EL(id, ref) return PRESS(EL(id, ref)) end
+function PRESSCALLS() return PRESS_CALLS end
+function TRYPRESS() return (pcall(ARMORY[xhash("setactiveitem")], {}, 0)) end
+function PRESSERR()
+  local ok, err = pcall(ARMORY[xhash("setactiveitem")], {}, 0)
+  return tostring(err)
+end
+function HOVER(ds) return ARMORY[xhash("setfocuseddatasource")](0, { GetDataSource = function() return ds end }) end
+function FOCUSED() return FOCUS_CALLS end
+CRAFTLOCK = {}
+CLK_CALLS = 0
+CLK_RAISE = false
+PurchaseMenuUtils = {}
+PurchaseMenuUtils.isitemlocked = function(c, item)
+  CLK_CALLS = CLK_CALLS + 1
+  if CLK_RAISE then error("the game lock raised") end
+  if type(item) ~= "table" or item.itemref == nil then return false end
+  return CRAFTLOCK[item.itemref] == true
+end
+function SET_CRAFT(ref, locked) CRAFTLOCK[ref] = locked end
+function CRAFT_N() return CLK_CALLS end
+function CRAFT_ZERO() CLK_CALLS = 0 end
+function CRAFT_RAISE(v) CLK_RAISE = v end
+function CRAFT_LOCK() return PurchaseMenuUtils.isitemlocked or PurchaseMenuUtils[xhash("isitemlocked")] end
+function CRAFT_ASK(ref) return CRAFT_LOCK()(0, { itemref = ref }) end
+function CRAFT_HASHED()
+  local k = xhash("isitemlocked")
+  PurchaseMenuUtils[k] = PurchaseMenuUtils.isitemlocked
+  PurchaseMenuUtils.isitemlocked = nil
+end
+function CRAFT_SNAP() CRAFTW = CRAFT_LOCK() end
+function CRAFT_SAME() return CRAFT_LOCK() == CRAFTW end
+function CRAFT_DROP() PurchaseMenuUtils = nil end
+function OC_PUT(id, rec) OCREC[tostring(id)] = rec end
+function OC_ASK(id) return OnlineChallenges[xhash("getchallengeprogress")](0, id) end
+function OC_TRY(id) return (pcall(OnlineChallenges[xhash("getchallengeprogress")], 0, id)) end
+function OC_ERR(id)
+  local ok, err = pcall(OnlineChallenges[xhash("getchallengeprogress")], 0, id)
+  return tostring(err)
+end
+function OC_LAST(id)
+  local r = OC_ASK(id)
+  if type(r) ~= "table" or type(r.progress) ~= "table" then return "none" end
+  return tostring(r.progress.last_activation)
+end
+function OC_CLIENT_LAST(id)
+  local r = OCREC[tostring(id)]
+  if type(r) ~= "table" or type(r.progress) ~= "table" then return "none" end
+  return tostring(r.progress.last_activation)
+end
+function OC_DEFAULTS(id)
+  local r = OC_ASK(id)
+  if type(r) ~= "table" or type(r.progress) ~= "table" then return "none" end
+  return tostring(r.progress.default)
+end
+function OC_ID(id)
+  local r = OC_ASK(id)
+  if type(r) ~= "table" then return "none" end
+  return tostring(r.id)
+end
+function OC_OWN(id) return OC_ASK(id) == OCREC[tostring(id)] end
+function CH() return DVARS[xhashdvar("pt_armory_ch")] end
+function CH_ABSENT() DVARS[xhashdvar("pt_armory_ch")] = nil end
+function PICK() return rawget(_G, "ProgressionTuning").probes.armory() end
+OWNEDN = 0
+PROXY_LOOT = {}
+PROXY_LOOT[xhash("IsOwned")] = function(c, id) OWNEDN = OWNEDN + 1; return 1 end
+function OWNED_GET()
+  local t = PROXY_LOOT
+  if type(t) ~= "table" then return nil end
+  local f = t[xhash("IsOwned")]
+  if type(f) == "function" then return f end
+  return t.IsOwned
+end
+function OWNED(id) return OWNED_GET()(0, id) end
+function OWNED_N() return OWNEDN end
+function OWNED_ZERO() OWNEDN = 0 end
+function OWNED_SNAP() OW1 = OWNED_GET() end
+function OWNED_SAME() return OWNED_GET() == OW1 end
+function OWNED_PLAIN()
+  PROXY_LOOT = {}
+  PROXY_LOOT.IsOwned = function(c, id) OWNEDN = OWNEDN + 1; return 1 end
+end
+function OWNED_BOTH()
+  PROXY_LOOT = {}
+  PROXY_LOOT[xhash("IsOwned")] = function(c, id) OWNEDN = OWNEDN + 1; return 1 end
+  PROXY_LOOT.IsOwned = function(c, id) return 99 end
+end
+function OWNED_PLAIN_ASK(id) return PROXY_LOOT.IsOwned(0, id) end
+function OWNED_RAISE(v)
+  PROXY_LOOT[xhash("IsOwned")] = function(c, id)
+    if v then error("the ownership getter raised") end
+    return 1
+  end
+end
+function OWNED_DROP() PROXY_LOOT = nil end
+function DOORSTUB()
+  rawget(_G, "ProgressionTuning").locks = {
+    answer = function(id) return false end,
+    open = function(id) return false end,
+  }
+end
+function OWNSPROBE(ids)
+  for i = 1, #ids do
+    if ids[i] and 0 < PROXY_LOOT[xhash("IsOwned")](0, ids[i]) then return true end
+  end
+  return false
+end
+ITEMID = {}
+BPID = {}
+BPRAISE = false
+BPN = 0
+function SET_ITEMID(ref, id) ITEMID[ref] = id end
+function SET_BPID(ref, ids) BPID[ref] = ids end
+function BP_RAISE(v) BPRAISE = v end
+function BP_N() return BPN end
+function BP_ZERO() BPN = 0 end
+function DROP_BP() PROGRESSION[xhash("ownsBlueprintOfWeapon")] = nil end
+function DROP_ID() LOOT[xhash("getitemid")] = nil end
+LOOT[xhash("getitemid")] = function(ref) return ITEMID[ref] end
+PROGRESSION[xhash("ownsBlueprintOfWeapon")] = function(c, ref)
+  BPN = BPN + 1
+  if BPRAISE then error("the blueprint test raised") end
+  local ids = BPID[ref]
+  if ids == nil then return false end
+  local f = PROXY_LOOT[xhash("IsOwned")]
+  for i = 1, #ids do
+    if f ~= nil and 0 < f(c, ids[i]) then return true end
+  end
+  return false
+end
+BP_ORIG = PROGRESSION[xhash("ownsBlueprintOfWeapon")]
+function OBW_SLOT()
+  local f = PROGRESSION[xhash("ownsBlueprintOfWeapon")]
+  if type(f) == "function" then return f end
+  return PROGRESSION.ownsBlueprintOfWeapon
+end
+function OBW(ref) return OBW_SLOT()(0, ref) end
+function OBW_ORIG(ref) return BP_ORIG(0, ref) end
+function OBW_SNAP() OBW1 = OBW_SLOT() end
+function OBW_SAME() return OBW_SLOT() == OBW1 end
+function OBW_PLAIN()
+  local f = PROGRESSION[xhash("ownsBlueprintOfWeapon")]
+  PROGRESSION.ownsBlueprintOfWeapon = f
+  PROGRESSION[xhash("ownsBlueprintOfWeapon")] = nil
+end
+"""
+
+ARMORY_RAISE = r"""
+GATEKEY = "#x0A6376439B2D40DC"
+CALLS = 0
+ARMORY = {}
+ARMORY[GATEKEY] = function(c, row)
+  CALLS = CALLS + 1
+  error("gate blew up")
+end
+function ROW(id, start) return { id = id, progressSchedule_start = start } end
+function ASK(id, start) return ARMORY[GATEKEY](0, ROW(id, start)) end
+function TRYOK(id, start) return (pcall(ARMORY[GATEKEY], 0, ROW(id, start))) end
+function TRYERR(id, start)
+  local ok, err = pcall(ARMORY[GATEKEY], 0, ROW(id, start))
+  return tostring(err)
+end
+function ASKC() return CALLS end
+"""
+
+
+def lock_word():
+    """The arm line's lock field: alphabetical order arms the part before the door exists."""
+    return "missing" if LOAD_ORDER == "alphabetical" else "wrapped"
+
+
+def armory_line(lines):
+    return [ln for ln in lines if "armory armed" in ln]
+
+
+def armory_gate(lua51):
+    rt = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    l = lines_of(rt)
+    check("armory: the schedule gate is wrapped and the one arm line names the count",
+          armory_line(l) == ["progression_tuning: armory armed v11 vm=menu gate=wrapped pick=wrapped "
+                             "answer=wrapped lock=%s own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=n/a "
+                             "card=missing rows=76 pick=0 q=0" % lock_word()],
+          " | ".join(armory_line(l)))
+    hook = rt.eval("rawget(_G, 'ProgressionTuning').hooks.armory")
+    check("armory: it arms on its own lui timer and main registers no hook for it",
+          "GetRoot" in LUA_TEXT[ARMORY] and "onComplete" in LUA_TEXT[ARMORY]
+          and "S.hooks.armory" not in SRC and "armory" not in LUA_TEXT[MAIN]
+          and hook is None, "hook=%s" % str(hook))
+    check("armory: the client's own gate refuses the row - a future stamp over a zero clock",
+          rt.eval("ASK_ORIG(69316, '1793811600')") is False
+          and int(rt.eval("ASKC()")) == 1, str(rt.eval("ASKC()")))
+    check("armory: the wrapped gate answers released for that same row",
+          rt.eval("ASK(69316, '1793811600')") is True)
+    check("armory: and answers released for the last of the 76 as well",
+          rt.eval("ASK(71374, '1793811600')") is True)
+    other = rt.eval("ASK(54499, '1793811600')")
+    blank = rt.eval("ASK(54499, '')")
+    check("armory: a row outside the 76 keeps the client's own answer",
+          other is False and blank is True, "%s / %s" % (other, blank))
+    check("armory: the original is asked once per delegated row and never for ours",
+          int(rt.eval("ASKC()")) == 3, str(rt.eval("ASKC()")))
+
+    rt.execute("SNAP()")
+    before = len(lines_of(rt))
+    load(rt)
+    l2 = lines_of(rt)
+    check("armory: loading the file twice wraps nothing twice and says nothing again",
+          rt.eval("SAME()") is True and len(l2) == before
+          and len(armory_line(l2)) == 1, " | ".join(armory_line(l2)))
+    calls = int(rt.eval("ASKC()"))
+    rt.execute("ASK(54499, '1793811600')")
+    check("armory: and a delegated row still reaches the original exactly once",
+          int(rt.eval("ASKC()")) - calls == 1, str(int(rt.eval("ASKC()")) - calls))
+
+    rt2 = new_rt(lua51, frontend=True, pre=ARMORY_RAISE)
+    check("armory: an armory row is answered even where the client's gate raises",
+          rt2.eval("ASK(69316, '1')") is True)
+    check("armory: a raising gate on any other row gives the client's own refusal, not an error",
+          rt2.eval("TRYOK(54499, '1')") is True and rt2.eval("ASK(54499, '1')") is False,
+          "%s / %s" % (rt2.eval("TRYOK(54499, '1')"), rt2.eval("ASK(54499, '1')")))
+
+    # the match vm: the same gate and answer, and the pick the hook left in the channel
+    rt3 = new_rt(lua51, frontend=False, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
+    l3 = lines_of(rt3)
+    check("armory: a match vm arms on the same gate and answer and says which vm it is",
+          armory_line(l3) == ["progression_tuning: armory armed v11 vm=match gate=wrapped pick=wrapped "
+                              "answer=wrapped lock=%s own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=wrapped "
+                              "card=missing rows=76 pick=69318 q=0" % lock_word()],
+          " | ".join(armory_line(l3)))
+    check("armory: and the game's own in-match card gets the pick the seed carries",
+          rt3.eval("ASK(69316, '1793811600')") is True
+          and rt3.eval("OC_LAST(52813)") == "69318",
+          "%s %s" % (rt3.eval("ASK(69316, '1793811600')"), rt3.eval("OC_LAST(52813)")))
+
+    # a match vm with no nameable press: the gate and the answer are enough to arm
+    rt3b = new_rt(lua51, frontend=False, src=False,
+                  pre=ARMORY_FIX + "\nARMORY[xhash('setactiveitem')] = nil\n"
+                                   "SET_DVAR('pt_armory_ch', 'a=69320')")
+    rt3b.execute(LUA_TEXT[ARMORY])
+    check("armory: a match vm with no press arms on the gate and the answer alone",
+          armory_line(lines_of(rt3b)) == ["progression_tuning: armory armed v11 vm=match gate=wrapped "
+                                          "pick=missing answer=wrapped lock=missing own=wrapped obw=wrapped bpwin=missing "
+                                          "vars=147+309 list=309 craft=wrapped card=missing rows=76 pick=69320 q=0"]
+          and rt3b.eval("OC_LAST(52813)") == "69320"
+          and int(rt3b.eval("QUEUED()")) == 1,
+          " | ".join(armory_line(lines_of(rt3b)) + [str(rt3b.eval("QUEUED()"))]))
+    rt3b.execute("DOORSTUB()")
+    pump(rt3b, 1)
+    check("armory: and it keeps its own watch once the door is in, the late line said once",
+          int(rt3b.eval("QUEUED()")) == 1
+          and [ln for ln in lines_of(rt3b) if "armory late " in ln]
+          == ["progression_tuning: armory late lock"],
+          " | ".join(lines_of(rt3b)[-3:]))
+
+    rt4 = new_rt(lua51, frontend=True)
+    l4 = lines_of(rt4)
+    check("armory: with no ARMORY table at all nothing is wrapped and nothing is said",
+          not armory_line(l4), " | ".join(armory_line(l4)))
+    rt4.execute(ARMORY_FIX)
+    pump(rt4, 4)
+    l5 = lines_of(rt4)
+    check("armory: the tick picks the gate up when the table turns up late",
+          rt4.eval("ASK(69316, '1793811600')") is True
+          and armory_line(l5) == ["progression_tuning: armory armed v11 vm=menu gate=wrapped pick=wrapped "
+                                  "answer=wrapped lock=wrapped own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=n/a "
+                                  "card=missing rows=76 pick=0 q=0"],
+          " | ".join(armory_line(l5)))
+    pump(rt4, 8)
+    check("armory: and the arm line stays one line",
+          len(armory_line(lines_of(rt4))) == 1, " | ".join(armory_line(lines_of(rt4))))
+
+    rt5 = new_rt(lua51, frontend=True)
+    rt5.execute("ARMORY = {}")
+    pump(rt5, 480)
+    l6 = lines_of(rt5)
+    check("armory: an armory table with no gate gives up quietly after the tries run out",
+          armory_line(l6) == ["progression_tuning: armory armed v11 vm=menu gate=missing pick=missing "
+                              "answer=wrapped lock=wrapped own=missing obw=missing bpwin=missing vars=147+309 list=309 craft=n/a "
+                              "card=missing rows=76 pick=0 q=0"],
+          " | ".join(armory_line(l6)))
+    check("armory: its own watch still ticks once the tries run out, main's timer stands too",
+          int(rt5.eval("QUEUED()")) == 2, str(rt5.eval("QUEUED()")))
+
+    rt6 = new_rt(lua51, frontend=True, src=False)
+    rt6.execute(ARMORY_FIX)
+    rt6.execute(LUA_TEXT[ARMORY])
+    l7 = lines_of(rt6)
+    check("armory: the part arms in a vm with no main part in it at all",
+          armory_line(l7) == ["progression_tuning: armory armed v11 vm=menu gate=wrapped pick=wrapped "
+                              "answer=wrapped lock=missing own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=n/a "
+                              "card=missing rows=76 pick=0 q=0"]
+          and rt6.eval("ASK(69316, '1793811600')") is True
+          and rt6.eval("rawget(_G, 'ProgressionTuning').hooks.armory") is None,
+          " | ".join(armory_line(l7)))
+
+
+def pick_lines(lines):
+    return [ln for ln in lines if "armory pick" in ln]
+
+
+def armory_pick(lua51):
+    """C31 a4: the call names the row first, the hashed tree answers when it does not."""
+    rt = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', '')")
+    rt.execute("SET_FOCUS(69320, 'sat_pi_alcor')")
+    got = rt.eval("PRESS()")
+    calls = int(rt.eval("PRESSCALLS()"))
+    check("armory pick: the clients own press runs first and its values come back unchanged",
+          got == "client-ret,7" and calls == 1, "%s calls=%d" % (got, calls))
+    check("armory pick: the press names its row and the ref that came with it",
+          pick_lines(lines_of(rt)) == ["progression_tuning: armory pick 69320 (sat_pi_alcor)"],
+          " | ".join(pick_lines(lines_of(rt))))
+    check("armory pick: 52813 answers the pick with a copied record, its id and a default",
+          rt.eval("OC_LAST(52813)") == "69320" and rt.eval("OC_ID(52813)") == "52813"
+          and rt.eval("OC_DEFAULTS(52813)") == "0", "%s %s %s" % (rt.eval("OC_LAST(52813)"),
+                                                                 rt.eval("OC_ID(52813)"),
+                                                                 rt.eval("OC_DEFAULTS(52813)")))
+    check("armory pick: the channel carries the row for the hook half",
+          rt.eval("CH()") == "a=69320", str(rt.eval("CH()")))
+    rt.execute("PRESS()")
+    check("armory pick: the same pick again is one line and the same answer",
+          len(pick_lines(lines_of(rt))) == 1 and rt.eval("OC_LAST(52813)") == "69320",
+          " | ".join(pick_lines(lines_of(rt))))
+    rt.execute("SET_FOCUS(69318); PRESS()")
+    check("armory pick: a second pick moves it and the answer follows",
+          rt.eval("OC_LAST(52813)") == "69318" and len(pick_lines(lines_of(rt))) == 2
+          and rt.eval("CH()") == "a=69318", " | ".join(pick_lines(lines_of(rt))))
+
+    rt.execute("OC_PUT(52813, { id = 52813, progress = { xp = 12, default = 0, last_activation = 0 } })")
+    check("armory pick: a zero activation is answered from a copy, the clients table untouched",
+          rt.eval("OC_LAST(52813)") == "69318" and rt.eval("OC_OWN(52813)") is False
+          and rt.eval("OC_CLIENT_LAST(52813)") == "0",
+          "%s own=%s client=%s" % (rt.eval("OC_LAST(52813)"), rt.eval("OC_OWN(52813)"),
+                                   rt.eval("OC_CLIENT_LAST(52813)")))
+    rt.execute("OC_PUT(52813, { id = 52813, progress = { last_activation = 69316 } })")
+    check("armory pick: a record the client already activated passes through untouched",
+          rt.eval("OC_LAST(52813)") == "69316" and rt.eval("OC_OWN(52813)") is True,
+          "%s own=%s" % (rt.eval("OC_LAST(52813)"), rt.eval("OC_OWN(52813)")))
+    rt.execute("OC_PUT(54499, { id = 54499, progress = { last_activation = 69316 } })")
+    check("armory pick: every other id is the clients own answer",
+          rt.eval("OC_OWN(54499)") is True and rt.eval("OC_LAST(54499)") == "69316",
+          "%s own=%s" % (rt.eval("OC_LAST(54499)"), rt.eval("OC_OWN(54499)")))
+
+    # a press that is not one of the 76
+    ro = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    ro.execute("SET_FOCUS(54499, 'sat_pi_alcor'); PRESS()")
+    check("armory pick: a press outside the 76 is not recorded and says one line",
+          not pick_lines(lines_of(ro))
+          and count_line(lines_of(ro), "armory press no row - ") == 1
+          and ro.eval("OC_LAST(52813)") == "none",
+          " | ".join(lines_of(ro)[-3:]))
+    ro.execute("PRESS()")
+    check("armory pick: and the no route line stays one line",
+          count_line(lines_of(ro), "armory press no row - ") == 1,
+          " | ".join(lines_of(ro)[-2:]))
+
+    # the tile the press carries is read before any datasource
+    rp = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rp.execute("SET_FOCUS(69318, 'sat_ar_emu'); PRESS_EL(69320, 'sat_pi_alcor')")
+    check("armory pick: the element the press carries names the row before the datasource",
+          rp.eval("OC_LAST(52813)") == "69320"
+          and pick_lines(lines_of(rp)) == ["progression_tuning: armory pick 69320 (sat_pi_alcor)"],
+          " | ".join(pick_lines(lines_of(rp)) + lines_of(rp)[-2:]))
+    re_el = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    re_el.execute("CLR_FOCUS(); PRESS_EL(69324, 'sat_ar_emu')")
+    check("armory pick: and it names one row with no datasource tree behind it",
+          re_el.eval("OC_LAST(52813)") == "69324"
+          and re_el.eval("rawget(_G, '_DataSources').frontend") is None,
+          str(re_el.eval("OC_LAST(52813)")))
+    rn_node = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rn_node.execute("SET_HNODE(69326, 'sat_ar_emu'); PRESS()")
+    check("armory pick: a node whose GetValue sits under its hash still answers",
+          rn_node.eval("OC_LAST(52813)") == "69326"
+          and pick_lines(lines_of(rn_node)) == ["progression_tuning: armory pick 69326 (sat_ar_emu)"],
+          " | ".join(pick_lines(lines_of(rn_node)) + lines_of(rn_node)[-2:]))
+    ru = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    ru.execute("SET_UD(69328, 'sat_ar_emu'); PRESS()")
+    check("armory pick: a model that answers only through its index still names the row",
+          ru.eval("OC_LAST(52813)") == "69328"
+          and pick_lines(lines_of(ru)) == ["progression_tuning: armory pick 69328 (sat_ar_emu)"],
+          " | ".join(pick_lines(lines_of(ru)) + lines_of(ru)[-2:]))
+
+    # the tree keyed by plain names, which the client does not do
+    rpl = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rpl.execute("SET_PLAIN(69320, 'sat_pi_alcor'); PRESS()")
+    diag = [ln for ln in lines_of(rpl) if "armory press no row - " in ln]
+    check("armory pick: a plain named tree resolves nothing, so the hash route is the one read",
+          not pick_lines(lines_of(rpl)) and rpl.eval("OC_LAST(52813)") == "none"
+          and len(diag) == 1, " | ".join(diag or pick_lines(lines_of(rpl))))
+    check("armory pick: the one diagnostic names the routes walked and the argument types",
+          len(diag) == 1 and "el focus active args=table nil number" in diag[0],
+          " | ".join(diag))
+
+    # the active tile answers when the focus item does not
+    ra = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    ra.execute("SET_ACTIVE(69318); PRESS()")
+    check("armory pick: with no focus value the active tile names the row",
+          ra.eval("OC_LAST(52813)") == "69318", str(ra.eval("OC_LAST(52813)")))
+
+    # the last tile the client focused
+    rh = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rh.execute("HOVER(TILE(69324, 'sat_ar_emu')); PRESS()")
+    check("armory pick: the last focused tile is the fallback and is not kept",
+          int(rh.eval("FOCUSED()")) == 1 and rh.eval("OC_LAST(52813)") == "69324"
+          and pick_lines(lines_of(rh)) == ["progression_tuning: armory pick 69324 (sat_ar_emu)"],
+          " | ".join(pick_lines(lines_of(rh))))
+
+    # a press with no datasource at all
+    rn = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rn.execute("PRESS()")
+    check("armory pick: a press with nothing to read records nothing",
+          not pick_lines(lines_of(rn)) and rn.eval("OC_LAST(52813)") == "none"
+          and count_line(lines_of(rn), "armory press no row - el focus active args=table nil number") == 1,
+          " | ".join(lines_of(rn)[-2:]))
+
+    # the dvar the hook has not made yet
+    rd = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nCH_ABSENT()")
+    rd.execute("SET_FOCUS(69320); PRESS()")
+    check("armory pick: an absent channel is a silent no op and the pick still answers",
+          rd.eval("CH()") is None and rd.eval("OC_LAST(52813)") == "69320"
+          and count_line(lines_of(rd), "attempt to") == 0,
+          "%s / %s" % (rd.eval("CH()"), rd.eval("OC_LAST(52813)")))
+    rq = new_rt(lua51, frontend=True,
+                pre=ARMORY_FIX + "\nDvar[xhash('SetDvarString')] = nil\nCH_ABSENT()")
+    rq.execute("SET_FOCUS(69320); PRESS()")
+    check("armory pick: no setter in this vm is the same silent no op",
+          rq.eval("CH()") is None and rq.eval("OC_LAST(52813)") == "69320"
+          and not [ln for ln in lines_of(rq) if "not recorded" in ln],
+          " | ".join(lines_of(rq)[-2:]))
+
+    # the pick the hook left in the channel
+    rs = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
+    check("armory pick: a pick already in the channel is adopted at arm",
+          pick_lines(lines_of(rs)) == ["progression_tuning: armory pick 69318"]
+          and rs.eval("OC_LAST(52813)") == "69318"
+          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v11 vm=menu gate=wrapped "
+                                            "pick=wrapped answer=wrapped lock=%s own=wrapped obw=wrapped bpwin=missing "
+                                            "vars=147+309 list=309 craft=n/a "
+                                            "card=missing rows=76 pick=69318 q=0" % lock_word()],
+          " | ".join(lines_of(rs)))
+    rw = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=12345')")
+    check("armory pick: a channel value outside the 76 is not adopted",
+          pick_lines(lines_of(rw)) == [] and rw.eval("OC_LAST(52813)") == "none",
+          " | ".join(pick_lines(lines_of(rw))))
+
+    # the clients own raises
+    rr = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rr.execute("OC_RAISE = true")
+    check("armory pick: a raising record is a safe nil where the client would have raised",
+          rr.eval("OC_TRY(52813)") is True and str(rr.eval("OC_ERR(52813)")) == "nil"
+          and rr.eval("OC_TRY(54499)") is True and str(rr.eval("OC_ERR(54499)")) == "nil",
+          "%s / %s" % (rr.eval("OC_ERR(52813)"), rr.eval("OC_ERR(54499)")))
+    rr.execute("OC_RAISE = false; PRESS_RAISE = true")
+    check("armory pick: a raising press is swallowed and records nothing",
+          rr.eval("TRYPRESS()") is True and str(rr.eval("PRESSERR()")) == "nil"
+          and not pick_lines(lines_of(rr)),
+          str(rr.eval("PRESSERR()")))
+
+    # loading the file twice
+    rl = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
+    rl.execute("SNAP(); SET_FOCUS(69320); PRESS()")
+    before = len(lines_of(rl))
+    load(rl)
+    check("armory pick: loading the file twice wraps nothing twice and says nothing again",
+          rl.eval("SAME()") is True and len(lines_of(rl)) == before
+          and len(armory_line(lines_of(rl))) == 1 and len(pick_lines(lines_of(rl))) == 1,
+          " | ".join(lines_of(rl)[-3:]))
+
+    # a press the client keeps under a padded hash
+    rp2 = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nPADPRESS()")
+    rp2.execute("SET_FOCUS(69320); PRESS()")
+    check("armory pick: a press under a padded hash is found and wrapped",
+          rp2.eval("OC_LAST(52813)") == "69320"
+          and count_line(lines_of(rp2), "lock=%s own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=n/a "
+                                       "card=missing rows=76 pick=" % lock_word()) == 1,
+          " | ".join(lines_of(rp2)[-2:]))
+
+    # a match vm
+    rm = new_rt(lua51, frontend=False, pre=ARMORY_FIX)
+    rm.execute("SET_FOCUS(69320); PRESS()")
+    lm = armory_line(lines_of(rm))
+    check("armory pick: a match vm records the press it sees and answers 52813 there",
+          rm.eval("PRESS()") == "client-ret,7"
+          and pick_lines(lines_of(rm)) == ["progression_tuning: armory pick 69320"]
+          and rm.eval("OC_LAST(52813)") == "69320"
+          and len(lm) == 1 and "vm=match" in lm[0],
+          " | ".join(lm + lines_of(rm)[-2:]))
+
+
+ARMORY_QUEUE = r"""
+Challenge = { [xhash("IsChallengeComplete")] = function(c, id) return id == 69316 end }
+ARMORY[xhash("getcachedarmoryachievements")] = function()
+  return { { id = "69320" }, { id = 69316 }, { id = "69318" }, { id = 54499 }, { id = 69324 } }
+end
+"""
+
+ARMORY_QUEUE_NOC = r"""
+ARMORY[xhash("getcachedarmoryachievements")] = function()
+  return { { id = "69320" }, { id = 69316 }, { id = "69318" } }
+end
+"""
+
+
+def armory_queue(lua51):
+    """step P: the channel carries a queue, the seed adopts one and a press keeps it."""
+    # an empty channel is not a line: the queue waits for the hook's line or a press
+    rq = new_rt(lua51, frontend=True, pre=ARMORY_FIX + ARMORY_QUEUE + "\nSET_DVAR('pt_armory_ch', '')")
+    check("armory queue: nothing is written into a channel before the hook put a line in it",
+          rq.eval("CH()") == "", str(rq.eval("CH()")))
+    check("armory queue: the arm line names the pick it has and how many ids the queue holds",
+          armory_line(lines_of(rq)) == ["progression_tuning: armory armed v11 vm=menu gate=wrapped pick=wrapped "
+                                        "answer=wrapped lock=%s own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=n/a "
+                                        "card=missing rows=76 pick=0 q=3" % lock_word()],
+          " | ".join(armory_line(lines_of(rq))))
+    rq.execute("SET_FOCUS(69318); PRESS()")
+    check("armory queue: a press writes a= and the page's own list as its q= in order, finished rows dropped",
+          rq.eval("CH()") == "a=69318;q=69320,69318,69324", str(rq.eval("CH()")))
+    rq.execute("SET_FOCUS(69324); PRESS()")
+    check("armory queue: and a second press keeps the same queue",
+          rq.eval("CH()") == "a=69324;q=69320,69318,69324", str(rq.eval("CH()")))
+    check("armory queue: the page's list is not written again on a press",
+          count_line(lines_of(rq), "armory pick 69324") == 1 and len(pick_lines(lines_of(rq))) == 2,
+          " | ".join(pick_lines(lines_of(rq))))
+
+    # a channel line the hook left: the seed adopts the row and the queue, and a press keeps it
+    rs = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69320;q=69318,69316')")
+    check("armory queue: a merged line in the channel seeds the row and the queue",
+          rs.eval("CH()") == "a=69320;q=69318,69316"
+          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v11 vm=menu gate=wrapped pick=wrapped "
+                                            "answer=wrapped lock=%s own=wrapped obw=wrapped bpwin=missing vars=147+309 list=309 craft=n/a "
+                                            "card=missing rows=76 pick=69320 q=2" % lock_word()],
+          " | ".join(armory_line(lines_of(rs)) + pick_lines(lines_of(rs))))
+    rs.execute("SET_FOCUS(69324); PRESS()")
+    check("armory queue: the press keeps the queue the seed took",
+          rs.eval("CH()") == "a=69324;q=69318,69316", str(rs.eval("CH()")))
+
+    # a row outside the 76 is not a pick, but the queue it came with is still the queue
+    rw = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=12345;q=69316')")
+    rw.execute("SET_FOCUS(69320); PRESS()")
+    check("armory queue: a channel row outside the 76 is not adopted, its queue is",
+          not [ln for ln in pick_lines(lines_of(rw)) if ln.endswith("armory pick 12345")]
+          and rw.eval("CH()") == "a=69320;q=69316", str(rw.eval("CH()")))
+
+    # no completion reader in this vm: the list is taken whole rather than not at all
+    rn = new_rt(lua51, frontend=True, pre=ARMORY_FIX + ARMORY_QUEUE_NOC + "\nSET_DVAR('pt_armory_ch', '')")
+    check("armory queue: an empty channel takes no queue from the page either",
+          rn.eval("CH()") == "", str(rn.eval("CH()")))
+    rn.execute("SET_FOCUS(69320); PRESS()")
+    check("armory queue: with no completion reader the page's list is taken as it stands",
+          rn.eval("CH()") == "a=69320;q=69320,69316,69318", str(rn.eval("CH()")))
+
+
+def armory_seed(lua51):
+    """C88 a2: the pick is taken whenever the hook's line turns up, and no write runs before it."""
+    # a: the arm lands before the hook has registered the channel
+    ra = new_rt(lua51, frontend=True, src=False)
+    ra.execute(ARMORY_FIX)
+    ra.execute(LUA_TEXT[ARMORY])
+    check("armory seed: an arm with no channel takes nothing and writes nothing",
+          ra.eval("CH()") is None and not pick_lines(lines_of(ra))
+          and int(ra.eval("QUEUED()")) == 1,
+          "%s / %s" % (ra.eval("CH()"), " | ".join(lines_of(ra))))
+    pump(ra, 3)
+    check("armory seed: three ticks with no channel still take nothing",
+          ra.eval("CH()") is None and not pick_lines(lines_of(ra)),
+          " | ".join(lines_of(ra)))
+    ra.execute("SET_DVAR('pt_armory_ch', 'a=75671')")
+    pump(ra, 1)
+    check("armory seed: the line the hook registers late is adopted on the next tick",
+          pick_lines(lines_of(ra)) == ["progression_tuning: armory pick 75671 (seeded late)"]
+          and ra.eval("OC_LAST(52813)") == "75671",
+          " | ".join(pick_lines(lines_of(ra)) + [str(ra.eval("OC_LAST(52813)"))]))
+    check("armory seed: and the seed leaves the hook's own line as it found it",
+          ra.eval("CH()") == "a=75671", str(ra.eval("CH()")))
+    ra.execute("DOORSTUB()")
+    pump(ra, 5)
+    check("armory seed: the pick is said once and the watch keeps ticking once the door is in",
+          len(pick_lines(lines_of(ra))) == 1 and int(ra.eval("QUEUED()")) == 1,
+          "%d lines / %s queued" % (len(pick_lines(lines_of(ra))), ra.eval("QUEUED()")))
+
+    # b: an empty channel is not a line, so only a press writes
+    rb = new_rt(lua51, frontend=True, src=False)
+    rb.execute(ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', '')")
+    rb.execute(LUA_TEXT[ARMORY])
+    check("armory seed: an empty channel takes no arm write",
+          rb.eval("CH()") == "" and not pick_lines(lines_of(rb)), str(rb.eval("CH()")))
+    rb.execute("SET_FOCUS(69320); PRESS()")
+    check("armory seed: a press writes its row into that channel",
+          rb.eval("CH()") == "a=69320", str(rb.eval("CH()")))
+    check("armory seed: and the press is the one line it says",
+          pick_lines(lines_of(rb)) == ["progression_tuning: armory pick 69320"],
+          " | ".join(pick_lines(lines_of(rb))))
+
+    # c: the channel the hook filled before the part read it
+    rc = new_rt(lua51, frontend=True, src=False)
+    rc.execute(ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
+    rc.execute(LUA_TEXT[ARMORY])
+    check("armory seed: a channel filled before the arm is adopted at the arm, as before",
+          pick_lines(lines_of(rc)) == ["progression_tuning: armory pick 69318"]
+          and rc.eval("OC_LAST(52813)") == "69318" and rc.eval("CH()") == "a=69318"
+          and int(rc.eval("QUEUED()")) == 1,
+          " | ".join(lines_of(rc)))
+
+    # d: the answer asks before any tick has run
+    rd = new_rt(lua51, frontend=True, src=False)
+    rd.execute(ARMORY_FIX)
+    rd.execute(LUA_TEXT[ARMORY])
+    rd.execute("SET_DVAR('pt_armory_ch', 'a=69318')")
+    check("armory seed: the answer seeds the pick itself when no tick has run",
+          rd.eval("OC_LAST(52813)") == "69318"
+          and pick_lines(lines_of(rd)) == ["progression_tuning: armory pick 69318 (seeded late)"],
+          " | ".join(pick_lines(lines_of(rd)) + [str(rd.eval("OC_LAST(52813)"))]))
+    pump(rd, 1)
+    check("armory seed: the timer waits for the door the answer cannot give it",
+          int(rd.eval("QUEUED()")) == 1 and len(pick_lines(lines_of(rd))) == 1,
+          "%s queued" % str(rd.eval("QUEUED()")))
+    rd.execute("DOORSTUB()")
+    pump(rd, 1)
+    check("armory seed: and the watch stands once the door is in and the pick is seeded",
+          int(rd.eval("QUEUED()")) == 1 and len(pick_lines(lines_of(rd))) == 1
+          and [ln for ln in lines_of(rd) if "armory late " in ln]
+          == ["progression_tuning: armory late lock"],
+          "%s queued | %s" % (str(rd.eval("QUEUED()")), " | ".join(lines_of(rd)[-2:])))
+
+
+def armory_advance(lua51):
+    """v9: a hook advance of the pick in the channel is adopted on the next tick."""
+    rt = new_rt(lua51, frontend=False,
+                pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318;q=69320,69324')")
+    pump(rt, 1)
+    check("armory advance: the pick the hook left is the one the arm took",
+          rt.eval("OC_LAST(52813)") == "69318" and len(pick_lines(lines_of(rt))) == 1,
+          "%s / %s" % (rt.eval("OC_LAST(52813)"), " | ".join(pick_lines(lines_of(rt)))))
+    rt.execute("SET_DVAR('pt_armory_ch', 'a=69320;q=69320,69324')")
+    check("armory advance: before the tick the answer still names the old pick",
+          rt.eval("OC_LAST(52813)") == "69318", str(rt.eval("OC_LAST(52813)")))
+    pump(rt, 1)
+    check("armory advance: the hook's changed a is adopted on the next tick and said once",
+          rt.eval("OC_LAST(52813)") == "69320"
+          and [ln for ln in pick_lines(lines_of(rt)) if ln.endswith("(advanced)")]
+          == ["progression_tuning: armory pick 69320 (advanced)"],
+          " | ".join(pick_lines(lines_of(rt))))
+    pump(rt, 3)
+    check("armory advance: an unchanged line costs nothing and says nothing",
+          len(pick_lines(lines_of(rt))) == 2, " | ".join(pick_lines(lines_of(rt))))
+    rt.execute("SET_FOCUS(69324); PRESS()")
+    check("armory advance: a press writes its row over the hook's line",
+          rt.eval("CH()") == "a=69324;q=69320,69324" and rt.eval("OC_LAST(52813)") == "69324",
+          "%s / %s" % (rt.eval("CH()"), rt.eval("OC_LAST(52813)")))
+    rt.execute("SET_DVAR('pt_armory_ch', 'a=69316;q=69320,69324')")
+    pump(rt, 1)
+    check("armory advance: a later hook advance is adopted again",
+          rt.eval("OC_LAST(52813)") == "69316"
+          and count_line(lines_of(rt), "(advanced)") == 2,
+          " | ".join(pick_lines(lines_of(rt))))
+
+    # a press in the same window outranks the hook line
+    rp = new_rt(lua51, frontend=False, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
+    pump(rp, 1)
+    rp.execute("SET_DVAR('pt_armory_ch', 'a=69320')")
+    rp.execute("SET_FOCUS(69324); PRESS()")
+    pump(rp, 1)
+    check("armory advance: a press after the hook write keeps the row it pressed",
+          rp.eval("OC_LAST(52813)") == "69324" and count_line(lines_of(rp), "(advanced)") == 0,
+          "%s / %s" % (rp.eval("OC_LAST(52813)"), " | ".join(pick_lines(lines_of(rp)))))
+
+    # the same with no setter, so the press cannot write its own line
+    rs = new_rt(lua51, frontend=False, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
+    pump(rs, 1)
+    rs.execute("Dvar[xhash('SetDvarString')] = nil")
+    rs.execute("SET_DVAR('pt_armory_ch', 'a=69320')")
+    rs.execute("SET_FOCUS(69324); PRESS()")
+    pump(rs, 1)
+    check("armory advance: a press whose own write failed still outranks the hook line",
+          rs.eval("OC_LAST(52813)") == "69324" and rs.eval("CH()") == "a=69320"
+          and count_line(lines_of(rs), "(advanced)") == 0,
+          "%s / %s" % (rs.eval("OC_LAST(52813)"), rs.eval("CH()")))
+
+    # a line outside the 76 and a line of our own are not advances
+    rw = new_rt(lua51, frontend=False, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
+    pump(rw, 1)
+    rw.execute("SET_DVAR('pt_armory_ch', 'a=54499')")
+    pump(rw, 1)
+    check("armory advance: a changed a outside the 76 is left where the hook put it",
+          rw.eval("OC_LAST(52813)") == "69318" and count_line(lines_of(rw), "(advanced)") == 0,
+          "%s / %s" % (rw.eval("OC_LAST(52813)"), " | ".join(pick_lines(lines_of(rw)))))
+    rw.execute("SET_FOCUS(69320); PRESS()")
+    pump(rw, 3)
+    check("armory advance: the part's own write is never taken as an advance",
+          rw.eval("OC_LAST(52813)") == "69320" and count_line(lines_of(rw), "(advanced)") == 0,
+          " | ".join(pick_lines(lines_of(rw))))
+
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = new_rt(lua51, frontend=False, src=False,
+                       pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318;q=69320,69324')")
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            r.execute("SET_DVAR('pt_armory_ch', 'a=69320;q=69320,69324')")
+            pump(r, 1)
+            check("armory advance: %s order adopts the hook's a on the next tick" % order,
+                  r.eval("OC_LAST(52813)") == "69320"
+                  and count_line(lines_of(r), "(advanced)") == 1,
+                  " | ".join(pick_lines(lines_of(r))))
+
+
+ACARDROWS = r"""
+ACMROW = {}
+Challenge[xhash("IsChallengeComplete")] = function(c, id) return ACMROW[tostring(id)] == true end
+function CARD_SET(row) ACMROW[tostring(row)] = true end
+function CARD_CLR(row) ACMROW[tostring(row)] = nil end
+function CARD_N() return NAMED("completed_challenge") end
+"""
+
+CARD_FIX = ACARDROWS + r"""
+CARDK = 0
+Challenge[xhash("GetAEKindID")] = function(n)
+  if n == "ae_kind_armory" or n == xhash("ae_kind_armory") then CARDK = CARDK + 1; return 368 end
+  return 0
+end
+function CARD_KIND() local e = LASTOF("completed_challenge"); return tostring(e and e.kind) end
+function CARD_ID() local e = LASTOF("completed_challenge"); return tostring(e and e.id) end
+function CARD_PL() local e = LASTOF("completed_challenge"); return tostring(e and type(e.progress)) end
+"""
+
+# the game's common item entry, its wrong picture and the gun own one
+PICT_FIX = r"""
+COMMON_ITEM = {}
+CIMG = {}
+CIMGN = 0
+function SET_CIMG(id, v) CIMG[tostring(id)] = v end
+function SET_REF(id, ref) LOOTREF[tostring(id)] = ref end
+COMMON_ITEM[xhash("GetItemSpawnEntryImageByID")] = function(id)
+  CIMGN = CIMGN + 1
+  local v = CIMG[tostring(id)]
+  if v ~= nil then return v end
+  return nil
+end
+WEAPON[xhash("getbwimage")] = function(ref) return "bw_" .. tostring(ref) end
+function ENTRY(id) return COMMON_ITEM[xhash("GetItemSpawnEntryImageByID")](id) end
+function CARD_KEYS()
+  local e = LASTOF("completed_challenge")
+  if e == nil then return "" end
+  local t = {}
+  for k in pairs(e) do t[#t + 1] = tostring(k) end
+  table.sort(t)
+  return table.concat(t, ",")
+end
+"""
+
+# the spawn entry title the client answers and the gun own name the part puts in its place
+NAME_FIX = r"""
+NTITLE = {}
+GNAME = {}
+NCALLS = 0
+function SET_TITLE(id, v) NTITLE[tostring(id)] = v end
+function SET_GNAME(ref, v) GNAME[ref] = v end
+LOOT[xhash("getitemnamebyid")] = function(id, mark)
+  NCALLS = NCALLS + 1
+  local v = NTITLE[tostring(id)]
+  if v ~= nil then return v end
+  return "ITEM " .. tostring(id)
+end
+WEAPON[xhash("getweapondataforref")] = function(ref)
+  local n = GNAME[ref]
+  if n == nil then return nil end
+  return { name = n }
+end
+function ASK_NAME(id, mark) return LOOT[xhash("getitemnamebyid")](id, mark) end
+function NAME_CALLS() return NCALLS end
+function NAME_KEEP() NWRAP = LOOT[xhash("getitemnamebyid")] end
+function NAME_SAME() return NWRAP == LOOT[xhash("getitemnamebyid")] end
+"""
+
+
+def armory_card(lua51):
+    """v10: a row that finishes in the match draws the game's own armory card, v11: it names the gun."""
+    rt = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX)
+    pump(rt, 2)
+    check("armory card: the arm line names the card path this vm can take",
+          " card=ok " in armory_line(lines_of(rt))[0], " | ".join(armory_line(lines_of(rt))))
+    check("armory card: a row that was open at the arm draws nothing",
+          int(rt.eval("CARD_N()")) == 0, str(rt.eval("CARD_N()")))
+    rt.execute("CLEAR(); CARD_SET(69316)")
+    pump(rt, 1)
+    check("armory card: the row that just finished draws one card with its own id and kind",
+          int(rt.eval("CARD_N()")) == 1 and rt.eval("CARD_KIND()") == "368"
+          and rt.eval("CARD_ID()") == "69316" and rt.eval("CARD_PL()") == "table",
+          "%s / %s / %s" % (rt.eval("CARD_N()"), rt.eval("CARD_KIND()"), rt.eval("CARD_ID()")))
+    check("armory card: the card line names the row, the kind and the row's loot",
+          count_line(lines_of(rt), "armory card 69316 kind=368 loot=126468") == 1,
+          " | ".join([ln for ln in lines_of(rt) if "armory card" in ln]))
+    pump(rt, 3)
+    check("armory card: one card per row, never one a tick",
+          int(rt.eval("CARD_N()")) == 1 and count_line(lines_of(rt), "armory card ") == 1,
+          "%s / %d lines" % (rt.eval("CARD_N()"), count_line(lines_of(rt), "armory card ")))
+    rt.execute("CARD_SET(69318)")
+    pump(rt, 1)
+    check("armory card: a second row that finishes draws its own card",
+          int(rt.eval("CARD_N()")) == 2 and int(rt.eval("CARD_ID()")) == 69318,
+          "%s / %s" % (rt.eval("CARD_N()"), rt.eval("CARD_ID()")))
+    rt.execute("CARD_CLR(69318)")
+    pump(rt, 1)
+    rt.execute("CARD_SET(69318)")
+    pump(rt, 1)
+    check("armory card: a row already carded is never carded twice in one session",
+          int(rt.eval("CARD_N()")) == 2, str(rt.eval("CARD_N()")))
+
+    # a row complete at the arm is never carded
+    ra = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX + "\nCARD_SET(69318)")
+    pump(ra, 3)
+    check("armory card: a row complete at the arm draws nothing",
+          int(ra.eval("CARD_N()")) == 0, str(ra.eval("CARD_N()")))
+    ra.execute("CARD_CLR(69318)")
+    pump(ra, 1)
+    ra.execute("CARD_SET(69318)")
+    pump(ra, 1)
+    check("armory card: and it stays silent when that row turns complete later",
+          int(ra.eval("CARD_N()")) == 0, str(ra.eval("CARD_N()")))
+
+    # a root that raises is swallowed
+    rr = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX)
+    pump(rr, 1)
+    rr.execute("LUI[xhash('UIRoot')][xhash('ProcessEvent')] = function() error('the root raised') end")
+    rr.execute("CARD_SET(69320)")
+    pump(rr, 1)
+    check("armory card: a raising root is swallowed and said once",
+          count_line(lines_of(rr), "attempt to") == 0
+          and count_line(lines_of(rr), "armory card 69320 refused") == 1,
+          " | ".join([ln for ln in lines_of(rr) if "armory card" in ln or "attempt to" in ln]))
+    fired = int(pump(rr, 2))
+    check("armory card: and the watch keeps ticking after the refusal",
+          fired == 2 and int(rr.eval("QUEUED()")) == 2,
+          "%d ticks / %s queued" % (fired, rr.eval("QUEUED()")))
+
+    # a vm with no kind says missing and draws nothing
+    rn = new_rt(lua51, frontend=False, pre=ARMORY_FIX + ACARDROWS)
+    pump(rn, 1)
+    rn.execute("CLEAR(); CARD_SET(69316)")
+    pump(rn, 1)
+    check("armory card: a vm with no kind says missing on the arm line and draws nothing",
+          " card=missing " in armory_line(lines_of(rn))[0]
+          and int(rn.eval("CARD_N()")) == 0
+          and count_line(lines_of(rn), "armory card ") == 0,
+          " | ".join(armory_line(lines_of(rn))))
+
+    # the widget reads the row id: name and picture both come from its own loot
+    wpn = [it for it in items76() if it[3] == 1]
+    rk = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX + PICT_FIX)
+    rk.execute("SET_REF(142465, 'sat_sm_civet')")
+    rk.execute("SET_CIMG(142465, 'sat_icon_weapon_sat_sm_orca_material')")
+    rk.execute("SET_REF(125052, 'sat_acc_sight')")
+    rk.execute("SET_CIMG(125052, 'sat_icon_weapon_sat_acc_sight_material')")
+    rk.execute("SET_REF(126337, 'sat_fieldupgrade_a')")
+    rk.execute("SET_CIMG(126337, 'sat_icon_weapon_sat_fieldupgrade_b_material')")
+    rk.execute("SET_REF(200000, 'sat_foreign')")
+    rk.execute("SET_CIMG(200000, 'sat_icon_foreign')")
+    check("armory card: before any card the spawn entry names another smg for the vmp row",
+          rk.eval("ENTRY(142465)") == "sat_icon_weapon_sat_sm_orca_material",
+          str(rk.eval("ENTRY(142465)")))
+    pump(rk, 1)
+    for row in (75671, 66895, 69330):
+        rk.execute("CLEAR(); CARD_SET(%d)" % row)
+        pump(rk, 1)
+        check("armory card: row %d carries exactly name, controller, kind, id and progress" % row,
+              rk.eval("CARD_KEYS()") == "controller,id,kind,name,progress"
+              and rk.eval("CARD_ID()") == str(row) and rk.eval("CARD_KIND()") == "368"
+              and int(rk.eval("LASTOF('completed_challenge').controller")) == 0
+              and rk.eval("CARD_PL()") == "table",
+              "%s / %s / %s" % (rk.eval("CARD_ID()"), rk.eval("CARD_KIND()"), rk.eval("CARD_KEYS()")))
+    check("armory card: the vmp row's picture is the gun own one, not the entry's other smg",
+          rk.eval("ENTRY(142465)") == "bw_sat_sm_civet", str(rk.eval("ENTRY(142465)")))
+    check("armory card: an attachment and a field upgrade keep the entry's own art",
+          rk.eval("ENTRY(125052)") == "sat_icon_weapon_sat_acc_sight_material"
+          and rk.eval("ENTRY(126337)") == "sat_icon_weapon_sat_fieldupgrade_b_material",
+          "%s / %s" % (rk.eval("ENTRY(125052)"), rk.eval("ENTRY(126337)")))
+    check("armory card: an id outside the 76 keeps the entry's own answer",
+          rk.eval("ENTRY(200000)") == "sat_icon_foreign", str(rk.eval("ENTRY(200000)")))
+    check("armory card: the picture wrap says one line for the %d weapon loots" % len(wpn),
+          count_line(lines_of(rk), "armory picture wrapped for %d weapon loots" % len(wpn)) == 1,
+          " | ".join([ln for ln in lines_of(rk) if "picture" in ln]))
+
+    # the name line: the spawn entry title for eight of the 34, the gun own name for all of them
+    bad = [(125262, "sat_sm_bear", "&#sat_weapon/sat_sm_bear"),
+           (119843, "sat_sm_gecko", "&#sat_weapon/sat_sm_gecko"),
+           (116617, "sat_sm_bengal", "&#sat_weapon/sat_sm_bengal"),
+           (98043, "sat_sm_hyena", "&#sat_weapon/sat_sm_hyena"),
+           (133344, "sat_sm_marmot", "&#SAT_WEAPON/SAT_SM_MARMOT"),
+           (119845, "sat_dm_solomon", "&#sat_weapon/sat_dm_solomon"),
+           (97917, "sat_lm_typhon", "&#sat_weapon/sat_lm_typhon"),
+           (131330, "sat_ar_kiwi", "&#SAT_WEAPON/SAT_AR_KIWI")]
+    rw = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX + PICT_FIX + NAME_FIX)
+    for loot, ref, key in bad:
+        rw.execute("SET_REF(%d, '%s'); SET_TITLE(%d, 'SUB MACHINE GUN'); SET_GNAME('%s', '%s')"
+                   % (loot, ref, loot, ref, key))
+    rw.execute("SET_REF(126468, 'sat_ar_finch')"
+               "; SET_TITLE(126468, 'L:&#sat_weapon/sat_ar_finch')"
+               "; SET_GNAME('sat_ar_finch', '&#sat_weapon/sat_ar_finch')")
+    rw.execute("SET_TITLE(200000, 'FOREIGN ITEM')")
+    check("armory card: before a card the hyena row's loot answers the smg class title",
+          rw.eval("ASK_NAME(98043)") == "SUB MACHINE GUN", str(rw.eval("ASK_NAME(98043)")))
+    pump(rw, 1)
+    rw.execute("CLEAR(); CARD_SET(62979)")
+    pump(rw, 1)
+    check("armory card: a card for the hyena row wraps the name and still draws the card",
+          int(rw.eval("CARD_N()")) == 1 and int(rw.eval("CARD_ID()")) == 62979,
+          "%s / %s" % (rw.eval("CARD_N()"), rw.eval("CARD_ID()")))
+    for loot, ref, key in bad:
+        check("armory card: loot %d answers its own gun name, with and without the mark" % loot,
+              rw.eval("ASK_NAME(%d)" % loot) == "L:" + key
+              and rw.eval("ASK_NAME(%d, true)" % loot) == "L:" + key,
+              "%s / %s" % (rw.eval("ASK_NAME(%d)" % loot), rw.eval("ASK_NAME(%d, true)" % loot)))
+    check("armory card: a loot whose title was already the gun own keeps that same name",
+          rw.eval("ASK_NAME(126468)") == "L:&#sat_weapon/sat_ar_finch",
+          str(rw.eval("ASK_NAME(126468)")))
+    check("armory card: an id outside the 34 keeps the client's own answer",
+          rw.eval("ASK_NAME(200000)") == "FOREIGN ITEM", str(rw.eval("ASK_NAME(200000)")))
+    check("armory card: the name wrap says one line for the %d weapon loots" % len(wpn),
+          count_line(lines_of(rw), "armory name wrapped for %d weapon loots" % len(wpn)) == 1,
+          " | ".join([ln for ln in lines_of(rw) if "name wrapped" in ln]))
+    rw.execute("NAME_KEEP()")
+    rw.execute("CLEAR(); CARD_SET(69318)")
+    pump(rw, 1)
+    check("armory card: a second card leaves the wrapped name in place and says nothing more",
+          rw.eval("NAME_SAME()") is True
+          and count_line(lines_of(rw), "armory name wrapped") == 1,
+          "%s / %d lines" % (rw.eval("NAME_SAME()"),
+                             count_line(lines_of(rw), "armory name wrapped")))
+
+    # a loot with no ref and no gun data keeps the entry's own title and is never blank
+    rd = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX + PICT_FIX + NAME_FIX)
+    rd.execute("SET_TITLE(116617, 'SUB MACHINE GUN')")
+    pump(rd, 1)
+    rd.execute("CLEAR(); CARD_SET(64768)")
+    pump(rd, 1)
+    check("armory card: a loot the gun data cannot name keeps the entry's own title, never blank",
+          rd.eval("ASK_NAME(116617)") == "SUB MACHINE GUN"
+          and count_line(lines_of(rd), "armory name wrapped") == 1,
+          "%s / %d lines" % (rd.eval("ASK_NAME(116617)"),
+                             count_line(lines_of(rd), "armory name wrapped")))
+
+    # the menu vm never wraps the name
+    rmw = new_rt(lua51, frontend=True, pre=ARMORY_FIX + NAME_FIX)
+    rmw.execute("SET_TITLE(98043, 'SUB MACHINE GUN')")
+    pump(rmw, 2)
+    check("armory card: a menu vm keeps the entry's own title and wraps no name",
+          rmw.eval("ASK_NAME(98043)") == "SUB MACHINE GUN"
+          and count_line(lines_of(rmw), "armory name") == 0,
+          "%s / %d lines" % (rmw.eval("ASK_NAME(98043)"),
+                             count_line(lines_of(rmw), "armory name")))
+
+    # a vm without the common item table still draws the card
+    rnc = new_rt(lua51, frontend=False, pre=ARMORY_FIX + CARD_FIX)
+    pump(rnc, 1)
+    rnc.execute("CLEAR(); CARD_SET(75671)")
+    pump(rnc, 1)
+    check("armory card: a vm with no common item entry draws the card and names no picture",
+          int(rnc.eval("CARD_N()")) == 1 and count_line(lines_of(rnc), "armory picture") == 0,
+          "%s / %d lines" % (rnc.eval("CARD_N()"), count_line(lines_of(rnc), "armory picture")))
+
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = new_rt(lua51, frontend=False, src=False,
+                       pre=ARMORY_FIX + CARD_FIX + PICT_FIX + NAME_FIX
+                       + "\nSET_DVAR('pt_armory_ch', 'a=69318')"
+                       + "\nSET_REF(126468, 'sat_ar_finch')"
+                       + "\nSET_TITLE(126468, 'SUB MACHINE GUN')"
+                       + "\nSET_GNAME('sat_ar_finch', '&#sat_weapon/sat_ar_finch')"
+                       + "\nSET_CIMG(126468, 'sat_icon_weapon_sat_ar_eagle_material')")
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            r.execute("CLEAR(); CARD_SET(69316)")
+            pump(r, 1)
+            check("armory card: %s order draws the one card for the finished row" % order,
+                  int(r.eval("CARD_N()")) == 1 and r.eval("CARD_KIND()") == "368"
+                  and r.eval("CARD_ID()") == "69316",
+                  "%s / %s" % (r.eval("CARD_N()"), r.eval("CARD_ID()")))
+            check("armory card: %s order swaps the row's picture for the gun own one" % order,
+                  r.eval("ENTRY(126468)") == "bw_sat_ar_finch", str(r.eval("ENTRY(126468)")))
+            check("armory card: %s order swaps the smg class title for the gun own name" % order,
+                  r.eval("ASK_NAME(126468)") == "L:&#sat_weapon/sat_ar_finch"
+                  and count_line(lines_of(r), "armory name wrapped") == 1,
+                  "%s / %d lines" % (r.eval("ASK_NAME(126468)"),
+                                     count_line(lines_of(r), "armory name wrapped")))
+
+
+LOCKFIX = r"""
+LKROWS = {}
+LKCALLS = 0
+LKRAISE = false
+Challenge[xhash("IsChallengeComplete")] = function(c, row)
+  LKCALLS = LKCALLS + 1
+  if LKRAISE then error("the completion reader raised") end
+  return LKROWS[tostring(row)] == true
+end
+function LK_DONE(row) LKROWS[tostring(row)] = true end
+function LK_OPEN(row) LKROWS[tostring(row)] = nil end
+function LK_N() return LKCALLS end
+function LK_ZERO() LKCALLS = 0 end
+function DROP_COMPLETE() Challenge[xhash("IsChallengeComplete")] = nil end
+function ANS(id) return rawget(_G, "ProgressionTuning").locks.answer(id) end
+function OPN(id) return rawget(_G, "ProgressionTuning").locks.open(id) end
+function SNAP2()
+  local s = rawget(_G, "ProgressionTuning")
+  S2A, S2O = s.locks.answer, s.locks.open
+end
+function SAME2()
+  local s = rawget(_G, "ProgressionTuning")
+  return s.locks.answer == S2A and s.locks.open == S2O
+end
+function REBUILD()
+  rawget(_G, "ProgressionTuning").locks = {
+    answer = function(id) return false end,
+    open = function(id) return false end,
+  }
+end
+BPGATE = 0
+local function BP_ANSWER(c, id)
+  if BPGATE ~= 0 and id == BPGATE then return false end
+  return true
+end
+PROGRESSION[xhash("isunlockedwithid")] = BP_ANSWER
+LOOT[xhash("isunlockedwithid")] = BP_ANSWER
+"""
+
+# the builds getter the armory part wraps: it lists an entry only when the door says unlocked
+LISTFIX = r"""
+GM_IDS = {}
+GM_SEEN = {}
+GM_OPTS = nil
+GM_CALLS = 0
+GM_RAISE = false
+GM_NEST = 0
+GM_TWO = false
+WEAPON.getmodifications = function(c, opt)
+  GM_CALLS = GM_CALLS + 1
+  GM_OPTS = opt
+  if GM_RAISE then error("the builds getter raised") end
+  if GM_NEST > 0 then
+    GM_NEST = GM_NEST - 1
+    WEAPON.getmodifications(0, { excludeBaseWeapons = true, forceLoot = true,
+      byWeapons = { ['sat_sm_civet'] = true } })
+  end
+  local out = {}
+  local f = LOOT[xhash("isunlockedwithid")]
+  for i = 1, #GM_IDS do
+    local id = GM_IDS[i]
+    local owned = f ~= nil and f(c, id) == true
+    GM_SEEN[id] = owned
+    if owned or (opt ~= nil and opt.checkOwnership == false) then
+      out[#out + 1] = { lootID = id }
+    end
+  end
+  if GM_TWO then return out, "second" end
+  return out
+end
+function GM_SET(list) GM_IDS = list end
+function GM_CLEAR() GM_SEEN = {} end
+function GM_SAW(id) return GM_SEEN[id] end
+function GM_N() return GM_CALLS end
+function GM_ZERO() GM_CALLS = 0 end
+function GM_RAISE_ON(v) GM_RAISE = v end
+function GM_NEST_ON(v) GM_NEST = v end
+function GM_TWO_ON(v) GM_TWO = v end
+function GM_LAST() return GM_OPTS end
+function GM_KEPT()
+  local o = GM_OPTS
+  if o == nil then return "none" end
+  return tostring(o.forceLoot) .. "/" .. tostring(o.excludeBaseWeapons)
+end
+function GM_COUNT(opt) return #WEAPON.getmodifications(0, opt) end
+function GM_TRY(opt)
+  local ok, v = pcall(WEAPON.getmodifications, 0, opt)
+  if not ok then return "raised" end
+  if type(v) ~= "table" then return tostring(v) end
+  return tostring(#v)
+end
+function GM_BOTH(opt)
+  local ok, a, b = pcall(WEAPON.getmodifications, 0, opt)
+  if not ok then return "raised" end
+  return tostring(type(a)) .. "/" .. tostring(b)
+end
+GMREF = "sat_sm_civet"
+BPS = { sat_sm_civet = { { lootid = 151472 }, { lootid = 153766 }, { lootid = 151503 } } }
+BUNDLES = { [153766] = true }
+Engine.GetWeaponBlueprints = function(ref) return BPS[ref] or {} end
+if type(GL_HACK) ~= "table" then GL_HACK = {} end
+GL_HACK.getweaponmpref = function(ref) return ref end
+if type(STORE) ~= "table" then STORE = {} end
+if type(STORE.Bundles) ~= "table" then STORE.Bundles = {} end
+STORE.Bundles[xhash("GetFirstBundleWithLootId")] = function(c, id)
+  if BUNDLES[id] then return "bundle" .. tostring(id) end
+  return nil
+end
+"""
+
+# the option shapes the client passes that must not open the window
+BUILDS = "{ excludeBaseWeapons = true, forceLoot = true, byWeapons = { ['sat_sm_civet'] = true } }"
+ALL_LIST = ("{ checkOwnership = false, forceCustom = false, excludeBaseWeapons = true, forceLoot = true, "
+            "byWeapons = { ['sat_sm_civet'] = true } }")
+LISTREF = "sat_sm_civet"
+SHAPES = [
+    ("shop", "{ includeBundleItems = true, onlyIncludeUnownedItem = true, byWeapons = { ['sat_sm_civet'] = true } }"),
+    ("blackcell", "{ onlyIncludeBlackCellEvolvingReward = true, onlyIncludeUnownedItem = true, "
+                  "excludeBaseWeapons = true, byWeapons = { ['sat_sm_civet'] = true } }"),
+    ("bundle store", "{ exclusiveBundleItems = true, forceLoot = true, excludeBaseWeapons = true, "
+                     "byWeapons = { ['sat_sm_civet'] = true } }"),
+    ("counters", ALL_LIST),
+    ("armory grid", "{ excludeBaseWeapons = true, includeBundleItems = true, "
+                    "byWeapons = { ['sat_sm_civet'] = true } }"),
+    ("custom", "{ forceCustom = true, byWeapons = { ['sat_sm_civet'] = true } }"),
+]
+
+# the three items the user reported, plus one of each other kind, plus two that are not ours
+LOCK_IDS = [142465, 140458, 119853, 126337, 129239]
+LOCK_OTHER = [126608, 200000]
+LOCK_KINDS = {142465: 2, 140458: 7, 119853: 7, 126337: 7, 129239: 7, 126608: 7, 200000: 11}
+
+# the per-weapon versions of the 76 (docs\ARMORY-LOCK-AUDIT.md 2.2, 3.2): the 1911's own two muzzles and two
+# optics, its six blueprints, and one blueprint of a gun outside the 76 (the Hades' Shiny, 100249)
+VAR_ATTACH = [126626, 140475, 125070, 126906]
+VAR_ATTACH_ROW = {126626: 64771, 140475: 71381, 125070: 66895, 126906: 66895}
+VAR_BLUEPRINT = [130444, 132228, 140232, 143881, 145335, 140106]
+VAR_BLUEPRINT_ROW = 69320
+VAR_FOREIGN = 100249
+
+
+def items76():
+    """The armory part's own item table as (loot, row, cost, kind)."""
+    m = re.search(r"local ITEMS = \{\n(.*?)\n\}\n", LUA_TEXT[ARMORY], re.S)
+    out = []
+    for ln in (m.group(1) if m else "").split("\n"):
+        t = re.findall(r"\d+", ln)
+        if len(t) == 4:
+            out.append(tuple(int(x) for x in t))
+    return out
+
+
+def vars_table():
+    """The armory part's own version table as (row, [ids]), in file order."""
+    m = re.search(r"local VARS = \{\n(.*?)\n\}\n", LUA_TEXT[ARMORY], re.S)
+    out = []
+    for ln in (m.group(1) if m else "").split("\n"):
+        t = re.findall(r"\d+", ln)
+        if len(t) >= 2:
+            out.append((int(t[0]), [int(x) for x in t[1:]]))
+    return out
+
+
+def vars_map():
+    """Every version id -> the row it inherits."""
+    return {vid: row for row, ids in vars_table() for vid in ids}
+
+
+def blueprints():
+    """Every version id under a weapon row, the ids a builds list must keep showing."""
+    kind = {row: k for _loot, row, _cost, k in items76()}
+    return sorted(vid for vid, row in vars_map().items() if kind[row] == 1)
+
+
+def attachment_versions():
+    """Every version id under an attachment row."""
+    kind = {row: k for _loot, row, _cost, k in items76()}
+    return sorted(vid for vid, row in vars_map().items() if kind[row] == 2)
+
+
+def lock_rt(lua51, pre="", frontend=True):
+    """A door with the client's own payload, its defaults and our part over it."""
+    every = [it[0] for it in items76()] + LOCK_OTHER
+    rt = new_rt(lua51, frontend=frontend, src=False, pre=ARMORY_FIX + "\n" + LOCKFIX + "\n" + pre)
+    lua_slabs(rt, slabs_of(every))
+    lua_rslabs(rt, slabs_of(every))
+    rt.execute("SET_G11(77)")
+    rt.execute("SET_G12(%d)" % len(every))
+    for it in items76():
+        rt.execute("SET_DEFAULT(%d)" % it[0])
+    for i, t in LOCK_KINDS.items():
+        rt.execute("SET_TYPE(%d, %d)" % (i, t))
+    return rt
+
+
+def list_rt(lua51, pre="", frontend=True):
+    """The same door, plus the builds getter the window is counted on."""
+    return lock_rt(lua51, pre=LISTFIX + "\n" + pre, frontend=frontend)
+
+
+def list_lines(lines):
+    """The temporary check block's lines - the block is gone, so this must always be empty."""
+    return [ln for ln in lines if "armory check " in ln]
+
+
+def armory_lock(lua51):
+    """C87 a3: the armory row is the only unlock path for the 76 items."""
+    items = items76()
+    check("armory lock: the item table is the scope's 76 and names the user's three",
+          len(items) == 76 and {142465, 140458, 119853} <= set(i[0] for i in items)
+          and len(set(i[1] for i in items)) == 76,
+          "%d items" % len(items))
+
+    # the gap: the door alone opens all five through the client's own default table
+    door = lock_rt(lua51)
+    for n in LOAD_ORDERS["harness"]:
+        if n != ARMORY:
+            door.execute(LUA_TEXT[n])
+    pump(door, 1)
+    gap = [(i, door.eval("ASK_P(%d)" % i), door.eval("ASK_L(%d)" % i)) for i in LOCK_IDS]
+    check("armory lock: the door alone opens every one of them on the default table",
+          all(p is True and l is True for _i, p, l in gap), str(gap))
+    vgap = [(i, door.eval("ASK_P(%d)" % i), door.eval("ASK_L(%d)" % i))
+            for i in VAR_ATTACH + VAR_BLUEPRINT]
+    check("armory lock: and opens the 1911's ten version ids too",
+          all(p is True and l is True for _i, p, l in vgap), str(vgap[:4]))
+    check("armory lock: and keeps an id outside the 76 locked on both doors",
+          door.eval("ASK_P(126608)") is False and door.eval("ASK_L(126608)") is False
+          and door.eval("ASK_P(200000)") is False,
+          "%s / %s" % (door.eval("ASK_P(126608)"), door.eval("ASK_L(126608)")))
+    other_ans = (door.eval("ANS(126608)"), door.eval("OPN(126608)"),
+                 door.eval("ANS(200000)"), door.eval("OPN(200000)"))
+    check("armory lock: a vm with no armory part in it says no arm line at all",
+          armory_line(lines_of(door)) == [], " | ".join(armory_line(lines_of(door))))
+
+    rt = lock_rt(lua51)
+    load(rt)
+    pump(rt, 1)
+    check("armory lock: the arm line names the door side this part wrapped",
+          len(armory_line(lines_of(rt))) == 1
+          and ("lock=%s" % lock_word()) in armory_line(lines_of(rt))[0],
+          " | ".join(armory_line(lines_of(rt))))
+    held = [(i, rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)) for i in LOCK_IDS]
+    check("armory lock: those five read locked once their own row is read on both doors",
+          all(p is False and l is False for _i, p, l in held), str(held))
+    check("armory lock: an id outside the 76 keeps the doors own answer, id for id",
+          (rt.eval("ANS(126608)"), rt.eval("OPN(126608)"),
+           rt.eval("ANS(200000)"), rt.eval("OPN(200000)")) == other_ans
+          and rt.eval("ASK_P(126608)") is False and rt.eval("ASK_P(200000)") is False,
+          str((rt.eval("ANS(126608)"), rt.eval("OPN(126608)"))))
+    check("armory lock: the answer side says locked and the open side says nothing for them",
+          rt.eval("ANS(142465)") is True and rt.eval("OPN(142465)") is False
+          and rt.eval("ANS(119853)") is True and rt.eval("OPN(119853)") is False,
+          "%s / %s" % (rt.eval("ANS(142465)"), rt.eval("OPN(142465)")))
+
+    # the row's own completion is enough, and only for the row that finished
+    rt.execute("LK_DONE(75671)")
+    pump(rt, 1)
+    check("armory lock: a finished row opens its item on both doors",
+          rt.eval("ASK_P(142465)") is True and rt.eval("ASK_L(142465)") is True
+          and rt.eval("ANS(142465)") is False and rt.eval("OPN(142465)") is True,
+          "%s / %s" % (rt.eval("ASK_P(142465)"), rt.eval("ASK_L(142465)")))
+    check("armory lock: and leaves the other four locked",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in (140458, 119853, 126337, 129239)),
+          str([rt.eval("ASK_P(%d)" % i) for i in (140458, 119853, 126337, 129239)]))
+    rt.execute("LK_OPEN(75671)")
+    pump(rt, 1)
+    check("armory lock: and the lock comes back when that row is not done again",
+          rt.eval("ASK_P(142465)") is False, str(rt.eval("ASK_P(142465)")))
+
+    # a switch per kind, and the one switch over all of them
+    rt.execute('SET_DVAR("zm_unlock_weapons", "1")')
+    pump(rt, 1)
+    check("armory lock: the weapon switch opens the weapon alone",
+          rt.eval("ASK_P(142465)") is True and rt.eval("ASK_L(142465)") is True
+          and all(rt.eval("ASK_P(%d)" % i) is False for i in (140458, 119853, 126337, 129239)),
+          "%s / %s" % (rt.eval("ASK_P(142465)"), rt.eval("ASK_P(140458)")))
+    rt.execute('SET_DVAR("zm_unlock_weapons", "0") SET_DVAR("zm_unlock_attachments", "1")')
+    pump(rt, 1)
+    check("armory lock: the attachment switch opens both attachments and nothing else",
+          rt.eval("ASK_L(140458)") is True and rt.eval("ASK_L(119853)") is True
+          and rt.eval("ASK_P(142465)") is False and rt.eval("ASK_P(126337)") is False
+          and rt.eval("ASK_P(129239)") is False,
+          str([rt.eval("ASK_P(%d)" % i) for i in (142465, 126337, 129239)]))
+    rt.execute('SET_DVAR("zm_unlock_attachments", "0") SET_DVAR("zm_unlock_fieldupgrades", "1")')
+    pump(rt, 1)
+    check("armory lock: the field upgrade switch opens the field upgrade",
+          rt.eval("ASK_P(126337)") is True and rt.eval("ASK_P(119853)") is False,
+          "%s / %s" % (rt.eval("ASK_P(126337)"), rt.eval("ASK_P(119853)")))
+    rt.execute('SET_DVAR("zm_unlock_fieldupgrades", "0") SET_DVAR("zm_unlock_scorestreaks", "1")')
+    pump(rt, 1)
+    check("armory lock: the scorestreak switch opens the scorestreak",
+          rt.eval("ASK_P(129239)") is True and rt.eval("ASK_P(126337)") is False,
+          "%s / %s" % (rt.eval("ASK_P(129239)"), rt.eval("ASK_P(126337)")))
+    rt.execute('SET_DVAR("zm_unlock_scorestreaks", "0") SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 1)
+    check("armory lock: unlock everything opens all 76 on both doors",
+          all(rt.eval("ASK_P(%d)" % i[0]) is True and rt.eval("ASK_L(%d)" % i[0]) is True
+              for i in items),
+          str([rt.eval("ASK_P(%d)" % i[0]) for i in items if rt.eval("ASK_P(%d)" % i[0]) is not True]))
+    check("armory lock: and the switch that is on stands down every term of our rule",
+          rt.eval("ANS(142465)") is False and rt.eval("OPN(142465)") is True,
+          "%s / %s" % (rt.eval("ANS(142465)"), rt.eval("OPN(142465)")))
+    rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 1)
+    check("armory lock: every switch off closes all 76 again",
+          all(rt.eval("ASK_P(%d)" % i[0]) is False for i in items),
+          str([rt.eval("ASK_P(%d)" % i[0]) for i in items if rt.eval("ASK_P(%d)" % i[0]) is not False]))
+
+    # the versions of those items: 147 attachment ids and 309 weapon ids, each under its own row
+    table = vars_table()
+    vmap = vars_map()
+    kinds = {it[1]: it[3] for it in items}
+    attach_ids = [v for v, r in vmap.items() if kinds.get(r) == 2]
+    weapon_ids = [v for v, r in vmap.items() if kinds.get(r) == 1]
+    check("armory lock: the version table is 39 rows and 456 ids, none of them a base id",
+          len(table) == 39 and len(vmap) == 456 and all(r in kinds for r, _ in table)
+          and not (set(vmap) & set(i[0] for i in items)),
+          "%d rows / %d ids" % (len(table), len(vmap)))
+    check("armory lock: 147 of them sit under an attachment row and 309 under a weapon row",
+          len(attach_ids) == 147 and len(weapon_ids) == 309,
+          "%d / %d" % (len(attach_ids), len(weapon_ids)))
+    check("armory lock: the table names the 1911's own four versions and its six blueprints",
+          all(vmap.get(i) == r for i, r in VAR_ATTACH_ROW.items())
+          and all(vmap.get(i) == VAR_BLUEPRINT_ROW for i in VAR_BLUEPRINT)
+          and VAR_FOREIGN not in vmap,
+          str([(i, vmap.get(i)) for i in VAR_ATTACH + VAR_BLUEPRINT]))
+
+    # an attachment version answers to its row and to the attachment switch
+    held = [(i, rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)) for i in VAR_ATTACH]
+    check("armory lock: the 1911's two muzzles and two optics read locked on both doors",
+          all(p is False and l is False for _i, p, l in held), str(held))
+    check("armory lock: a version's answer side says locked and its open side says nothing",
+          rt.eval("ANS(126626)") is True and rt.eval("OPN(126626)") is False,
+          "%s / %s" % (rt.eval("ANS(126626)"), rt.eval("OPN(126626)")))
+    rt.execute("LK_DONE(64771)")
+    pump(rt, 1)
+    check("armory lock: the hybrid row done opens the redwell on both doors",
+          rt.eval("ASK_P(126626)") is True and rt.eval("ASK_L(126626)") is True
+          and rt.eval("ANS(126626)") is False and rt.eval("OPN(126626)") is True,
+          "%s / %s" % (rt.eval("ASK_P(126626)"), rt.eval("ASK_L(126626)")))
+    check("armory lock: and leaves the brake and the optics shut",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in (140475, 125070, 126906)),
+          str([rt.eval("ASK_P(%d)" % i) for i in (140475, 125070, 126906)]))
+    rt.execute("LK_OPEN(64771) LK_DONE(71381) LK_DONE(66895)")
+    pump(rt, 1)
+    check("armory lock: each row opens its own versions and no other row's",
+          rt.eval("ASK_P(126626)") is False and rt.eval("ASK_P(140475)") is True
+          and rt.eval("ASK_P(125070)") is True and rt.eval("ASK_P(126906)") is True,
+          str([(i, rt.eval("ASK_P(%d)" % i)) for i in VAR_ATTACH]))
+    rt.execute("LK_OPEN(71381) LK_OPEN(66895)")
+    pump(rt, 1)
+    rt.execute('SET_DVAR("zm_unlock_attachments", "1")')
+    pump(rt, 1)
+    check("armory lock: the attachment switch opens every version of every attachment",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in VAR_ATTACH),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_ATTACH]))
+    rt.execute('SET_DVAR("zm_unlock_attachments", "0") SET_DVAR("zm_unlock_weapons", "1")')
+    pump(rt, 1)
+    check("armory lock: the weapon switch does not open a version of an attachment",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in VAR_ATTACH),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_ATTACH]))
+
+    # a blueprint answers to its gun's row and to the weapon switch, never to unlock_blueprints
+    rt.execute('SET_DVAR("zm_unlock_weapons", "0") SET_DVAR("zm_unlock_attachments", "1")')
+    pump(rt, 1)
+    check("armory lock: the attachment switch does not open a blueprint of an armory gun",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in VAR_BLUEPRINT),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_BLUEPRINT]))
+    rt.execute('SET_DVAR("zm_unlock_attachments", "0") SET_DVAR("unlock_blueprints", "1")')
+    pump(rt, 1)
+    held = [(i, rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)) for i in VAR_BLUEPRINT]
+    check("armory lock: the 1911's six blueprints read locked with unlock_blueprints on",
+          all(p is False and l is False for _i, p, l in held), str(held))
+    rt.execute('SET_DVAR("unlock_blueprints", "0")')
+    pump(rt, 1)
+    check("armory lock: and the blueprint switch alone moves none of them",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in VAR_BLUEPRINT),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_BLUEPRINT]))
+    rt.execute("LK_DONE(69320)")
+    pump(rt, 1)
+    check("armory lock: the 1911's own row done opens all six on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in VAR_BLUEPRINT),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_BLUEPRINT]))
+    rt.execute("LK_OPEN(69320)")
+    pump(rt, 1)
+    check("armory lock: and they shut again with the row open",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in VAR_BLUEPRINT),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_BLUEPRINT]))
+    rt.execute('SET_DVAR("zm_unlock_weapons", "1")')
+    pump(rt, 1)
+    check("armory lock: the weapon switch opens every blueprint of an armory gun",
+          all(rt.eval("ASK_P(%d)" % i) is True for i in VAR_BLUEPRINT),
+          str([rt.eval("ASK_P(%d)" % i) for i in VAR_BLUEPRINT]))
+    rt.execute('SET_DVAR("zm_unlock_weapons", "0")')
+    pump(rt, 1)
+
+    # a version is a table lookup: no completion pass of its own
+    pump(rt, 1)
+    rt.eval("ASK_P(126626)")
+    rt.execute("LK_ZERO()")
+    for i in VAR_ATTACH + VAR_BLUEPRINT:
+        rt.eval("ASK_P(%d)" % i)
+        rt.eval("ASK_L(%d)" % i)
+    check("armory lock: ten versions asked twice cost no completion read of their own",
+          int(rt.eval("LK_N()")) == 0, str(rt.eval("LK_N()")))
+
+    # a blueprint of a gun outside the 76 keeps whatever the door answers
+    fd = lock_rt(lua51)
+    load(fd)
+    pump(fd, 1)
+    check("armory lock: a blueprint of a gun outside the 76 is the door's own answer",
+          fd.eval("ASK_P(%d)" % VAR_FOREIGN) is True and fd.eval("ASK_L(%d)" % VAR_FOREIGN) is True
+          and fd.eval("ANS(%d)" % VAR_FOREIGN) is False,
+          "%s / %s" % (fd.eval("ASK_P(%d)" % VAR_FOREIGN), fd.eval("ANS(%d)" % VAR_FOREIGN)))
+    fd.execute('SET_DVAR("unlock_blueprints", "0")')
+    pump(fd, 1)
+    check("armory lock: and the blueprint switch changes nothing our part answers",
+          fd.eval("ASK_P(%d)" % VAR_FOREIGN) is True and fd.eval("ANS(%d)" % VAR_FOREIGN) is False,
+          "%s / %s" % (fd.eval("ASK_P(%d)" % VAR_FOREIGN), fd.eval("ANS(%d)" % VAR_FOREIGN)))
+    fd.execute("BPGATE = %d" % VAR_FOREIGN)
+    check("armory lock: the door's own refusal reaches the picker unchanged",
+          fd.eval("ASK_P(%d)" % VAR_FOREIGN) is False and fd.eval("ASK_L(%d)" % VAR_FOREIGN) is False,
+          "%s / %s" % (fd.eval("ASK_P(%d)" % VAR_FOREIGN), fd.eval("ASK_L(%d)" % VAR_FOREIGN)))
+    fd.execute("BPGATE = 0")
+    check("armory lock: and so does its own open answer",
+          fd.eval("ASK_P(%d)" % VAR_FOREIGN) is True, str(fd.eval("ASK_P(%d)" % VAR_FOREIGN)))
+
+    # one completion pass per tick, not one per ask
+    pump(rt, 1)
+    rt.execute("LK_ZERO()")
+    for i in LOCK_IDS:
+        rt.eval("ASK_P(%d)" % i)
+    first = int(rt.eval("LK_N()"))
+    for i in LOCK_IDS:
+        rt.eval("ASK_L(%d)" % i)
+    second = int(rt.eval("LK_N()"))
+    pump(rt, 1)
+    rt.eval("ASK_P(142465)")
+    third = int(rt.eval("LK_N()"))
+    check("armory lock: the 76 rows are read once a tick, not once an ask",
+          first == 76 and second == 76 and third > 76,
+          "%d / %d / %d" % (first, second, third))
+
+    # a vm with no completion reader falls back to the record's own progress
+    rp = lock_rt(lua51, pre="DROP_COMPLETE()\nSET_OC(75671, 250000, 0)")
+    rp.execute("SET_OC(64771, 149999, 0) SET_OC(71381, 150000, 0)")
+    load(rp)
+    pump(rp, 1)
+    check("armory lock: with no completion reader the record's own progress decides",
+          rp.eval("ASK_P(142465)") is True and rp.eval("ASK_L(140458)") is True
+          and rp.eval("ASK_L(119853)") is False,
+          "%s / %s" % (rp.eval("ASK_L(140458)"), rp.eval("ASK_L(119853)")))
+    rp.execute("SET_OC(64771, 150000, 0) SET_OC(71381, 149999, 0)")
+    pump(rp, 1)
+    check("armory lock: one xp short is short and one xp at the cost is done",
+          rp.eval("ASK_L(119853)") is True and rp.eval("ASK_L(140458)") is False,
+          "%s / %s" % (rp.eval("ASK_L(119853)"), rp.eval("ASK_L(140458)")))
+
+    # a completion reader that raises leaves the items shut and says nothing
+    rr = lock_rt(lua51)
+    rr.execute("LKRAISE = true")
+    load(rr)
+    pump(rr, 1)
+    check("armory lock: a raising completion reader keeps the items locked",
+          rr.eval("ASK_P(142465)") is False and rr.eval("ASK_L(119853)") is False
+          and not [ln for ln in lines_of(rr) if "attempt to" in ln],
+          " | ".join([ln for ln in lines_of(rr) if "attempt to" in ln][:2]))
+
+    # loading the file twice wraps nothing twice
+    rt.execute("SNAP2()")
+    before = len(lines_of(rt))
+    rt.execute(LUA_TEXT[ARMORY])
+    check("armory lock: loading the part again keeps one wrapper on each rule",
+          rt.eval("SAME2()") is True and len(lines_of(rt)) == before
+          and rt.eval("ASK_P(142465)") is False,
+          " | ".join(lines_of(rt)[before:]))
+
+    # a door that is rebuilt is wrapped again on the next tick
+    rt.execute("REBUILD()")
+    open_now = rt.eval("ASK_P(142465)")
+    pump(rt, 1)
+    check("armory lock: a rebuilt door is wrapped again on the next tick",
+          open_now is True and rt.eval("ASK_P(142465)") is False
+          and rt.eval("ANS(142465)") is True,
+          "%s / %s" % (open_now, rt.eval("ASK_P(142465)")))
+
+    # the three load orders end in the same answer
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = lock_rt(lua51)
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            check("armory lock: %s order leaves all 76 locked and the door asking us" % order,
+                  all(r.eval("ASK_P(%d)" % i[0]) is False for i in items)
+                  and r.eval("ANS(142465)") is True
+                  and r.eval("ANS(126608)") is True
+                  and r.eval("ASK_P(126608)") is False,
+                  "%s / %s" % (r.eval("ASK_P(142465)"), r.eval("ANS(126608)")))
+
+        # the arm lands before the door exists and the pick is already seeded at the arm (C87 a4's own
+        # failure: v4 never retried because seed had falsified the timer's guard)
+        ra = lock_rt(lua51)
+        ra.execute("SET_DVAR('pt_armory_ch', 'a=75671')")
+        for n in LOAD_ORDERS["alphabetical"]:
+            ra.execute(LUA_TEXT[n])
+        first = armory_line(lines_of(ra))
+        check("armory lock: armory before the door says lock=missing and names the seeded pick",
+              len(first) == 1 and " lock=missing " in first[0] and " pick=75671 " in first[0]
+              and " own=wrapped " in first[0],
+              " | ".join(first))
+        pump(ra, 1)
+        late = [ln for ln in lines_of(ra) if "armory late " in ln]
+        check("armory lock: one tick later the door is ours even with the pick seeded at the arm",
+              ra.eval("ANS(142465)") is True and ra.eval("ASK_P(142465)") is False
+              and late == ["progression_tuning: armory late lock"],
+              " | ".join(late + [str(ra.eval("ASK_P(142465)"))]))
+        pump(ra, 3)
+        check("armory lock: and the late line is said once, not once a tick",
+              [ln for ln in lines_of(ra) if "armory late " in ln] == late
+              and ra.eval("ASK_P(142465)") is False,
+              " | ".join(lines_of(ra)[-3:]))
+
+
+CRAFT_REFS = ("radiation_blast", "smart_gun", "sniper_drone", "skybreak")
+
+
+def craft_asks(rt):
+    """The four armory streaks and the answer the table gets for each."""
+    return [(r, rt.eval("CRAFT_ASK('%s')" % r)) for r in CRAFT_REFS]
+
+
+def armory_craft(lua51):
+    """the crafting table greys out the streaks the armory sells until they are earned."""
+    rt = lock_rt(lua51, frontend=False)
+    load(rt)
+    pump(rt, 1)
+    line = armory_line(lines_of(rt))
+    check("craft: a match vm wraps the table lock and the arm line says which vm and which side",
+          len(line) == 1 and line[0].startswith("progression_tuning: armory armed v11 vm=match ")
+          and " vars=147+309 list=309 " in line[0] and " craft=wrapped " in line[0]
+          and " own=wrapped " in line[0] and " obw=wrapped " in line[0],
+          " | ".join(line))
+    check("craft: the four streaks the armory sells read locked at the table",
+          all(v is True for _r, v in craft_asks(rt)), str(craft_asks(rt)))
+    check("craft: an item that is not one of ours keeps the game's own answer",
+          rt.eval("SET_CRAFT('equip_armorplate', true)") is None
+          and rt.eval("SET_CRAFT('rcxd', false)") is None
+          and rt.eval("CRAFT_ASK('equip_armorplate')") is True
+          and rt.eval("CRAFT_ASK('rcxd')") is False
+          and rt.eval("CRAFT_ASK('toma_strike')") is False,
+          "%s / %s" % (rt.eval("CRAFT_ASK('equip_armorplate')"), rt.eval("CRAFT_ASK('rcxd')")))
+
+    # its own row done opens its own streak and leaves the other three shut
+    rt.execute("LK_DONE(69328)")
+    pump(rt, 1)
+    check("craft: the ion core opens once its own row is done",
+          rt.eval("CRAFT_ASK('radiation_blast')") is False
+          and rt.eval("CRAFT_ASK('smart_gun')") is True,
+          "%s / %s" % (rt.eval("CRAFT_ASK('radiation_blast')"), rt.eval("CRAFT_ASK('smart_gun')")))
+    rt.execute("LK_OPEN(69328)")
+    pump(rt, 1)
+    check("craft: and shuts again when that row is not done",
+          rt.eval("CRAFT_ASK('radiation_blast')") is True, str(rt.eval("CRAFT_ASK('radiation_blast')")))
+
+    # the switch, then the switch over all four
+    rt.execute('SET_DVAR("zm_unlock_scorestreaks", "1")')
+    pump(rt, 1)
+    check("craft: the scorestreak switch opens all four at the table",
+          all(v is False for _r, v in craft_asks(rt)), str(craft_asks(rt)))
+    rt.execute('SET_DVAR("zm_unlock_scorestreaks", "0") SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 1)
+    check("craft: unlock everything opens all four at the table",
+          all(v is False for _r, v in craft_asks(rt)), str(craft_asks(rt)))
+    rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 1)
+    check("craft: with every switch off they read locked again",
+          all(v is True for _r, v in craft_asks(rt)), str(craft_asks(rt)))
+
+    # the game's own lock is still asked once for every item, ours or not
+    rt.execute("CRAFT_ZERO()")
+    rt.eval("CRAFT_ASK('radiation_blast')")
+    rt.eval("CRAFT_ASK('equip_armorplate')")
+    check("craft: the game's own lock is asked once for each ask and never doubled",
+          int(rt.eval("CRAFT_N()")) == 2, str(rt.eval("CRAFT_N()")))
+
+    # the tick keeps coming back to the same wrapper
+    rt.execute("CRAFT_SNAP()")
+    pump(rt, 3)
+    check("craft: three more ticks keep one wrapper on the table",
+          rt.eval("CRAFT_SAME()") is True and rt.eval("CRAFT_ASK('radiation_blast')") is True,
+          str(rt.eval("CRAFT_SAME()")))
+
+    # the hashed slot, the way the client stores members
+    rh = lock_rt(lua51, frontend=False, pre="CRAFT_HASHED()")
+    load(rh)
+    pump(rh, 1)
+    check("craft: a table that keeps the lock under its hash is wrapped too",
+          rh.eval("CRAFT_ASK('radiation_blast')") is True
+          and rh.eval("CRAFT_ASK('rcxd')") is False
+          and " craft=wrapped " in armory_line(lines_of(rh))[0],
+          " | ".join(armory_line(lines_of(rh))))
+
+    # a raising original: our refs answer our rule, everything else stays shut
+    rr = lock_rt(lua51, frontend=False, pre="CRAFT_RAISE(true)")
+    load(rr)
+    pump(rr, 1)
+    check("craft: a raising game lock answers locked and never an error",
+          rr.eval("CRAFT_ASK('radiation_blast')") is True and rr.eval("CRAFT_ASK('rcxd')") is True
+          and count_line(lines_of(rr), "attempt to") == 0
+          and count_line(lines_of(rr), "armory craft lock raised") == 1,
+          " | ".join([ln for ln in lines_of(rr) if "craft lock" in ln or "attempt to" in ln][:3]))
+    rr.execute("LK_DONE(69328)")
+    pump(rr, 1)
+    check("craft: and an earned streak still opens under that raise",
+          rr.eval("CRAFT_ASK('radiation_blast')") is False,
+          str(rr.eval("CRAFT_ASK('radiation_blast')")))
+
+    # a menu vm leaves the table alone
+    rm = lock_rt(lua51)
+    load(rm)
+    pump(rm, 1)
+    check("craft: a menu vm says n a and leaves the table lock alone",
+          " craft=n/a " in armory_line(lines_of(rm))[0]
+          and rm.eval("CRAFT_ASK('radiation_blast')") is False
+          and int(rm.eval("CRAFT_N()")) == 1,
+          "%s / %s" % (" craft=n/a " in armory_line(lines_of(rm))[0], rm.eval("CRAFT_N()")))
+
+    # no table at all in a match vm
+    rn = lock_rt(lua51, frontend=False, pre="CRAFT_DROP()")
+    load(rn)
+    pump(rn, 1)
+    check("craft: a match vm with no table says missing and wraps nothing",
+          " craft=missing " in armory_line(lines_of(rn))[0], " | ".join(armory_line(lines_of(rn))))
+
+    # the three load orders end in the same locked table
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = lock_rt(lua51, frontend=False)
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            check("craft: %s order locks the ion core and leaves the rest alone" % order,
+                  r.eval("CRAFT_ASK('radiation_blast')") is True
+                  and r.eval("CRAFT_ASK('rcxd')") is False
+                  and " craft=wrapped " in armory_line(lines_of(r))[0],
+                  "%s / %s" % (r.eval("CRAFT_ASK('radiation_blast')"), r.eval("CRAFT_ASK('rcxd')")))
+
+
+def armory_own(lua51):
+    """C87 a5: the client's ownership getter answers not owned for our ids until earned."""
+    rt = lock_rt(lua51)
+    load(rt)
+    pump(rt, 1)
+    line = armory_line(lines_of(rt))
+    check("armory own: the ownership getter is wrapped at the arm and the line says so",
+          len(line) == 1 and " own=wrapped " in line[0], " | ".join(line))
+    check("armory own: the five the user reported answer not owned",
+          all(rt.eval("OWNED(%d)" % i) == 0 for i in LOCK_IDS),
+          str([rt.eval("OWNED(%d)" % i) for i in LOCK_IDS]))
+    rt.execute("OWNED_ZERO()")
+    rt.eval("OWNED(142465)")
+    check("armory own: our own ids never reach the client's getter",
+          int(rt.eval("OWNED_N()")) == 0, str(rt.eval("OWNED_N()")))
+    check("armory own: an id outside the 76 is the client's own answer, asked once",
+          rt.eval("OWNED(126608)") == 1 and int(rt.eval("OWNED_N()")) == 1,
+          "%s / %s" % (rt.eval("OWNED(126608)"), rt.eval("OWNED_N()")))
+    rt.execute("OWNED_SNAP()")
+    rt.execute(LUA_TEXT[ARMORY])
+    check("armory own: loading the part again keeps one wrapper on the getter",
+          rt.eval("OWNED_SAME()") is True and rt.eval("OWNED(142465)") == 0,
+          str(rt.eval("OWNED_SAME()")))
+
+    # the versions under a row: the attachment versions answer not owned, the blueprints are the clients own
+    check("armory own: the 1911's six blueprints are the client's own answer, owned",
+          all(rt.eval("OWNED(%d)" % i) == 1 for i in VAR_BLUEPRINT),
+          str([rt.eval("OWNED(%d)" % i) for i in VAR_BLUEPRINT]))
+    rt.execute("OWNED_ZERO()")
+    check("armory own: and a blueprint ask reaches the client's getter",
+          rt.eval("OWNED(%d)" % VAR_BLUEPRINT[0]) == 1 and int(rt.eval("OWNED_N()")) == 1,
+          "%s / %s" % (rt.eval("OWNED(%d)" % VAR_BLUEPRINT[0]), rt.eval("OWNED_N()")))
+    check("armory own: its four attachment versions answer not owned",
+          all(rt.eval("OWNED(%d)" % i) == 0 for i in VAR_ATTACH),
+          str([rt.eval("OWNED(%d)" % i) for i in VAR_ATTACH]))
+    rt.execute("OWNED_ZERO()")
+    check("armory own: and an attachment version never reaches the client's getter",
+          rt.eval("OWNED(%d)" % VAR_ATTACH[0]) == 0 and int(rt.eval("OWNED_N()")) == 0,
+          "%s / %s" % (rt.eval("OWNED(%d)" % VAR_ATTACH[0]), rt.eval("OWNED_N()")))
+    check("armory own: a blueprint of a gun outside the 76 is the client's own answer",
+          rt.eval("OWNED(%d)" % VAR_FOREIGN) == 1, str(rt.eval("OWNED(%d)" % VAR_FOREIGN)))
+
+    rt.execute("LK_DONE(69320)")
+    pump(rt, 1)
+    check("armory own: the 1911's row done hands its id back and leaves the brake shut",
+          rt.eval("OWNED(125186)") == 1
+          and all(rt.eval("OWNED(%d)" % i) == 0 for i in (140458, 119853)),
+          "%s / %s" % (rt.eval("OWNED(125186)"), rt.eval("OWNED(140458)")))
+    rt.execute("LK_OPEN(69320)")
+    pump(rt, 1)
+    check("armory own: and takes the id back when that row is not done again, the blueprints stay owned",
+          rt.eval("OWNED(125186)") == 0
+          and all(rt.eval("OWNED(%d)" % i) == 1 for i in VAR_BLUEPRINT),
+          "%s / %s" % (rt.eval("OWNED(125186)"), rt.eval("OWNED(%d)" % VAR_BLUEPRINT[0])))
+
+    # the switches, the same ones the lock reads
+    rt.execute('SET_DVAR("zm_unlock_weapons", "1")')
+    pump(rt, 1)
+    check("armory own: the weapon switch hands every weapon id back",
+          rt.eval("OWNED(142465)") == 1
+          and all(rt.eval("OWNED(%d)" % i) == 1 for i in VAR_BLUEPRINT)
+          and rt.eval("OWNED(140458)") == 0,
+          "%s / %s" % (rt.eval("OWNED(142465)"), rt.eval("OWNED(140458)")))
+    rt.execute('SET_DVAR("zm_unlock_weapons", "0") SET_DVAR("zm_unlock_attachments", "1")')
+    pump(rt, 1)
+    check("armory own: the attachment switch hands both attachments back and no weapon",
+          rt.eval("OWNED(140458)") == 1 and rt.eval("OWNED(119853)") == 1
+          and rt.eval("OWNED(142465)") == 0 and rt.eval("OWNED(126337)") == 0,
+          str([rt.eval("OWNED(%d)" % i) for i in (140458, 119853, 142465, 126337)]))
+    rt.execute('SET_DVAR("zm_unlock_attachments", "0") SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 1)
+    check("armory own: unlock everything hands all 76 back on the getter too",
+          all(rt.eval("OWNED(%d)" % i[0]) == 1 for i in items76()),
+          str([rt.eval("OWNED(%d)" % i[0]) for i in items76() if rt.eval("OWNED(%d)" % i[0]) != 1]))
+    rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 1)
+    check("armory own: and every switch off answers not owned again",
+          all(rt.eval("OWNED(%d)" % i[0]) == 0 for i in items76()),
+          str([rt.eval("OWNED(%d)" % i[0]) for i in items76() if rt.eval("OWNED(%d)" % i[0]) != 0]))
+
+    # a version is the same table lookup the lock does, so no completion pass of its own
+    tmp = LOCK_IDS + VAR_ATTACH + VAR_BLUEPRINT
+    rt.eval("OWNED(%d)" % tmp[0])
+    rt.execute("LK_ZERO()")
+    for i in tmp:
+        rt.eval("OWNED(%d)" % i)
+    check("armory own: fifteen asks cost no completion read of their own",
+          int(rt.eval("LK_N()")) == 0, str(rt.eval("LK_N()")))
+
+    # a table that keeps the getter under its plain name, and a table rebuilt after the arm
+    rh = lock_rt(lua51, pre="OWNED_PLAIN()")
+    load(rh)
+    pump(rh, 1)
+    check("armory own: a getter the table keeps under its plain name is wrapped too",
+          rh.eval("OWNED(142465)") == 0 and rh.eval("OWNED(126608)") == 1
+          and " own=wrapped " in armory_line(lines_of(rh))[0],
+          " | ".join(armory_line(lines_of(rh))))
+    rh.execute("OWNED_PLAIN()")
+    pump(rh, 1)
+    check("armory own: a getter table rebuilt under a new key is wrapped on the next tick",
+          rh.eval("OWNED(142465)") == 0 and rh.eval("OWNED(126608)") == 1,
+          "%s / %s" % (rh.eval("OWNED(142465)"), rh.eval("OWNED(126608)")))
+
+    # both spellings in one table: the hashed slot is the one the client's pin sits in and reads
+    r2 = lock_rt(lua51, pre="OWNED_BOTH()")
+    load(r2)
+    pump(r2, 1)
+    check("armory own: with both slots in the table the hashed one is the one wrapped",
+          r2.eval("OWNED(142465)") == 0 and r2.eval("OWNED(126608)") == 1
+          and r2.eval("OWNED_PLAIN_ASK(142465)") == 99,
+          "%s / %s / %s" % (r2.eval("OWNED(142465)"), r2.eval("OWNED(126608)"),
+                            r2.eval("OWNED_PLAIN_ASK(142465)")))
+
+    # a getter that raises, and a vm without one
+    rr = lock_rt(lua51, pre="OWNED_RAISE(true)")
+    load(rr)
+    pump(rr, 1)
+    check("armory own: a raising getter never rethrows - not owned is the safe answer",
+          rr.eval("OWNED(142465)") == 0 and rr.eval("OWNED(126608)") == 0
+          and count_line(lines_of(rr), "attempt to") == 0,
+          "%s / %s" % (rr.eval("OWNED(142465)"), rr.eval("OWNED(126608)")))
+    rn = lock_rt(lua51, pre="OWNED_DROP()")
+    load(rn)
+    check("armory own: a vm with no getter says own=missing and wraps nothing",
+          " own=missing " in armory_line(lines_of(rn))[0],
+          " | ".join(armory_line(lines_of(rn))))
+
+    # the match vm reads the same table
+    rm = lock_rt(lua51, frontend=False)
+    load(rm)
+    pump(rm, 1)
+    check("armory own: a match vm wraps the getter and answers not owned there too",
+          " own=wrapped " in armory_line(lines_of(rm))[0] and rm.eval("OWNED(142465)") == 0
+          and rm.eval("OWNED(126608)") == 1,
+          " | ".join(armory_line(lines_of(rm))))
+
+    # the three load orders end in the same ownership answer
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = lock_rt(lua51)
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            check("armory own: %s order answers not owned for ours and owned for the rest" % order,
+                  r.eval("OWNED(142465)") == 0 and r.eval("OWNED(%d)" % VAR_FOREIGN) == 1
+                  and r.eval("OWNED(126608)") == 1,
+                  "%s / %s" % (r.eval("OWNED(142465)"), r.eval("OWNED(126608)")))
+
+
+GUN_REF = "sat_pi_alcor"
+FOREIGN_REF = "sat_ar_hades"
+
+
+def bp_rt(lua51, pre=""):
+    """A door with the client's own blueprint test and our part over it."""
+    bp = ",".join(str(i) for i in VAR_BLUEPRINT)
+    head = ("SET_ITEMID('%s', 125186) SET_BPID('%s', {%s})\n"
+            "SET_ITEMID('%s', %d) SET_BPID('%s', {%d})\n"
+            "SET_BPID('sat_lm_typhon', {%d})\n" % (GUN_REF, GUN_REF, bp,
+                                                  FOREIGN_REF, VAR_FOREIGN, FOREIGN_REF, VAR_FOREIGN,
+                                                  VAR_FOREIGN))
+    return lock_rt(lua51, pre=head + pre)
+
+
+def armory_blueprint(lua51):
+    """C87 a6: the blueprint test answers not owned for an armory gun until its row is earned."""
+    rt = bp_rt(lua51)
+    load(rt)
+    pump(rt, 1)
+    line = armory_line(lines_of(rt))
+    check("armory blueprint: the client's blueprint test is wrapped at the arm and the line says so",
+          len(line) == 1 and " obw=wrapped " in line[0], " | ".join(line))
+    check("armory blueprint: the client's own test would hand the armory gun to the picker",
+          rt.eval("OBW_ORIG('%s')" % GUN_REF) is True and rt.eval("OBW('%s')" % GUN_REF) is False,
+          "%s / %s" % (rt.eval("OBW_ORIG('%s')" % GUN_REF), rt.eval("OBW('%s')" % GUN_REF)))
+    check("armory blueprint: an armory gun reads not owned while its row is incomplete",
+          rt.eval("OBW('%s')" % GUN_REF) is False, str(rt.eval("OBW('%s')" % GUN_REF)))
+    check("armory blueprint: and a gun outside the 76 keeps the client's own answer",
+          rt.eval("OBW('%s')" % FOREIGN_REF) is True, str(rt.eval("OBW('%s')" % FOREIGN_REF)))
+    rt.execute("BP_ZERO()")
+    check("armory blueprint: a ref the loot table does not name is delegated too",
+          rt.eval("OBW('sat_zz_nothing')") is False
+          and rt.eval("BP_N()") == 1, str(rt.eval("BP_N()")))
+
+    # the row is the only key, and the switches the same ones the door reads
+    rt.execute("LK_DONE(69320)")
+    pump(rt, 1)
+    check("armory blueprint: the 1911's row done opens it",
+          rt.eval("OBW('%s')" % GUN_REF) is True, str(rt.eval("OBW('%s')" % GUN_REF)))
+    rt.execute("LK_OPEN(69320)")
+    pump(rt, 1)
+    check("armory blueprint: and shuts it again when that row is not done",
+          rt.eval("OBW('%s')" % GUN_REF) is False, str(rt.eval("OBW('%s')" % GUN_REF)))
+    rt.execute('SET_DVAR("zm_unlock_weapons", "1")')
+    pump(rt, 1)
+    check("armory blueprint: the weapon switch opens it",
+          rt.eval("OBW('%s')" % GUN_REF) is True, str(rt.eval("OBW('%s')" % GUN_REF)))
+    rt.execute('SET_DVAR("zm_unlock_weapons", "0") SET_DVAR("zm_unlock_all", "1")')
+    pump(rt, 1)
+    check("armory blueprint: unlock everything opens it",
+          rt.eval("OBW('%s')" % GUN_REF) is True, str(rt.eval("OBW('%s')" % GUN_REF)))
+    rt.execute('SET_DVAR("zm_unlock_all", "0")')
+    pump(rt, 1)
+
+    # the row stays locked with an owned blueprint under it
+    check("armory blueprint: the blueprint list answers owned while the door says locked",
+          rt.eval("OWNED(%d)" % VAR_BLUEPRINT[0]) == 1
+          and rt.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]) is False
+          and rt.eval("OBW('%s')" % GUN_REF) is False,
+          "%s / %s / %s" % (rt.eval("OWNED(%d)" % VAR_BLUEPRINT[0]),
+                            rt.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]),
+                            rt.eval("OBW('%s')" % GUN_REF)))
+
+    # one wrapper a vm, and the plain spelling
+    rt.execute("OBW_SNAP()")
+    pump(rt, 2)
+    check("armory blueprint: two more ticks keep one wrapper on the client's test",
+          rt.eval("OBW_SAME()") is True and rt.eval("OBW('%s')" % GUN_REF) is False,
+          str(rt.eval("OBW_SAME()")))
+    rp = bp_rt(lua51, pre="OBW_PLAIN()")
+    load(rp)
+    pump(rp, 1)
+    check("armory blueprint: a test the table keeps under its plain name is wrapped too",
+          rp.eval("OBW('%s')" % GUN_REF) is False and " obw=wrapped " in armory_line(lines_of(rp))[0],
+          " | ".join(armory_line(lines_of(rp))))
+
+    # a raising test and a table without one
+    rr = bp_rt(lua51, pre="BP_RAISE(true)")
+    load(rr)
+    pump(rr, 1)
+    check("armory blueprint: a raising client test answers not owned and never rethrows",
+          rr.eval("OBW('%s')" % GUN_REF) is False and rr.eval("OBW('%s')" % FOREIGN_REF) is False
+          and count_line(lines_of(rr), "attempt to") == 0,
+          "%s / %s" % (rr.eval("OBW('%s')" % GUN_REF), rr.eval("OBW('%s')" % FOREIGN_REF)))
+    rn = bp_rt(lua51, pre="DROP_BP()")
+    load(rn)
+    pump(rn, 1)
+    check("armory blueprint: a vm with no client test says obw=missing and wraps nothing",
+          " obw=missing " in armory_line(lines_of(rn))[0], " | ".join(armory_line(lines_of(rn))))
+
+    # a menu vm and the three load orders
+    rm = bp_rt(lua51)
+    load(rm)
+    pump(rm, 1)
+    check("armory blueprint: the menu vm wraps the same member",
+          rm.eval("OBW('%s')" % GUN_REF) is False and " obw=wrapped " in armory_line(lines_of(rm))[0],
+          " | ".join(armory_line(lines_of(rm))))
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = bp_rt(lua51)
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            check("armory blueprint: %s order answers not owned for the armory gun" % order,
+                  r.eval("OBW('%s')" % GUN_REF) is False and r.eval("OBW('%s')" % FOREIGN_REF) is True
+                  and " obw=wrapped " in armory_line(lines_of(r))[0],
+                  "%s / %s" % (r.eval("OBW('%s')" % GUN_REF), r.eval("OBW('%s')" % FOREIGN_REF)))
+
+
+def armory_blueprint_list(lua51):
+    """C87 a4 v9: only a builds list in flight opens the door, and only for the 309 blueprint ids."""
+    bp, att = blueprints(), attachment_versions()
+    check("armory list: the table splits into 309 weapon ids and 147 attachment ones, none shared",
+          len(bp) == 309 and len(att) == 147 and not (set(bp) & set(att)),
+          "%d / %d" % (len(bp), len(att)))
+    check("armory list: the part is v11 and the v7 owned line is gone",
+          'local VERSION = "v11"' in LUA_TEXT[ARMORY]
+          and "BPID[loot] == true then return 1" not in LUA_TEXT[ARMORY]
+          and LUA_TEXT[ARMORY].count("LISTING = LISTING + 1") == 1
+          and LUA_TEXT[ARMORY].count("LISTING = LISTING - 1") == 1
+          and LUA_TEXT[ARMORY].count('"getitemnamebyid"') == 1
+          and LUA_TEXT[ARMORY].count('"getweapondataforref"') == 1,
+          "v11 pins")
+
+    rt = list_rt(lua51)
+    rt.execute("GM_SET({151472, 153766, 142465})")
+    load(rt)
+    pump(rt, 1)
+    line = armory_line(lines_of(rt))
+    check("armory list: the builds window is wrapped at the arm and the line says so",
+          len(line) == 1 and " bpwin=wrapped " in line[0] and " list=309 " in line[0], " | ".join(line))
+    check("armory list: outside the window both doors keep every blueprint locked",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in bp)
+          and all(rt.eval("ASK_L(%d)" % i) is False for i in bp),
+          str([i for i in bp if rt.eval("ASK_P(%d)" % i) is not False][:4]))
+    rt.execute("OWNED_ZERO()")
+    check("armory list: a blueprint id is the client's own answer again",
+          rt.eval("OWNED(151472)") == 1 and int(rt.eval("OWNED_N()")) == 1
+          and rt.eval("OWNED(142465)") == 0,
+          "%s / %s" % (rt.eval("OWNED(151472)"), rt.eval("OWNED_N()")))
+    check("armory list: the 76 base ids and the 147 attachment versions stay not owned",
+          all(rt.eval("OWNED(%d)" % i[0]) == 0 for i in items76())
+          and all(rt.eval("OWNED(%d)" % i) == 0 for i in att),
+          str([i[0] for i in items76() if rt.eval("OWNED(%d)" % i[0]) != 0][:4]))
+
+    # the builds call is the only thing that opens the window, and only while it runs
+    rt.execute("GM_CLEAR()")
+    check("armory list: a builds call lists both blueprints and never the base id",
+          int(rt.eval("GM_COUNT(%s)" % BUILDS)) == 2
+          and rt.eval("GM_SAW(151472)") is True and rt.eval("GM_SAW(153766)") is True
+          and rt.eval("GM_SAW(142465)") is False,
+          str(rt.eval("GM_COUNT(%s)" % BUILDS)))
+    check("armory list: and the window is shut the moment that call returns",
+          rt.eval("ASK_P(151472)") is False and rt.eval("ASK_L(151472)") is False,
+          "%s / %s" % (rt.eval("ASK_P(151472)"), rt.eval("ASK_L(151472)")))
+    rt.execute("GM_CLEAR()")
+    check("armory list: the all list counts every id and opens no window",
+          int(rt.eval("GM_COUNT(%s)" % ALL_LIST)) == 3 and rt.eval("GM_SAW(151472)") is False,
+          "%s / %s" % (rt.eval("GM_COUNT(%s)" % ALL_LIST), rt.eval("GM_SAW(151472)")))
+    bad = []
+    for name, opt in SHAPES:
+        rt.execute("GM_CLEAR()")
+        rt.eval("GM_COUNT(%s)" % opt)
+        if rt.eval("GM_SAW(151472)") is not False:
+            bad.append((name, rt.eval("GM_SAW(151472)")))
+    check("armory list: no other option shape opens the window", bad == [], str(bad))
+    rt.eval("GM_COUNT(%s)" % BUILDS)
+    check("armory list: the option table reaches the client untouched",
+          rt.eval("GM_KEPT()") == "true/true", str(rt.eval("GM_KEPT()")))
+
+    # an error and a nested call both leave the counter where they found it
+    rt.execute("GM_RAISE_ON(true)")
+    check("armory list: a getter that raises hands back an empty list and never rethrows",
+          rt.eval("GM_TRY(%s)" % BUILDS) == "0" and count_line(lines_of(rt), "attempt to") == 0,
+          str(rt.eval("GM_TRY(%s)" % BUILDS)))
+    check("armory list: and the counter is back at zero after the error",
+          rt.eval("ASK_P(151472)") is False and rt.eval("ASK_L(151472)") is False,
+          "%s / %s" % (rt.eval("ASK_P(151472)"), rt.eval("ASK_L(151472)")))
+    rt.execute("GM_RAISE_ON(false)")
+    check("armory list: the same call works again once the getter answers",
+          int(rt.eval("GM_COUNT(%s)" % BUILDS)) == 2 and rt.eval("ASK_P(151472)") is False,
+          str(rt.eval("GM_COUNT(%s)" % BUILDS)))
+    rt.execute("GM_NEST_ON(1)")
+    check("armory list: a nested builds call keeps the window open for the outer one",
+          int(rt.eval("GM_COUNT(%s)" % BUILDS)) == 2, str(rt.eval("GM_COUNT(%s)" % BUILDS)))
+    rt.execute("GM_NEST_ON(0)")
+    check("armory list: and the counter is still zero after the nested pair",
+          rt.eval("ASK_P(151472)") is False, str(rt.eval("ASK_P(151472)")))
+    rt.execute("GM_TWO_ON(true)")
+    check("armory list: every value the client returned comes back through the wrapper",
+          rt.eval("GM_BOTH(%s)" % BUILDS) == "table/second", str(rt.eval("GM_BOTH(%s)" % BUILDS)))
+    rt.execute("GM_TWO_ON(false)")
+
+    # the temporary check block is gone from the part and from this replay
+    check("armory list: the temporary check block and its reads are gone",
+          "armory check" not in LUA_TEXT[ARMORY] and "chk_" not in LUA_TEXT[ARMORY]
+          and "check_lines" not in LUA_TEXT[ARMORY] and "LIST_ORIG" not in LUA_TEXT[ARMORY]
+          and '"sat_sm_civet"' not in LUA_TEXT[ARMORY]
+          and not list_lines(lines_of(rt)),
+          " | ".join(list_lines(lines_of(rt))))
+
+    # the row and the card stay locked inside and outside the window
+    rb = bp_rt(lua51)
+    load(rb)
+    pump(rb, 1)
+    check("armory list: the gun row and the blueprint test stay shut outside the window",
+          rb.eval("OBW('%s')" % GUN_REF) is False
+          and rb.eval("OBW_ORIG('%s')" % GUN_REF) is True
+          and all(rb.eval("ASK_P(%d)" % i) is False for i in VAR_BLUEPRINT),
+          "%s / %s" % (rb.eval("OBW('%s')" % GUN_REF), rb.eval("OBW_ORIG('%s')" % GUN_REF)))
+    rb.execute("LK_DONE(69320)")
+    pump(rb, 1)
+    check("armory list: and the gun row opens only once its row is earned",
+          rb.eval("OBW('%s')" % GUN_REF) is True, str(rb.eval("OBW('%s')" % GUN_REF)))
+
+    # the three load orders end in the same window
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = list_rt(lua51)
+            r.execute("GM_SET({151472, 153766, 142465})")
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            check("armory list: %s order lists the two blueprints and shuts the door after" % order,
+                  int(r.eval("GM_COUNT(%s)" % BUILDS)) == 2
+                  and r.eval("ASK_P(151472)") is False
+                  and " bpwin=wrapped " in armory_line(lines_of(r))[0],
+                  "%s / %s" % (r.eval("GM_COUNT(%s)" % BUILDS), r.eval("ASK_P(151472)")))
 
 
 def main():
@@ -8923,6 +11224,17 @@ def main():
             options_rows(lua51)
             options_layers(lua51)
             tokens_channel(lua51)
+            armory_gate(lua51)
+            armory_pick(lua51)
+            armory_queue(lua51)
+            armory_seed(lua51)
+            armory_advance(lua51)
+            armory_card(lua51)
+            armory_lock(lua51)
+            armory_craft(lua51)
+            armory_own(lua51)
+            armory_blueprint(lua51)
+            armory_blueprint_list(lua51)
 
         for order in LOAD_ORDERS:
             LOAD_ORDER = order

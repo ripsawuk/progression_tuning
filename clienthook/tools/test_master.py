@@ -326,7 +326,7 @@ def main():
     for s in ("master: %d call sites hooked (", "master: the level function at ", "master: %s prestige ",
               "master: disabled by file", "master: refused - %d call sites to 0x%08lX, expected %d - off"):
         check("version.dll carries %r" % s, s in text)
-    check("version.dll carries this build's attach line", "version.dll build 31" in text)
+    check("version.dll carries this build's attach line", "version.dll build 36" in text)
     check("version.dll no longer carries build 16's prologue hook",
           "prologue ok, relay 0x%08lX" not in text and "master: hook at " not in text)
     info("version.dll %d B / %s" % (len(raw), hashlib.sha256(raw).hexdigest()[:16].upper()))

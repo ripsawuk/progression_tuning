@@ -41,6 +41,9 @@ void opsfix_stop(void)
 void tokens_stop(void)
 {
 }
+void pick_stop(void)
+{
+}
 
 // The shipped unit, included so the static `log_line` and the `g_armed` gate under test are this file's own.
 #include "../src/proxy_main.c"

@@ -51,6 +51,14 @@ call :build pubxp_test "%~dp0pubxp_test.c" "%~dp0..\src\pubxp.c"
 rem tokens.c carries the token channel's text and its file, so its driver links the shipped g11.c beside it
 rem (the page checks and the name hash are g11's).
 call :build tokens_test "%~dp0tokens_test.c" "%~dp0..\src\tokens.c" "%~dp0..\src\g11.c"
+rem pick.c carries the armory pick channel's text, its file and the queue walk, so its driver links the
+rem shipped g11.c beside it (the page checks and the name hash are g11's) and resolve.c (the record array's
+rem two addresses), exactly as master_test and nativepay_test do.
+call :build pick_test "%~dp0pick_test.c" "%~dp0..\src\pick.c" "%~dp0..\src\g11.c" "%~dp0..\src\resolve.c"
+rem armory.c carries the xp feed's line, its state, its change log and the pay that rides the client's own award,
+rem so its driver links the shipped g11.c beside it (the page checks and the name hash are g11's) and resolve.c
+rem (the record array's two addresses), exactly as pick_test does.
+call :build armory_test "%~dp0armory_test.c" "%~dp0..\src\armory.c" "%~dp0..\src\g11.c" "%~dp0..\src\resolve.c"
 call :build publish_test "%~dp0publish_test.c" "%~dp0..\src\publish.c"
 call :build nativepay_test "%~dp0nativepay_test.c" "%~dp0..\src\nativepay.c" "%~dp0..\src\resolve.c"
 rem resolve_check.exe is the resolver's own checker: the shipped src\resolve.c over a PE file on disk.

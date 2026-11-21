@@ -1,5 +1,5 @@
-"""Offline proof of clienthook build 31 - the forced publish, the native payment, the bounded log and the token
-channel. Read-only
+"""Offline proof of clienthook build 36 - the forced publish, the native payment, the bounded log, the token
+channel, the armory pick channel, the armory xp feed and the pay. Read-only
 with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
 (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
 
@@ -8,7 +8,7 @@ with respect to the game: nothing is installed, nothing is launched, and nothing
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 31.
+general offline proof and the banner it checks is the current one, build 36.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -26,8 +26,8 @@ of only at a mode boundary.
                            at 0x930D3 and its kill switch, ptsplash_paid, the g11 lock payload, master.c's five
                            call sites, the ev=109 boundary and the install gate.
 
-WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (nine sources, where each guard
-sits, the two triggers' placement); the image's strings - what it carries and what it does not; the personal-path
+WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (eleven sources, where each
+guard sits, the two triggers' placement); the image's strings - what it carries and what it does not; the personal-path
 and identifier scan the release package uses; the client's own bytes; and every offline driver, with its count.
 """
 import hashlib
@@ -131,6 +131,12 @@ KEPT = [
     "publish: coalesced (%ld so far, min %d ms)",
     "publish: disabled by file (%s)",
     "%TEMP%\\progression-tuning\\publish_off.txt",
+    "armory: registered %s = %s",
+    "armory: feed s=%ld x=%ld h=%ld (+%ld)",
+    "armory: paid row=%d +%ld -> %lld/%lld",
+    "armory: row %d complete",
+    "%TEMP%\\progression-tuning\\armory_feed_off.txt",
+    "%TEMP%\\progression-tuning\\armory_pay_off.txt",
 ]
 # build 23c's match boundary: the payment's own call site, so it does not need `log_events`.
 KEPT_SOURCE = [
@@ -143,11 +149,11 @@ KEPT_SOURCE = [
     ("src\\nativepay.h", "typedef void (*np_reset_fn)(void);"),
 ]
 
-# The files this tree ships under src\, and the only ones any scan here reads: the nine sources build.cmd names,
-# their seven headers, and the export definition. A file that is not on this list is not part of the build.
-SHIPPED_SRC = ["frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c", "pubxp.c",
-               "resolve.c", "tokens.c", "g11.h", "master.h", "nativepay.h", "publish.h", "pubxp.h", "resolve.h",
-               "tokens.h", "version_proxy.def"]
+# The files this tree ships under src\, and the only ones any scan here reads: the eleven sources build.cmd names,
+# their nine headers, and the export definition. A file that is not on this list is not part of the build.
+SHIPPED_SRC = ["armory.c", "frame.c", "g11.c", "master.c", "nativepay.c", "pick.c", "proxy_main.c", "publish.c",
+               "pubxp.c", "resolve.c", "tokens.c", "armory.h", "g11.h", "master.h", "nativepay.h", "pick.h",
+               "publish.h", "pubxp.h", "resolve.h", "tokens.h", "version_proxy.def"]
 
 passes = []
 failures = []
@@ -258,7 +264,8 @@ def build_once():
 
 
 def main():
-    print("clienthook build 31 - the forced publish, the native payment, the bounded log, the token channel - " + ROOT)
+    print("clienthook build 36 - the forced publish, the native payment, the bounded log, the token channel, "
+          "the armory pick, the xp feed, the pay - " + ROOT)
     print("")
     if not CLIENT:
         print("NOTE  KRONOS_GAME_DIR is not set and no --game was given - the client file cannot be read, so the "
@@ -286,9 +293,9 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 31", "version.dll build 31" in text)
-    for gone in ("version.dll build 30", "version.dll build 25", "version.dll build 23c",
-                "version.dll build 23b", "version.dll build 23",
+    check("the banner says build 36", "version.dll build 36" in text)
+    for gone in ("version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
+                "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
 
@@ -315,15 +322,15 @@ def main():
     build_cmd = read(os.path.join(ROOT, "build.cmd"))
     cl_text = "\n".join(l for l in build_cmd.replace("^", " ").split("\n") if l.strip().startswith("cl "))
     sources = sorted(set(re.findall(r"([a-z0-9_]+\.c)", cl_text)))
-    check("build.cmd compiles exactly the nine sources",
-          sources == ["frame.c", "g11.c", "master.c", "nativepay.c", "proxy_main.c", "publish.c",
+    check("build.cmd compiles exactly the eleven sources",
+          sources == ["armory.c", "frame.c", "g11.c", "master.c", "nativepay.c", "pick.c", "proxy_main.c", "publish.c",
                       "pubxp.c", "resolve.c", "tokens.c"], ", ".join(sources))
     for gone in ("io_probe.c", "ladder.c", "ladder.h", "g10seed.c", "g10seed.h", "pay.c", "pay.h", "aexp.c",
                  "aexp.h"):
         check("src\\%s is gone from the tree" % gone, not os.path.isfile(os.path.join(SRC, gone)))
     for kept in ("frame.c", "proxy_main.c", "nativepay.c", "pubxp.c", "g11.c", "master.c",
-                 "publish.c", "tokens.c", "nativepay.h", "pubxp.h", "g11.h", "master.h", "publish.h",
-                 "tokens.h", "version_proxy.def"):
+                 "publish.c", "tokens.c", "pick.c", "armory.c", "nativepay.h", "pubxp.h", "g11.h", "master.h",
+                 "publish.h", "tokens.h", "pick.h", "armory.h", "version_proxy.def"):
         check("src\\%s is there" % kept, os.path.isfile(os.path.join(SRC, kept)))
 
     proxy = read(PROXY)
@@ -505,8 +512,8 @@ def main():
         src_text = read(os.path.join(ROOT, path.replace("\\", os.sep)))
         check("%s carries %r" % (path, needle), needle in src_text)
     np_text = read(os.path.join(SRC, "nativepay.c"))
-    wrapper = np_text[np_text.index("unsigned long long nativepay_call(const unsigned int *ev)"):
-                      np_text.index("const void *nativepay_thunk_address")]
+    wrapper = np_text[np_text.index("static unsigned long long np_call_inner(const unsigned int *ev)"):
+                      np_text.index("// The wrapper the client's call site is repointed at.")]
     check("the wrapper calls the hook from exactly one place", wrapper.count("reset()") == 1,
           "%d call(s)" % wrapper.count("reset()"))
     check("the hook call sits between the ev=109 test and the pass-through that follows it",
@@ -561,6 +568,165 @@ def main():
     check("the saved line is rate-limited after the first",
           "#define TK_LOG_MS 30000" in tk and "static int tk_may_say(ULONGLONG now)" in tk)
 
+    # ---- 4e. the armory pick channel's dvar and the file behind it -----------------------------------
+    print("")
+    print("PICK  the armory channel, its own file, its queue and the advance request")
+    pk = read(os.path.join(SRC, "pick.c"))
+    pkh = read(os.path.join(SRC, "pick.h"))
+    check("the channel is the one name the mod's Lua reads", '#define PICK_NAME "pt_armory_ch"' in pkh, "pick.h")
+    check("the empty channel is a=0", '#define PICK_DEFAULT "a=0"' in pkh)
+    check("the cap is 1024, the queue's 543 worst case plus room", "#define PICK_MAX 1024" in pkh)
+    check("the file is the dll's own directory plus players\\pt_armory.txt",
+          r'PK_SUBDIR L"players"' in pkh + pk and r'PK_FILE L"pt_armory.txt"' in pkh + pk)
+    check("the pick never writes the client's operator save or the token file",
+          "progression.txt" not in pk + pkh and "tokens.txt" not in pk + pkh)
+    check("the client's players folder is read, never made", "CreateDirectoryW" not in pk)
+    check("the token module is byte-identical to rc1.3 - this build adds a unit, it does not edit one",
+          sha256(os.path.join(SRC, "tokens.c"))
+          == "62D7D21FA0B2F45B78976064270B282784F33ED990ADFC1E39568D7FB4745194"
+          and sha256(os.path.join(SRC, "tokens.h"))
+          == "7ECD5DDB84D7CB6DECB716A8B1EF82DE47525B1C9FC1566CF52DC29A04376305")
+    check("it is armed where the register, the hash and the slot are all proved, right after the tokens",
+          frame.index("tokens_arm(reg, salt, off);") < frame.index("pick_arm(reg, salt, off);")
+          < frame.index("g11_dvar_pass("))
+    check("the value goes into the client's own string slot from a static buffer",
+          "char **value = (char **)((char *)d + slot);" in pk and "*value = PK_DISK;" in pk
+          and "static char line[PICK_MAX + 1];" in pk)
+    check("the write is a .tmp and a replace-rename, the token channel's own order",
+          r'_snwprintf_s(tmp, MAX_PATH, _TRUNCATE, L"%s.tmp", path)' in pk
+          and "MoveFileExW(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)" in pk)
+    check("a value outside the alphabet is never written to the file",
+          pk.count("!pick_valid(v, n)") == 2, "%d guard(s)" % pk.count("!pick_valid(v, n)"))
+    check("the tick rides the frame's existing thread and creates none", "pick_tick();" in frame
+          and frame.count("= CreateThread(NULL, 0, ") == 5)
+    check("the detach flush sits inside the armed branch, right after the token channel's",
+          detach.index("if (!g_armed)") < detach.index("tokens_stop();") < detach.index("pick_stop();"))
+    check("the log lines are the ones a reader of clienthook.log expects",
+          '"pick: file %s"' in pk and '"pick: registered %s = %s"' in pk and '"pick: saved %s"' in pk
+          and '"armory: pick a=%d"' in pk and '"armory: advance %d -> %d"' in pk)
+    check("a rejected file still registers the seed line", "strcpy_s(line, sizeof(line), PICK_DEFAULT);" in pk)
+    check("the saved line is rate-limited after the first",
+          "#define PK_LOG_MS 30000" in pk and "static int pk_may_say(ULONGLONG now)" in pk)
+    check("the queue walk reads the client's own row fields, never a table of ours",
+          "#define PK_REC_TRIG 0x480" in pk and "#define PK_REC_TRIGS 0x490" in pk
+          and "#define PK_KIND_ARMORY 368" in pk and "#define PK_TRIG_FIRST 200001" in pk
+          and "#define PK_TRIG_LAST 200076" in pk)
+    check("the array is the one the resolver already names (RS_RECS / RS_COUNT), never a constant read",
+          "rs_rva(rs, RS_RECS)" in pk and "rs_rva(rs, RS_COUNT)" in pk
+          and "client + 0x3DD288" not in pk and "client + 0x3DD290" not in pk)
+    check("the advance is served first, before the one-second channel throttle",
+          pk.index("InterlockedExchange(&PK_ADVANCE, 0)") < pk.index("now - PK_TICK_AT < PK_TICK_MS"))
+    check("the walk that serves an advance skips a complete row and never repeats the done one",
+          "int pick_next(const unsigned char *recs, int n, int done, const int *q, int q_n)" in pk
+          and "q[i] == done" in pk and "pick_row_state(recs, n, q[i]) != 0" in pk)
+    check("an empty queue leaves no row active and says it once",
+          '"armory: queue done"' in pk and "PK_A = 0;" in pk and "if (!PK_SAID_DONE)" in pk)
+    check("the pay's only write into this unit is one interlocked post",
+          "void pick_request_advance(int done_id)" in pk and "InterlockedExchange(&PK_ADVANCE, (LONG)done_id)" in pk
+          and "nativepay" not in pk and "pick_" not in read(os.path.join(SRC, "nativepay.c")))
+    check("the kill switch is the same mechanism as the payment's and the publish's",
+          'L"%sprogression-tuning\\\\armory_off.txt"' in pk and "GetFileAttributesW(path)" in pk
+          and "GetTempPathW(MAX_PATH, dir)" in pk)
+    check("the census names the event and the two payload keys the menu sends",
+          '"armory: ev=853 n=%d 8=%lld 74=%lld"' in read(os.path.join(SRC, "nativepay.c"))
+          and "#define NP_EVENT_ARMORY_START 853u" in read(os.path.join(SRC, "nativepay.h"))
+          and "#define NP_KEY_ACTIVATE_ID 74" in read(os.path.join(SRC, "nativepay.h"))
+          and "#define NP_KEY_GAMEMODE 8" in read(os.path.join(SRC, "nativepay.h")))
+    check("the banner names the new channels", "pt_armory_ch" in proxy and "pt_armory_xp" in proxy
+          and "armory pay rides the award wrapper" in proxy and "version.dll build 36" in proxy)
+
+    # ---- 4f. the armory xp feed ---------------------------------------------------------------------
+    print("")
+    print("FEED  the armory xp dvar, its register line, and the tick that rides the frame's thread")
+    ar = read(os.path.join(SRC, "armory.c"))
+    arh = read(os.path.join(SRC, "armory.h"))
+    check("the feed is the one name the mod's GSC writes", '#define ARMORY_NAME "pt_armory_xp"' in arh, "armory.h")
+    check("the empty feed is s=0;x=0;h=0, the line a match that never started would carry",
+          '#define ARMORY_DEFAULT "s=0;x=0;h=0"' in arh)
+    check("the beat is stale after four half-second ticks", "#define ARMORY_LIVE_MS 2000" in arh)
+    check("one feed line a second at most", "#define ARMORY_LOG_MS 1000" in arh)
+    check("it is armed where the register, the hash and the slot are all proved, right after the pick",
+          frame.index("pick_arm(reg, salt, off);") < frame.index("armory_arm(reg, salt, off);")
+          < frame.index("g11_dvar_pass("))
+    check("the value goes into the client's own string slot from a static buffer",
+          "char **value = (char **)((char *)d + slot);" in ar and "*value = ARM_DEF;" in ar
+          and "static char ARM_DEF[ARMORY_MAX + 1];" in ar)
+    check("the tick rides the frame's existing thread and creates none",
+          "armory_tick();" in frame and frame.count("= CreateThread(NULL, 0, ") == 5)
+    check("no file is opened and no store is called on this path",
+          "CreateFileW" not in ar and "WriteFile" not in ar and "nengine_store" not in ar)
+    check("the serial move resets the paid mark, so a new match cannot inherit the last one's counter",
+          "st->paid = 0;" in ar and "st->pending = 0;" in ar)
+    check("a refused line is said once, not once a tick",
+          "ARM_SAID_BAD" in ar and ar.count("armory: refused a line") == 1)
+    check("the kill switch is the same mechanism as the pick's and the payment's",
+          'L"%sprogression-tuning\\\\armory_feed_off.txt"' in ar and "GetFileAttributesW(path)" in ar)
+    check("the log lines are the ones a reader of clienthook.log expects",
+          '"armory: registered %s = %s"' in ar and '"armory: feed s=%ld x=%ld h=%ld (+%ld)"' in ar
+          and '"armory: dropped %ld at s=%ld (%s)"' in ar and '"armory: live=%d s=%ld x=%ld h=%ld"' in ar)
+
+    # ---- 4g. the armory pay ---------------------------------------------------------------------------
+    print("")
+    print("PAY  the pending amount held for one call of the client's own award, and read back")
+    npc = read(os.path.join(SRC, "nativepay.c"))
+    nph = read(os.path.join(SRC, "nativepay.h"))
+    check("the seam is one callback beside the paid hook and the boundary",
+          "typedef void (*np_pay_fn)(np_fn orig, int *kill, int *crit);" in nph
+          and "void nativepay_set_pay_hook(np_pay_fn fn);" in nph)
+    wrapper = npc[npc.index("unsigned long long nativepay_call(const unsigned int *ev)\n{"):]
+    wrapper = wrapper[:wrapper.index("\n}\n")]
+    check("the client's own dispatch runs first and unchanged, and the pay runs after it returned",
+          wrapper.index("np_call_inner(ev)") < wrapper.index("pay(NP_ORIG, NP_KILL, NP_CRIT)")
+          and "pay != NULL" in wrapper)
+    check("the inner body is the old one, renamed and still the only place the site jumps into",
+          "static unsigned long long np_call_inner(const unsigned int *ev)" in npc
+          and "return (const void *)&nativepay_call;" in npc)
+    check("the frame sets the seam before the payment can start",
+          frame.index("nativepay_set_pay_hook(armory_pay);") < frame.index("CreateThread(NULL, 0, probe_thread"))
+    check("the pay is the pick's active row and the feed's pending, and nothing else is its input",
+          "in.active = pick_active();" in ar and "long pending = st->pending;" in ar)
+    check("the row is ours by kind and by the private trigger range, read out of the record",
+          "#define ARM_KIND_ARMORY 368" in arh and "#define ARM_TRIG_FIRST 200001" in arh
+          and "#define ARM_TRIG_LAST 200076" in arh and "*(const int *)(row + ARM_REC_TRIGS) < 1" in ar)
+    check("the record handed to the award is a zeroed 0x200 block with the row's trigger and no entries",
+          "unsigned int ev[NP_RECORD_LEN / 4];" in ar and "memset(ev, 0, sizeof(ev));" in ar
+          and "ev[0] = *(const unsigned *)(row + ARM_REC_TRIG);" in ar and "ev[1] = 0;" in ar)
+    check("the amount is held for exactly one call and restored in __finally, a fault included",
+          "*kill = (int)pending;" in ar and "*crit = 0;" in ar and "__finally" in ar
+          and "*kill = k0;" in ar and "*crit = c0;" in ar and "EXCEPTION_EXECUTE_HANDLER" in ar)
+    check("the credit is the row's own rise read back, never the amount held",
+          "long long before = arm_row_xp(row);" in ar and "got = (long)(after - before);" in ar
+          and "st->paid += got;" in ar)
+    check("a read back that is not the amount held is said, not swallowed",
+          '"armory: pay short row=%d moved %ld of %ld -> %lld/%lld"' in ar)
+    check("one look a second at most, and the clock is set before the row is even found",
+          "#define ARM_PAY_MIN_MS 1000" in arh
+          and ar.index("ps->last_look = now;") < ar.index("int idx = arm_row_find(in->recs, in->n, id);"))
+    check("the pay runs only while the feed's own beat is inside the window",
+          "arm_live_at(st, now)" in ar)
+    check("a fault latches the pay off, and the latch is checked before any work",
+          "ps->latched = 1;" in ar and "in->off || ps->latched" in ar)
+    check("the pay's kill switch is its own file, read once at arm",
+          'L"%sprogression-tuning\\\\armory_pay_off.txt"' in ar
+          and '"armory: pay disabled by file (%s)"' in ar)
+    check("what the pay pays is posted to the frame thread, not written from the client's thread",
+          "arm_pay_post(&r);" in ar and "void armory_pay_log(void)" in ar
+          and "armory_pay_log();" in ar and "InterlockedExchange(&p->kind, 0);" in ar)
+    check("the drain thread opens no file: the pay's only writes are memory",
+          "CreateFileW" not in ar and "WriteFile" not in ar)
+    check("the paid line is the one the launch reads",
+          '"armory: paid row=%d +%ld -> %lld/%lld"' in ar)
+    check("completion is logged once per row and posts the pick's advance once",
+          '"armory: row %d complete"' in ar and "ARM_SAID_DONE == r->id" in ar
+          and "pick_request_advance(id);" in ar and "ARM_ADV_ID != id" in ar
+          and ar.count("pick_request_advance(") == 1)
+    check("the advance kill switch is its own file, read once at arm, and the pay keeps its own",
+          'L"%sprogression-tuning\\\\armory_advance_off.txt"' in ar
+          and '"armory: advance disabled by file (%s)"' in ar
+          and 'L"%sprogression-tuning\\\\armory_pay_off.txt"' in ar)
+    check("the pay's unit rides the frame's existing thread (no sixth thread)",
+          frame.count("= CreateThread(NULL, 0, ") == 5)
+
     # ---- 5. the client's own bytes (read-only) ------------------------------------------------------
     print("")
     print("CLIENT  the six sites still hold what the guards expect, and the publish target is where it was")
@@ -588,7 +754,7 @@ def main():
     print("DRIVERS  every offline proof, with its count")
     drive(os.path.join(BUILD, "guard_test.exe"), ["self"], 19, "guard_test self")
     if os.path.isfile(CLIENT):
-        drive(os.path.join(BUILD, "nativepay_test.exe"), ["self", CLIENT], 70, "nativepay_test self")
+        drive(os.path.join(BUILD, "nativepay_test.exe"), ["self", CLIENT], 82, "nativepay_test self")
     else:
         note("nativepay_test self reads the client for its guard checks, and the game folder is a setting - "
              "KRONOS_GAME_DIR is not set, so that driver was skipped")
@@ -643,6 +809,63 @@ def main():
     d = os.path.join(arm_root, "nofolder")
     os.makedirs(d, exist_ok=True)
     drive(os.path.join(BUILD, "tokens_test.exe"), ["arm", d, "nofolder"], 11, "tokens_test arm nofolder")
+    # the armory pick channel's driver: the same shape, its own file, and a staged record array for the queue
+    pick_root = os.path.join(BUILD, "pick-arm")
+    shutil.rmtree(pick_root, ignore_errors=True)
+    os.makedirs(pick_root)
+    drive(os.path.join(BUILD, "pick_test.exe"), ["self"], 53, "pick_test self")
+    for mode in ("valid", "queue", "none", "bad"):
+        d = os.path.join(pick_root, mode)
+        os.makedirs(d, exist_ok=True)
+        drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, mode], 19, "pick_test arm " + mode)
+    # the advance: the pay's post, the swap, the save, and the queue that ends
+    d = os.path.join(pick_root, "advance")
+    os.makedirs(d, exist_ok=True)
+    drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, "advance"], 18, "pick_test arm advance")
+    d = os.path.join(pick_root, "nofolder")
+    os.makedirs(d, exist_ok=True)
+    drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, "nofolder"], 13, "pick_test arm nofolder")
+    # the armory xp feed's driver: the line, the state and the change log, then the arm and the ticks
+    drive(os.path.join(BUILD, "armory_test.exe"), ["self"], 47, "armory_test self")
+    drive(os.path.join(BUILD, "armory_test.exe"), ["arm"], 15, "armory_test arm")
+    # the pay: a fabricated record array, a fabricated award, the hold and the read back
+    drive(os.path.join(BUILD, "armory_test.exe"), ["pay"], 48, "armory_test pay")
+    d = scratch("feedoff")
+    r = subprocess.run([os.path.join(BUILD, "armory_test.exe"), "off", d + os.sep], capture_output=True,
+                       text=True, timeout=300)
+    check("the feed's kill switch reads absent in a clean directory", (r.stdout or "").strip() == "0",
+          (r.stdout or "").strip())
+    os.makedirs(os.path.join(d, "progression-tuning"), exist_ok=True)
+    open(os.path.join(d, "progression-tuning", "armory_feed_off.txt"), "w").close()
+    r = subprocess.run([os.path.join(BUILD, "armory_test.exe"), "off", d + os.sep], capture_output=True,
+                       text=True, timeout=300)
+    check("and present when its own file is there", (r.stdout or "").strip() == "1", (r.stdout or "").strip())
+    d = scratch("payoff")
+    r = subprocess.run([os.path.join(BUILD, "armory_test.exe"), "payoff", d + os.sep], capture_output=True,
+                       text=True, timeout=300)
+    check("the pay's kill switch reads absent in a clean directory", (r.stdout or "").strip() == "0",
+          (r.stdout or "").strip())
+    check("and it is not the feed's file", (subprocess.run([os.path.join(BUILD, "armory_test.exe"), "off", d + os.sep],
+                                                           capture_output=True, text=True, timeout=300).stdout or ""
+                                              ).strip() == "0")
+    os.makedirs(os.path.join(d, "progression-tuning"), exist_ok=True)
+    open(os.path.join(d, "progression-tuning", "armory_pay_off.txt"), "w").close()
+    r = subprocess.run([os.path.join(BUILD, "armory_test.exe"), "payoff", d + os.sep], capture_output=True,
+                       text=True, timeout=300)
+    check("and present when its own file is there", (r.stdout or "").strip() == "1", (r.stdout or "").strip())
+    d = scratch("advoff")
+    r = subprocess.run([os.path.join(BUILD, "armory_test.exe"), "advoff", d + os.sep], capture_output=True,
+                       text=True, timeout=300)
+    check("the advance's kill switch reads absent in a clean directory", (r.stdout or "").strip() == "0",
+          (r.stdout or "").strip())
+    check("and it is not the pay's file",
+          (subprocess.run([os.path.join(BUILD, "armory_test.exe"), "payoff", d + os.sep],
+                          capture_output=True, text=True, timeout=300).stdout or "").strip() == "0")
+    os.makedirs(os.path.join(d, "progression-tuning"), exist_ok=True)
+    open(os.path.join(d, "progression-tuning", "armory_advance_off.txt"), "w").close()
+    r = subprocess.run([os.path.join(BUILD, "armory_test.exe"), "advoff", d + os.sep], capture_output=True,
+                       text=True, timeout=300)
+    check("and present when its own file is there", (r.stdout or "").strip() == "1", (r.stdout or "").strip())
     drive(os.path.join(BUILD, "g11_test.exe"), ["self"], 51, "g11_test self")
     drive(os.path.join(BUILD, "master_test.exe"), ["self"], 53, "master_test self")
     drive(os.path.join(BUILD, "detour_test.exe"), ["self"], 19, "detour_test self")
@@ -701,7 +924,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 31's banner", "version.dll build 31" in armed_log)
+    check("the log carries build 36's banner", "version.dll build 36" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):
@@ -742,9 +965,10 @@ def main():
         for f in failures:
             print("  FAILED: " + f)
         return 1
-    print("OK - one tree, nine sources, two identical builds, the kept features armed, the forced publish back")
-    print("     with its guard, its window and its kill switch, the token channel's dvar behind its file, and")
-    print("     every offline driver passing.")
+    print("OK - one tree, eleven sources, two identical builds, the kept features armed, the forced publish back")
+    print("     with its guard, its window and its kill switch, the token channel's dvar behind its file, the")
+    print("     armory's pick, its xp feed and the pay that rides the client's own award, and every offline")
+    print("     driver passing.")
     return 0
 
 

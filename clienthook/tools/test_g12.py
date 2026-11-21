@@ -2,24 +2,24 @@
 
 Read-only with respect to the game: nothing is installed, nothing is launched, and the only files written are a
 staged record array and the parts it produces, both under %TEMP%. The table it measures is the in-repo one
-(`data\\challenges.tsv`, the 4,508 rows the game's own record array holds).
+(`data\\challenges.tsv`, the 4,584 rows the game's own record array holds).
 
     clienthook\\build.cmd                 -> build\\version.dll
     clienthook\\tools\\build_tests.cmd     -> the drivers in build\\
     python -I clienthook\\tools\\test_g12.py
 
 WHAT IT CHECKS. The walk reproduces the table's own reward set through the SHIPPED `g12_collect`
-(tools\\g11_test.exe `collect` over a staged array of 4,508 records at the record stride), and the row's own tier
+(tools\\g11_test.exe `collect` over a staged array of 4,584 records at the record stride), and the row's own tier
 count is what bounds it: every block past that count is filled with 0x3FFFF in the staged array, so a walk that
 read one block too many would report one id more. Then the header the mod parses (`<count>:33:65536`, through the
 shipped `g11_ver`), the 35 dvar names, the five log lines, and the two negative claims that keep this channel away
 from the game's own chunks.
 
-6,391 AND 6,390. The table names 6,391 distinct reward ids, but the game's own record filler keeps only THREE ids
+6,423 AND 6,422. The table names 6,423 distinct reward ids, but the game's own record filler keeps only THREE ids
 a tier - `1800950d0:83-95` parses a tier's `+`-joined ids in a `do { } while (uVar6 < 3)` loop, so a fourth is read
-and never stored - and two rows (`67504`, `67506`, both kind 900) name four. The record therefore holds 6,390, the
-walk reports 6,390, and the one id the game itself drops is 131780. That is the number the launch must show:
-`g12: published 6390 reward ids from 4508 records`.
+and never stored - and two rows (`67504`, `67506`, both kind 900) name four. The record therefore holds 6,422, the
+walk reports 6,422, and the one id the game itself drops is 131780. That is the number the launch must show:
+`g12: published 6422 reward ids from 4584 records`.
 
 The array is a model of the record block, not a copy of the game's memory: stride 0x578, the tier count at +0x58,
 three ids a tier at +0x15C + k*0xC (src\\master.h, 1800950d0:58-62,86).
@@ -52,14 +52,14 @@ REC_BLOCKS = 64          # uint[64][3]: the block array's own ceiling
 REC_IDS = 3              # ids a tier
 MAX_ID = 0x3FFFF
 
-# the measured set, and the per-kind census that makes up the table's 6,391
-EXPECT_TABLE_IDS = 6391   # distinct ids the table names
-EXPECT_IDS = 6390         # distinct ids the game's own record filler keeps: three a tier
+# the measured set, and the per-kind census that makes up the table's 6,423
+EXPECT_TABLE_IDS = 6423   # distinct ids the table names
+EXPECT_IDS = 6422         # distinct ids the game's own record filler keeps: three a tier
 EXPECT_DROPPED = 131780   # the fourth id of a tier in rows 67504/67506, which 1800950d0 never stores
 EXPECT_MAX = 152853
-EXPECT_ROWS = 4508
+EXPECT_ROWS = 4584
 EXPECT_KINDS = {400: 3098, 398: 1957, 315: 642, 0: 219, 429: 193, 900: 135, 417: 77, 592: 64, 597: 6,
-                438: 0, 585: 0, 594: 0}
+                438: 0, 585: 0, 594: 0, 368: 76}
 
 DVAR_NAMES = ["zm_g12_arm", "zm_g12_ver"] + ["zm_g12_%d" % i for i in range(33)]
 
@@ -93,7 +93,7 @@ def run(args, timeout=300):
 
 
 def table_rows():
-    """The table's 4,508 record rows: (id, kind, tier ids per tier). The 258 two-column lines are the category
+    """The table's 4,584 record rows: (id, kind, tier ids per tier). The 258 two-column lines are the category
     id lists the game builds its candidates from, not rows."""
     rows = []
     for line in read(TSV).splitlines():
@@ -133,7 +133,7 @@ def staged(rows, junk):
 
 
 def python_set(rows):
-    """Every id the table names - the 6,391."""
+    """Every id the table names - the 6,423."""
     ids = set()
     for _cid, _kind, tiers, _thr in rows:
         for ids_ in tiers:
@@ -144,7 +144,7 @@ def python_set(rows):
 
 
 def python_record_set(rows):
-    """Every id the game's own filler stores: at most three a tier (1800950d0:83-95) - the 6,390."""
+    """Every id the game's own filler stores: at most three a tier (1800950d0:83-95) - the 6,422."""
     ids = set()
     for _cid, _kind, tiers, _thr in rows:
         for ids_ in tiers:
@@ -176,7 +176,7 @@ def main():
 
     # ---- 1. the table the walk is measured against ---------------------------------------------------
     print("")
-    print("TABLE  data\\challenges.tsv, its 4,508 record rows")
+    print("TABLE  data\\challenges.tsv, its 4,584 record rows")
     if not os.path.isfile(TSV):
         print("STOP: %s is missing - this harness measures the in-repo table." % TSV)
         return 1
@@ -202,7 +202,7 @@ def main():
 
     # ---- 2. the shipped walk over a staged array -----------------------------------------------------
     print("")
-    print("WALK  g11_test.exe collect, the shipped g12_collect over 4,508 staged records")
+    print("WALK  g11_test.exe collect, the shipped g12_collect over 4,584 staged records")
     junk = MAX_ID  # a valid id, so a walk that read past the count would report one more
     array = staged(rows, junk)
     path = os.path.join(SCRATCH, "array.bin")
@@ -276,7 +276,7 @@ def main():
     check("version.dll carries the kill switch's own file name", "rewards_off.txt" in text)
     check("version.dll carries no zm_ch_s chunk name", "zm_ch_s" not in text)
     check("version.dll carries no zm_ch_state name", "zm_ch_state" not in text)
-    check("the banner is this build's", "version.dll build 31" in text)
+    check("the banner is this build's", "version.dll build 36" in text)
     check("the banner names the reward set", "zm_g12_* the challenge reward set" in text)
 
     # ---- 4. the source the DLL was built from --------------------------------------------------------
@@ -327,7 +327,7 @@ def main():
         for f in failures:
             print("  FAILED: " + f)
         return 1
-    print("OK - the walk reproduces the record's own set (6,390 ids, the table's 6,391 minus the one id the game's")
+    print("OK - the walk reproduces the record's own set (6,422 ids, the table's 6,423 minus the one id the game's")
     print("     filler drops) and stops at each row's own tier count; the header, the 35 names and the five log "
           "lines")
     print("     are in the built DLL, and the game's own chunks are not.")

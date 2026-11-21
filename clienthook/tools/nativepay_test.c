@@ -430,6 +430,87 @@ static void test_wrapper(void)
         ok(LOGN == 1, "boundary: and ev=95 still pays on its own path (one line)", "");
         nativepay_set_match_reset_hook(NULL);
     }
+    {
+        // the armory census: ev=853 is the menu's pick, and the one line proves the payload is readable here
+        static const unsigned short ids[] = {8, 74};
+        static const long long vals[] = {2048, 75680};
+        make_event(ev, 853, ids, vals, 2);
+        nativepay_reset_for_test();
+        log_reset();
+        OBS_CALLS = 0;
+        unsigned long long r = nativepay_call(ev);
+        ok(r == 99 && OBS_CALLS == 1, "census: the 853 event reaches the client's own function once", "");
+        ok(LOGN == 1 && strcmp(log_at(0), "armory: ev=853 n=2 8=2048 74=75680") == 0,
+           "census: one line the first time the id arrives, with its count and both keys", log_at(0));
+        nativepay_call(ev);
+        ok(LOGN == 1, "census: a second 853 writes no second line", "");
+        ok(OBS_CALLS == 2, "census: and it passes through too", "");
+    }
+    nativepay_set_match_reset_hook(NULL);
+}
+
+// the armory pay seam: once per dispatched event, after the client's own function returned, with the resolved
+// award function and the two ints the wrapper itself holds - never a copy of them.
+static int PAY_CALLS = 0;
+static np_fn PAY_SEEN_ORIG = NULL;
+static int *PAY_SEEN_KILL = NULL;
+static int *PAY_SEEN_CRIT = NULL;
+static int PAY_SAW_KILL = -1;
+static int PAY_SAW_CRIT = -1;
+static int PAY_SAW_OBS = -1;
+
+static void pay_spy(np_fn orig, int *kill, int *crit)
+{
+    PAY_CALLS++;
+    PAY_SEEN_ORIG = orig;
+    PAY_SEEN_KILL = kill;
+    PAY_SEEN_CRIT = crit;
+    PAY_SAW_KILL = (kill != NULL) ? *kill : -2;
+    PAY_SAW_CRIT = (crit != NULL) ? *crit : -2;
+    PAY_SAW_OBS = OBS_CALLS;
+}
+
+static void test_pay_seam(void)
+{
+    unsigned int ev[NP_RECORD_LEN / 4];
+    int kill = 20, crit = 5;
+    W_KILL = &kill;
+    W_CRIT = &crit;
+    nativepay_set_log(log_hook);
+    nativepay_reset_for_test();
+    nativepay_bind_for_test(&kill, &crit, fake_quiet);
+    log_reset();
+
+    nativepay_set_pay_hook(pay_spy);
+    make_kill_event(ev);
+    OBS_CALLS = 0;
+    PAY_CALLS = 0;
+    nativepay_call(ev);
+    ok(PAY_CALLS == 1, "seam: one dispatched event calls the armory pay exactly once", "");
+    ok(PAY_SEEN_ORIG == fake_quiet, "seam: it is handed the resolved award function", "");
+    ok(PAY_SEEN_KILL == &kill && PAY_SEEN_CRIT == &crit,
+       "seam: and the two ints the wrapper itself holds, not a copy", "");
+    ok(PAY_SAW_KILL == 20 && PAY_SAW_CRIT == 5, "seam: the pair reads back what the client's call restored", "");
+    ok(PAY_SAW_OBS == 1, "seam: it runs after the client's own function returned", "");
+
+    // every event, not only ev=95: a pass-through event reaches the seam too
+    make_event(ev, 75, NULL, NULL, 0);
+    PAY_CALLS = 0;
+    nativepay_call(ev);
+    ok(PAY_CALLS == 1, "seam: an event that pays nothing still calls it, once", "");
+
+    // and the boundary event
+    make_event(ev, 109, NULL, NULL, 0);
+    PAY_CALLS = 0;
+    nativepay_call(ev);
+    ok(PAY_CALLS == 1, "seam: the match boundary event calls it too", "");
+
+    nativepay_set_pay_hook(NULL);
+    make_kill_event(ev);
+    PAY_CALLS = 0;
+    nativepay_call(ev);
+    ok(PAY_CALLS == 0, "seam: with no seam set the wrapper pays nothing extra", "");
+
     nativepay_set_match_reset_hook(NULL);
 }
 
@@ -645,6 +726,7 @@ static int mode_self(const wchar_t *client)
     test_call_window();
     test_format();
     test_wrapper();
+    test_pay_seam();
     test_patch();
     test_sha256();
     test_guard(client);
@@ -1297,9 +1379,9 @@ static int mode_proxy(const wchar_t *dll)
        "proxy: the resolved module's path is under the Windows system directory", sys_a);
     ok(_wcsicmp(sys_path, ours_path) != 0, "proxy: and it is not this DLL's path", sys_a);
     // and the module called "ours" really is this build, in memory - not a stray system copy at that path
-    // (the literal is this build's banner; it moves with the banner, build 31's is 457 chars - build 27's
+    // (the literal is this build's banner; it moves with the banner, build 36's is 474 chars - build 27's
     // 490-char one formatted a 513-byte line into log_line's 512-byte buffer, docs\B27-NOLAUNCH.md 3.3)
-    ok(module_carries(ours, "proxy attached (version.dll build 31"),
+    ok(module_carries(ours, "proxy attached (version.dll build 36"),
        "proxy: the module under test carries this build's banner in its own image", "");
     ok(!module_carries(sys, "proxy attached"), "proxy: the system module does not carry it", "");
 
