@@ -23,7 +23,7 @@ local ACT_A, ACT_B = 53979, 47576
 local START_EVENT, START_KEY = 846, 74
 local SLOTS = 9
 
-local VERSION = "v2"
+local VERSION = "v3"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -37,7 +37,7 @@ if S.parts[PART] == true then return end
 S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
-  active = 0, tier = {}, rows = 0, owned = 0, ev = nil, key = nil }
+  active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil }
 S.aug = G
 
 -- says a thing once
@@ -295,7 +295,7 @@ end
 -- the ticks and the owned count
 local function ticks(c, store, cache, map)
   local owned, seen, rows = 0, {}, 0
-  local tiers = {}
+  local tiers, items = {}, {}
   for k, ch in pairs(cache) do
     if type(ch) == "table" and seen[ch] == nil then
       seen[ch] = true
@@ -312,12 +312,14 @@ local function ticks(c, store, cache, map)
             local want = i <= t
             if hfield(e, "IsUnlocked") ~= want then put(e, "IsUnlocked", want) end
             if want then owned = owned + 1 end
+            local loot = tonumber(hfield(e, "lootid"))
+            if loot ~= nil then items[math.floor(loot)] = { ref = ref, i = i } end
           end
         end
       end
     end
   end
-  return owned, tiers, rows
+  return owned, tiers, rows, items
 end
 
 -- the row the ladder thresholds sit on
@@ -414,12 +416,12 @@ local function whole(c)
   local ok = pcall(function() n = retier(c, cache) end)
   spy_off(k, o)
   if not ok then n = 0 end
-  local owned, tiers, rows = 0, {}, 0
+  local owned, tiers, rows, items = 0, {}, 0, {}
   pcall(function()
     alias(cache)
-    owned, tiers, rows = ticks(c, store, cache, map_of(Z))
+    owned, tiers, rows, items = ticks(c, store, cache, map_of(Z))
   end)
-  G.tier, G.rows, G.owned = tiers, rows, owned
+  G.tier, G.rows, G.owned, G.ix = tiers, rows, owned, items
   if rows > 0 then feed(c, owned) end
   if G.last ~= nil and G.tier[G.last] ~= nil then slots(c, G.tier[G.last]) end
   if G.ownSaid ~= true and rows > 0 then
@@ -459,6 +461,26 @@ local function pair_of(key, a, n)
   return nil
 end
 
+-- the research row a sent id names
+local function resolve(id)
+  local Z = rawget(_G, "ZMAUGMENT")
+  if type(Z) ~= "table" then return id end
+  local cache = cache_of(Z)
+  if type(cache) ~= "table" then return id end
+  local sat, cer = nil, nil
+  for _, ch in pairs(cache) do
+    if type(ch) == "table" then
+      local a = tonumber(hfield(ch, "achievementID"))
+      local b = tonumber(hfield(ch, "carryoverAchievementID"))
+      if a ~= nil and a == id then sat = a end
+      if b ~= nil and b == id and cer == nil then cer = a end
+    end
+  end
+  if sat ~= nil then return sat end
+  if cer ~= nil then return cer end
+  return id
+end
+
 -- the press the menu sends
 local function caught(ev, ...)
   local id = tonumber(ev)
@@ -472,8 +494,10 @@ local function caught(ev, ...)
   local v = pair_of(key, a, #a)
   if v == nil then v = tonumber(a[2]) end
   if v == nil or v < 1 then return end
-  G.active, G.dirty = math.floor(v), true
-  dp("augments research start id=" .. G.active)
+  local sent = math.floor(v)
+  local sat = resolve(sent)
+  G.active, G.sat, G.dirty = sent, sat, true
+  dp("augments research start id=" .. sent .. " sat=" .. sat)
 end
 
 -- the answer the activation rows carry
@@ -481,6 +505,8 @@ local function answered(r, id)
   local n = tonumber(id)
   if n ~= ACT_A and n ~= ACT_B then return r end
   if G.active < 1 then return r end
+  local act = G.active
+  if n == ACT_A and G.sat >= 1 then act = G.sat end
   local t = r
   if type(t) ~= "table" then t = {} end
   local p = field(t, "progress")
@@ -488,7 +514,7 @@ local function answered(r, id)
     p = {}
     if not pcall(function() t.progress = p end) then return r end
   end
-  put(p, "last_activation", G.active)
+  put(p, "last_activation", act)
   return t
 end
 
@@ -520,6 +546,7 @@ pass = function(c)
   local one, two = dv(DV_ONE), dv(DV_TWO)
   if one == nil or two == nil then return end
   local on = (one == "1") or (two == "1")
+  G.on = on
   local n = 0
   if not on then n = whole(c) end
   if G.said ~= true and (on or n > 0) then
@@ -596,6 +623,69 @@ local function onread(orig)
   end
 end
 
+-- the switch state the lock rule reads
+local function hon()
+  if G.on ~= nil then return G.on end
+  local one, two = dv(DV_ONE), dv(DV_TWO)
+  if one == nil or two == nil then return nil end
+  G.on = (one == "1") or (two == "1")
+  return G.on
+end
+
+-- one augment id locked by the tier reached
+local function locked_item(id)
+  local n = tonumber(id)
+  if n == nil then return nil end
+  if hon() ~= false then return nil end
+  local at = G.ix ~= nil and G.ix[math.floor(n)] or nil
+  if at == nil then return nil end
+  local t = G.tier[at.ref]
+  if t == nil then return nil end
+  return at.i > t
+end
+
+-- a call through that never rethrows
+local function thru(f, id)
+  local ok, v = pcall(f, id)
+  if not ok then return nil end
+  return v
+end
+
+-- the locked side of the door
+local function lk_ask(orig)
+  return function(id)
+    local ok, locked = pcall(locked_item, id)
+    if ok and locked == true then return true end
+    return thru(orig, id)
+  end
+end
+
+-- the open side of the door
+local function lk_give(orig)
+  return function(id)
+    local ok, locked = pcall(locked_item, id)
+    if ok and locked == false then return true end
+    if ok and locked == true then return false end
+    return thru(orig, id)
+  end
+end
+
+-- the locks table this part extends once
+local LK = { tbl = nil, a = nil, o = nil }
+
+-- extends the lock door once per table
+local function lk_arm()
+  local locks = S.locks
+  if type(locks) ~= "table" then return false end
+  if LK.tbl == locks then return LK.a ~= nil and LK.o ~= nil end
+  local a, o = locks.answer, locks.open
+  if type(a) ~= "function" or type(o) ~= "function" then return false end
+  local wa, wo = lk_ask(a), lk_give(o)
+  locks.answer, locks.open = wa, wo
+  LK.tbl, LK.a, LK.o = locks, wa, wo
+  return true
+end
+
 -- the keys this vm keeps its members under
 local K = {}
 
@@ -621,6 +711,7 @@ local function install()
   if kfill(C, K_SEND, "send") ~= nil then arm("send", C, K.send, onpress) end
   local OC = rawget(_G, "OnlineChallenges")
   if kfill(OC, K_PROG, "prog") ~= nil then arm("prog", OC, K.prog, onread) end
+  pcall(lk_arm)
   return ok
 end
 

@@ -32,7 +32,14 @@ The cases:
       ticks, the part loaded twice, and the timer's own pass once the table arrives;
   12. the decoy: a key one digit off the store's hash is left alone;
   13. the file rule: lowercase comments of ten words at most with no punctuation, no mention of the
-      client, and no plain-name indexing of the augmented table.
+      client, and no plain-name indexing of the augmented table;
+  14. the research: a press of a carryover id answers 53979 with that row's sat id, and the game's
+      own `getcurrentactiveresearch` body, reproduced over the fixture, returns the augment;
+  15. the equip lock: the lock door answers locked for an augment id whose tier is not reached and
+      open past it, the switches step the rule aside, every other id passes through;
+  16. the door chain: an armory-like extender arming before and after ours stays at two wrappers,
+      the depth stays the base plus two, and both rules still answer;
+  17. the late door: no locks table at load, then the table arriving, then a new table after it.
 """
 import os
 import re
@@ -84,7 +91,11 @@ DEV_K = setmetatable({}, { __tostring = function() return "xhash: #x1d428ffe65b5
 DEVON = false
 AID = 40001
 BID = 40002
+CID_A = 48298
+CID_B = 48303
+STATE_IP = 1
 PROG = { [tostring(AID)] = 0, [tostring(BID)] = 0 }
+STATE = { [tostring(AID)] = STATE_IP, [tostring(BID)] = STATE_IP }
 function SET_PROG(id, v) PROG[tostring(id)] = v end
 local function HK(n) return xhash(n) end
 Challenge[HK("getchallengeprogress")] = function(c, id) return PROG[tostring(id)] or 0 end
@@ -107,17 +118,19 @@ local function row(loot)
   return { [HK("lootid")] = loot, [HK("IsUnlocked")] = true, [HK("progress")] = 0,
            [HK("displayname")] = "aug" .. loot }
 end
-local function rows()
-  return { row(801), row(802), row(803), isResearchComplete = true, totalProgress = 100,
+local function rows(base)
+  return { row(base), row(base + 1), row(base + 2), isResearchComplete = true, totalProgress = 100,
            currentTier = 3, isUnlocked = true, amountNeededToUnlock = "0" }
 end
 Z = {}
-Z[STORE_K] = { sat_aug_one = rows(), sat_aug_two = rows() }
-Z[DIFF_K] = { decoy = rows() }
+Z[STORE_K] = { sat_aug_one = rows(801), sat_aug_two = rows(901) }
+Z[DIFF_K] = { decoy = rows(701) }
 Z[HK("lootid_to_ref")] = { [7001] = "sat_aug_one", [7002] = "sat_aug_two" }
 Z[HK("augmentresearchchallenges")] = {
-  [7001] = { [HK("achievementID")] = AID, [HK("amount")] = "70000|140000|275000" },
-  [7002] = { [HK("achievementID")] = BID, [HK("amount")] = "70000|140000|275000" },
+  [7001] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
+             [HK("amount")] = "70000|140000|275000" },
+  [7002] = { [HK("achievementID")] = BID, [HK("carryoverAchievementID")] = CID_B,
+             [HK("amount")] = "70000|140000|275000" },
 }
 Z[HK("cacheaugmenttierdata")] = function(c, ch, loot)
   local ref = Z[HK("lootid_to_ref")][loot]
@@ -222,6 +235,80 @@ PROG_ORIG = function(c, id)
   return PROG_ROWS[k]
 end
 OnlineChallenges[PROG_K] = PROG_ORIG
+OnlineChallenges[HK("getchallengestate")] = function(c, id) return STATE[tostring(id)] or 0 end
+
+function GETACTIVE(c)
+  local C = Z[HK("augmentresearchchallenges")]
+  local gs = OnlineChallenges[HK("getchallengestate")]
+  local r = OnlineChallenges[PROG_K](c, 53979)
+  local sat = 0
+  if r and r.progress and r.progress.last_activation then sat = r.progress.last_activation end
+  for loot, ch in pairs(C) do
+    local aid = ch[HK("achievementID")]
+    if gs(c, aid) == STATE_IP and aid == sat then return loot end
+    local co = ch[HK("carryoverAchievementID")]
+    if 0 < co and gs(c, co) == STATE_IP then return loot end
+  end
+  return 0
+end
+
+DEPTH, DEPTHMAX = 0, 0
+local function enter()
+  DEPTH = DEPTH + 1
+  if DEPTH > DEPTHMAX then DEPTHMAX = DEPTH end
+end
+SEC_A = function(id)
+  enter()
+  local v = id == 555
+  DEPTH = DEPTH - 1
+  return v
+end
+SEC_O = function(id)
+  enter()
+  local v = id == 556
+  DEPTH = DEPTH - 1
+  return v
+end
+function PRISON()
+  local S = rawget(_G, "ProgressionTuning")
+  if type(S) ~= "table" then
+    S = { parts = {}, hooks = {}, probes = {}, api = {}, g11 = {}, scope = {} }
+    rawset(_G, "ProgressionTuning", S)
+  end
+  S.locks = { answer = SEC_A, open = SEC_O, arm = function() end, tick = function() end }
+end
+function NOPRISON()
+  if type(rawget(_G, "ProgressionTuning")) == "table" then ProgressionTuning.locks = nil end
+end
+function ANS(id) return ProgressionTuning.locks.answer(id) end
+function OPN(id) return ProgressionTuning.locks.open(id) end
+function FACE(w) return ProgressionTuning.locks[w] end
+SEEN = {}
+EXT_N = 0
+local function ext(orig, own)
+  local w = function(id)
+    enter()
+    local v = orig(id)
+    DEPTH = DEPTH - 1
+    if id == own then return true end
+    return v
+  end
+  SEEN[w] = true
+  return w
+end
+function EXT()
+  local locks = ProgressionTuning.locks
+  if type(locks) ~= "table" then return end
+  local a = locks.answer
+  if not SEEN[a] then
+    EXT_N = EXT_N + 1
+    locks.answer = ext(a, 777)
+  end
+  local o = locks.open
+  if not SEEN[o] then
+    locks.open = ext(o, 778)
+  end
+end
 
 function MAKEZM() ZMAUGMENT = Z end
 function REFRESH(c) ZMAUGMENT[REFRESH_K](c) end
@@ -398,7 +485,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line and nothing else", len(l) == 2,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v2 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v3 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -489,8 +576,8 @@ def case_press(lua51):
     r.execute("PRESS(40001)")
     check("press: the achievement id is recorded", val(r, "ProgressionTuning.aug.active") in ("40001", "40001.0"),
           "active=" + val(r, "ProgressionTuning.aug.active"))
-    check("press: one line names the id",
-          count_line(lines_of(r), "progression_tuning: augments research start id=40001") == 1,
+    check("press: one line names the two ids",
+          count_line(lines_of(r), "progression_tuning: augments research start id=40001 sat=40001") == 1,
           " | ".join([ln for ln in lines_of(r) if "research start" in ln][:2]))
     check("press: 53979 answers the activation with it", val(r, "LAST(53979)") == "40001", val(r, "LAST(53979)"))
     check("press: 47576 answers the activation with it", val(r, "LAST(47576)") == "40001", val(r, "LAST(47576)"))
@@ -657,6 +744,141 @@ def case_blind(lua51):
     check("blind: and claims nothing", len(lines_of(r)) == 0, " | ".join(lines_of(r)[:2]))
 
 
+# --- 14: the press resolves the carryover twin to the sat row --------------------------------
+def case_research(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    r.execute("PRESS(48298)")
+    check("research: a carryover press keeps the sent id",
+          val(r, "ProgressionTuning.aug.active") in ("48298", "48298.0"),
+          "active=" + val(r, "ProgressionTuning.aug.active"))
+    check("research: 53979 answers the sat id, not the sent one", val(r, "LAST(53979)") == "40001",
+          val(r, "LAST(53979)"))
+    check("research: 47576 keeps the sent id", val(r, "LAST(47576)") == "48298", val(r, "LAST(47576)"))
+    check("research: one line carries both ids",
+          count_line(lines_of(r), "progression_tuning: augments research start id=48298 sat=40001") == 1,
+          " | ".join([ln for ln in lines_of(r) if "research start" in ln][:2]))
+    check("research: the active research read returns that augment", val(r, "GETACTIVE(0)") == "7001",
+          val(r, "GETACTIVE(0)"))
+    r2 = rt(ZMFIX + "\nMAKEZM()")
+    off(r2)
+    r2.execute("REFRESH(0)")
+    r2.execute("PRESS(40001)")
+    check("research: a sat press answers its own id", val(r2, "LAST(53979)") == "40001"
+          and val(r2, "GETACTIVE(0)") == "7001", val(r2, "LAST(53979)") + " / " + val(r2, "GETACTIVE(0)"))
+    r3 = rt(ZMFIX + "\nMAKEZM()")
+    off(r3)
+    r3.execute("REFRESH(0)")
+    r3.execute("PRESS(48303)")
+    check("research: the other carryover resolves to its own row", val(r3, "LAST(53979)") == "40002"
+          and val(r3, "GETACTIVE(0)") == "7002", val(r3, "LAST(53979)") + " / " + val(r3, "GETACTIVE(0)"))
+    r4 = rt(ZMFIX + "\nMAKEZM()")
+    off(r4)
+    r4.execute("REFRESH(0)")
+    r4.execute("PRESS(40003)")
+    check("research: an id in no row resolves to itself", val(r4, "LAST(53979)") == "40003"
+          and count_line(lines_of(r4), "id=40003 sat=40003") == 1, val(r4, "LAST(53979)"))
+
+
+# --- 15: the equip list is locked by the same tier rule --------------------------------------
+def case_lock(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("PRISON()")
+    r.execute("REFRESH(0)")
+    pump(r, 1)
+    check("lock: nothing researched leaves the augment ids locked",
+          r.eval("ANS(801)") is True and r.eval("ANS(802)") is True and r.eval("ANS(803)") is True,
+          "801=%s 802=%s" % (val(r, "ANS(801)"), val(r, "ANS(802)")))
+    check("lock: the open side says no for them", r.eval("OPN(801)") is False and r.eval("OPN(903)") is False,
+          "801=%s" % val(r, "OPN(801)"))
+    check("lock: an id in no augment list passes through", r.eval("ANS(999)") is False
+          and r.eval("ANS(555)") is True, "999=%s 555=%s" % (val(r, "ANS(999)"), val(r, "ANS(555)")))
+    check("lock: the open side passes through too", r.eval("OPN(556)") is True
+          and r.eval("OPN(999)") is False, val(r, "OPN(556)"))
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("lock: the first tier opens and the rest stay locked", r.eval("ANS(801)") is False
+          and r.eval("OPN(801)") is True and r.eval("ANS(802)") is True,
+          "801=%s 802=%s" % (val(r, "ANS(801)"), val(r, "ANS(802)")))
+    check("lock: the other equipment keeps its own tier", r.eval("ANS(901)") is True,
+          val(r, "ANS(901)"))
+    r.execute("SET_PROG(40001, 300000)")
+    r.execute("REFRESH(0)")
+    check("lock: a finished ladder opens every tier of that row", r.eval("ANS(803)") is False
+          and r.eval("OPN(803)") is True and r.eval("ANS(903)") is True,
+          "803=%s 903=%s" % (val(r, "ANS(803)"), val(r, "ANS(903)")))
+    r.execute("SET_DVAR('zm_unlock_augments', '1')")
+    r.execute("REFRESH(0)")
+    check("lock: the switch steps the rule aside", r.eval("ANS(903)") is False
+          and r.eval("OPN(903)") is False, val(r, "ANS(903)"))
+    r.execute("SET_DVAR('zm_unlock_augments', '0')")
+    r.execute("REFRESH(0)")
+    check("lock: the rule applies again once the switch is off", r.eval("ANS(903)") is True,
+          val(r, "ANS(903)"))
+    check("lock: the table keeps its other members",
+          val(r, "type(ProgressionTuning.locks.arm)") == "function"
+          and val(r, "type(ProgressionTuning.locks.tick)") == "function", val(r, "type(ProgressionTuning.locks.arm)"))
+
+
+# --- 16: the chain with an armory like extender stays bounded --------------------------------
+def case_lock_chain(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "PRISON()\nEXT()")
+    off(r)
+    r.execute("REFRESH(0)")
+    check("chain lock: the door is extended at load when the table is there",
+          val(r, "FACE('answer') == SEC_A") == "False" and val(r, "EXT_N") == "1", val(r, "EXT_N"))
+    before = val(r, "FACE('answer')")
+    for _ in range(1, 6):
+        r.execute("EXT()")
+        pump(r, 8)
+    check("chain lock: a later extender arm wraps ours once and no more",
+          val(r, "EXT_N") == "2", val(r, "EXT_N"))
+    check("chain lock: our wrapper is left where the extender put it",
+          val(r, "FACE('answer')") != before and val(r, "FACE('open')") != before, "wrapped")
+    first = val(r, "FACE('answer')")
+    for _ in range(1, 40):
+        r.execute("EXT()")
+        pump(r, 1)
+    check("chain lock: forty more ticks leave the same wrapper on top",
+          val(r, "FACE('answer')") == first, val(r, "FACE('answer')"))
+    check("chain lock: sixty arms make two extenders, not sixty",
+          val(r, "EXT_N") == "2", val(r, "EXT_N"))
+    check("chain lock: our rule still answers through the chain", r.eval("ANS(801)") is True
+          and r.eval("ANS(999)") is False, "801=%s" % val(r, "ANS(801)"))
+    check("chain lock: the extender rule still answers too", r.eval("ANS(777)") is True
+          and r.eval("OPN(778)") is True, val(r, "ANS(777)"))
+    check("chain lock: the depth stays the base plus two", val(r, "DEPTHMAX") == "3", val(r, "DEPTHMAX"))
+    check("chain lock: the pass still runs once per refresh", int(val(r, "COUNT_CALLS")) > 0,
+          val(r, "COUNT_CALLS"))
+
+
+# --- 17: prison absent, then present ---------------------------------------------------------
+def case_lock_late(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    pump(r, 3)
+    check("late lock: no table means nothing is wrapped", r.eval("ProgressionTuning.locks") is None,
+          str(r.eval("ProgressionTuning.locks")))
+    r.execute("PRISON()")
+    check("late lock: the prison table is not wrapped before a tick", val(r, "FACE('answer') == SEC_A") == "True",
+          val(r, "FACE('answer') == SEC_A"))
+    pump(r, 1)
+    check("late lock: the timer extends it on the next tick",
+          val(r, "FACE('answer') == SEC_A") == "False", val(r, "FACE('answer') == SEC_A"))
+    check("late lock: the rule answers once the table is there", r.eval("ANS(801)") is True,
+          val(r, "ANS(801)"))
+    r.execute("NOPRISON()")
+    pump(r, 1)
+    check("late lock: a missing table is survived", len(lines_of(r)) <= 3, "%d lines" % len(lines_of(r)))
+    r.execute("PRISON()")
+    pump(r, 1)
+    check("late lock: a new table is extended again", r.eval("ANS(801)") is True
+          and val(r, "FACE('answer') == SEC_A") == "False", val(r, "FACE('answer') == SEC_A"))
+
+
 def case_file():
     bad = []
     for i, ln in enumerate(SRC.split("\n"), 1):
@@ -703,7 +925,8 @@ def main():
     info("replay: the augment part under a stubbed frontend vm")
     for case in (case_off, case_on, case_line, case_ticks, case_count, case_press, case_alias,
                  case_chain, case_plain, case_late, case_late_read, case_tick_pass, case_twice,
-                 case_decoy, case_blind, case_missing):
+                 case_decoy, case_blind, case_research, case_lock, case_lock_chain, case_lock_late,
+                 case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)
