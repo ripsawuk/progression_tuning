@@ -57,6 +57,7 @@ local CARD_GAP = 32
 local GTYPE_A, GTYPE_C, GTYPE_R = nil, nil, nil
 local GTYPE_H, GTYPE_E = nil, nil
 local GTYPE_PC, GTYPE_COS, GTYPE_TOG = nil, nil, nil
+local GTYPE_SKIN = nil
 local GTOGV, GTOGT = nil, nil
 local GCAMO_NONE_N = 0
 -- the store types by the game own names
@@ -90,6 +91,7 @@ local function gtypepair()
     local t = tonumber(v)
     if t ~= nil then cos[t] = true end
     if GCOSN[i] == "PLAYERCARD" then GTYPE_PC = t end
+    if GCOSN[i] == "OPERATOR_SKIN" then GTYPE_SKIN = t end
   end
   for i = 1, #GTOGN do
     local _, v = member(it, GTOGN[i][1])
@@ -159,6 +161,24 @@ local GEARN_IDS = {
 }
 local GEARN = {}
 for i = 1, #GEARN_IDS do GEARN[GEARN_IDS[i]] = true end
+
+-- the skins a task or a rank earns
+local GTASK_IDS = {
+  92066, 122344, 92065, 124094, 92239, 143517, 92063, 135596, 149872, 149879,
+  151944, 149894, 149890, 149865, 149884, 151945, 149895, 152118, 116751, 129405,
+  129403, 129404, 129406, 120562, 120566, 120564, 120563, 120568, 120567, 120561,
+  120560, 120565, 120569, 120570, 120559, 143203, 143251, 143255, 133921, 133926,
+  133904, 143284, 143279, 143282, 126369, 126380, 126370, 126371, 138849, 136313,
+  140156, 121135, 124856, 124875, 124876, 124881, 124844, 124848, 124857, 124880,
+  124843, 124846, 124882, 124883, 124845, 124849, 124870, 124879, 124853, 124861,
+  124864, 124869, 124842, 124865, 124871, 124877, 124847, 124852, 124854, 124878,
+  121671, 123216, 123759, 123760, 123761, 123762, 127108, 127103, 127102, 122979,
+  122980, 124841, 124859, 124850, 124873, 124860, 124862, 124855, 124872, 124866,
+  124874, 124851, 124863, 124867, 124868, 143158, 139835, 144419, 98770, 92060,
+  98139, 98346, 91985, 94352, 113114, 113115, 113111, 113113
+}
+local GTASK = {}
+for i = 1, #GTASK_IDS do GTASK[GTASK_IDS[i]] = true end
 
 -- every unlock switch read once a tick
 local function gtoggles()
@@ -829,6 +849,27 @@ local function gdefault(n)
   return v
 end
 
+-- only a skin the game never defaults or sells
+local function gtaskguard(n)
+  local c = G.taskcache
+  if c == nil then
+    c = {}
+    G.taskcache = c
+  end
+  local v = c[n]
+  if v ~= nil then return v end
+  local df = fcache(rawget(_G, "LOOT"), GNDEFAULT)
+  local _, sb = member(rawget(_G, "STORE"), "Bundles")
+  local sf = fcache(sb, GNBUNDLE)
+  if df == nil or sf == nil then return false end
+  local okd, d = pcall(df, n)
+  local oks, s = pcall(sf, 0, n)
+  if not okd or not oks then return false end
+  v = d ~= true and s == nil
+  c[n] = v
+  return v
+end
+
 local GOPEN = { n = 0, t = {} }
 
 -- the platform question a store id has to pass
@@ -1279,6 +1320,11 @@ local function glocked(id)
     return false
   end
   local locked
+  if GTYPE_SKIN ~= nil and t == GTYPE_SKIN and GTASK[n] == true then
+    locked = bit == 1 and not gcarried(n) and gtaskguard(n)
+    m[n] = { locked = locked }
+    return locked
+  end
   if GTYPE_PC ~= nil and t == GTYPE_PC then
     local buy = 0
     locked = bit == 1 and not gdefault(n) and not gcarried(n)
@@ -1363,6 +1409,7 @@ local function arm_locks()
   pcall(gbwarm)
   local okw, win = pcall(gwinarm)
   if okw and win then log("blueprint lock: the builds window lists every blueprint") end
+  if said("skins") then log("skin lock: " .. #GTASK_IDS .. " task skins") end
   if S.tracker ~= nil then pcall(S.tracker.install) end
 end
 

@@ -1002,7 +1002,7 @@ end
 
 -- the second block its own switch and prefix
 local RB = "rbdiag"
-local RB_CAP = 40
+local RB_CAP = 60
 local RB_ON = false
 
 -- reads eleven questions and writes nothing
@@ -1426,6 +1426,80 @@ local function rc1diag_b()
     end
     mi = mi + 1
   end
+  -- the five operator skins and their own getters
+  local SK = { 143284, 151944, 92066, 143522, 149872 }
+  local ltm = rc1d_field(LOOTT, "itemTypes")
+  local sktype = tonumber(rc1d_field(ltm, "OPERATOR_SKIN")) or 8
+  local skb = fn_of(LOOTT, "getscriptbundleforid")
+  local _, skstore = member(rawget(_G, "STORE"), "Bundles")
+  local skfirst = fn_of(skstore, "GetFirstBundleWithLootId")
+  local skq = fn_of(LOOTT, "getquestrewardtypeforid")
+  local skd = fn_of(LOOTT, "isitemdefault")
+  local sku = fn_of(LOOTT, "isunlockedwithid")
+  local skdesc = fn_of(LOOTT, "GetUnlockDescription")
+  local skseason = fn_of(LOOTT, "getitemseasonbyid")
+  local skprem = fn_of(LOOTT, "getispremiumforbundle")
+  local function skinget(f, ...)
+    if type(f) ~= "function" then return "absent" end
+    local ok, v = pcall(f, ...)
+    if not ok then return "err" end
+    return rc1d_txt(v)
+  end
+  local function skinhave(v)
+    if type(v) == "table" then return "y" end
+    return "n"
+  end
+  local si = 1
+  while si <= #SK do
+    local sid = SK[si]
+    local bundle = nil
+    if skb ~= nil then
+      local okb, v = pcall(skb, sktype, sid)
+      if okb and type(v) == "table" then bundle = v end
+    end
+    local store = "err"
+    if skfirst ~= nil then
+      store = "n"
+      local oks, sv = pcall(skfirst, 0, sid)
+      if not oks then
+        store = "err"
+      elseif sv ~= nil then
+        store = "y"
+      end
+    end
+    local season = rc1d_txt(rc1d_field(bundle, "season"))
+    if season == "nil" then season = skinget(skseason, sktype, sid) end
+    local premium = rc1d_txt(rc1d_field(bundle, "ispremium"))
+    if premium == "nil" and bundle ~= nil then premium = skinget(skprem, bundle) end
+    local desc = "nil"
+    if skdesc ~= nil and bundle ~= nil then
+      local okd, d = pcall(skdesc, bundle)
+      if not okd then
+        desc = "err"
+      elseif type(d) == "string" and d ~= "" then
+        desc = string.sub(d, 1, 40)
+      elseif d ~= nil then
+        desc = rc1d_txt(d)
+      end
+    end
+    local sbit, srew = 0, 0
+    local okbt, vbt = pcall(A.bit, sid)
+    if okbt and vbt then sbit = 1 end
+    local okrw, vrw = pcall(A.greward, sid)
+    if okrw and vrw then srew = 1 end
+    put("QB21 skin id=" .. sid .. " bundle=" .. skinhave(bundle)
+      .. " unlocktype=" .. rc1d_txt(rc1d_field(bundle, "unlocktype"))
+      .. " season=" .. season .. " premium=" .. premium
+      .. " quest=" .. rc1d_txt(rc1d_field(bundle, "zmquestrewardloottype"))
+      .. " qtype=" .. skinget(skq, sid) .. " default=" .. skinget(skd, sid)
+      .. " store=" .. store .. " desc=" .. desc
+      .. " unlocked=" .. skinget(sku, 0, sid)
+      .. " bit=" .. sbit .. " reward=" .. srew)
+    si = si + 1
+  end
+  put("QB21 skin globals OPERATOR=" .. skinhave(rawget(_G, "OPERATOR"))
+    .. " Operator=" .. skinhave(rawget(_G, "Operator"))
+    .. " getscriptbundleforid=" .. (skb ~= nil and "y" or "n"))
   if full then
     put("cap=" .. RB_CAP .. " reached - the rest of the block is not printed")
   end
@@ -1658,8 +1732,21 @@ local function diag_off()
   return true
 end
 
+-- the probe dvar and the last value
+local SEE_DV, SEE_LAST = "pt_seeprobe", ""
+
+-- prints each new probe value once
+local function see_poll()
+  if S.front ~= false then return end
+  local v = A.dv(SEE_DV)
+  if type(v) ~= "string" or v == "" or v == SEE_LAST then return end
+  SEE_LAST = v
+  log(v)
+end
+
 -- the check first then the switch
 local function rc1diag_chain()
+  pcall(see_poll)
   if diag_off() then
     return
   end

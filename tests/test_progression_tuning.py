@@ -202,6 +202,7 @@ ACCEPT = [89575, 96171, 96192, 96202, 102671, 126597, 126619, 111457]
 TOKENS_GSC_LEN = 8559
 TOKENS_GSC_SHA = "63EFBB2B9032C392FED53501124F77E85B3F0E15332415BF0796A2BBECDF06DC"
 ARMORY_GSC = "progression_tuning_armory.gsc"
+SEE_FIRE_GSC = "progression_tuning_see_fire.gsc"
 TOGGLES = ["pt_on", "pt_level", "pt_attach", "pt_camo", "pt_daily", "pt_log"]
 REMOVED = [
     "RETIC", "badge", "Badge", "Mastery", "dedupe", "DEDUPE", "_DataSources", "NearestToCompletion",
@@ -740,6 +741,41 @@ SET_PRESTIGE("sat_pi_alcor", 0)
 SET_WD("sat_pi_alcor", { 2200, 3400, 4600 })
 """
 
+# the five operator skins, their bundles and the getters the grid and the menu use
+G33FIX = r"""
+LOOT.itemTypes.OPERATOR_SKIN = 8
+SKINB = {
+  [143284] = { unlocktype = "custom", season = 5, ispremium = false, zmquestrewardloottype = 900,
+               unlockstring = "Complete the Endgame contract to earn this skin for Kagan and no one else" },
+  [151944] = { unlocktype = "challenge", season = 5, zmquestrewardloottype = 901,
+               unlockstring = "Survive the Twins as Dempsey" },
+  [92066] = { unlocktype = "custom", ispremium = true,
+              unlockstring = "Complete the Ashes of the Damned Main Quest" },
+}
+LOOT[xhash("getscriptbundleforid")] = function(t, id)
+  if t ~= 8 then return nil end
+  return SKINB[id]
+end
+QUEST = { [143284] = 900, [151944] = 901 }
+LOOT[xhash("getquestrewardtypeforid")] = function(id) return QUEST[id] end
+LOOT[xhash("GetUnlockDescription")] = function(b) return b.unlockstring end
+LOOT[xhash("getitemseasonbyid")] = function(t, id)
+  local b = SKINB[id]
+  if b and b.season then return b.season end
+  return 0
+end
+LOOT[xhash("getispremiumforbundle")] = function(b)
+  if b.ispremium == nil then return false end
+  return b.ispremium
+end
+STORE.Bundles[xhash("GetFirstBundleWithLootId")] = function(c, id)
+  if id == 143522 then return 900001 end
+  return nil
+end
+OPERATOR = { GetSkinBundle = function(ref) return SKINB[143284] end }
+Operator = { getoperatorskinbundle = function(ref) return SKINB[151944] end }
+"""
+
 SPLASHFIX = r"""
 SPLASHNOW = "empty_splash_ref"
 function SET_SPLASH(v) SPLASHNOW = v end
@@ -972,9 +1008,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 268492
-SHIP_LUA_SHA = "39F20C78A680416A8F3D6C46D872910F2D7426C4FDB153F712FF41124A7A275E"
-LITERAL_SHA = "A033D299979E9976FE4CFF18DA441BB1DBB35D92C8498FF4D9A6914064981E28"
+SHIP_LUA_LEN = 274101
+SHIP_LUA_SHA = "4194D4621C3DC9E14FFEBF63B3617A297A0E689A162C7CFE654EB69C17D5FEE5"
+LITERAL_SHA = "EF0E2CC050787619ACC87ABC0E21DAAA7817A181AF8609A70F763C4914190F7F"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1137,6 +1173,7 @@ LITERAL_ADDED = [
     " pct=",
     " prestigeRef=",
     "press",
+    "pt_seeprobe",
     " r92066=",
     " ranks=",
     " reward=",
@@ -1527,6 +1564,46 @@ LITERAL_ADDED = [
     "getcachedarmoryachievements",
     "id",
     "q=([%d,]+)",
+    # the five operator skins: their bundles, the fields and the getters asked for them
+    " Operator=",
+    " desc=",
+    " getscriptbundleforid=",
+    " premium=",
+    " qtype=",
+    " quest=",
+    " season=",
+    " store=",
+    " unlocked=",
+    " unlocktype=",
+    "Operator",
+    "QB21 skin globals OPERATOR=",
+    "QB21 skin id=",
+    "err",
+    "getispremiumforbundle",
+    "getitemseasonbyid",
+    "getquestrewardtypeforid",
+    "getscriptbundleforid",
+    "ispremium",
+    "n",
+    "season",
+    "skin lock: ",
+    " task skins",
+    "skins",
+    "unlocktype",
+    "y",
+    "zmquestrewardloottype",
+    "status",
+    "done",
+    "open",
+    " stands ",
+    "reward row ",
+    "reward card ",
+    "reward ",
+    " has no ref - no card",
+    "err:reward",
+    " type=",
+    "reward cards stand down - the game own achievement splash switch is off",
+    " reads nothing - no card this match",
 ]
 LITERAL_RE = re.compile('"([^"\\n]*)"' + "|'([^'\\n]*)'")
 
@@ -1791,6 +1868,10 @@ def static_checks():
           and "splashck" not in ship and not re.search(r"\bck_card\b", ship) and "CK_CARD" not in ship)
     check("lua: the splash part paces on the main part's own timer step",
           "local TICK_MS = 250" in LUA_TEXT[SPLASH] and "local TICK_MS = 250" in LUA_TEXT[MAIN])
+    check("lua: a reward row is done on challenge state 3 or 2 alone, every other status open",
+          "local ST_FINISHED, ST_CLAIMABLE = 3, 2" in LUA_TEXT[SPLASH]
+          and "return st == ST_FINISHED or st == ST_CLAIMABLE" in LUA_TEXT[SPLASH]
+          and "st ~= 1 and st ~= 4" not in LUA_TEXT[SPLASH])
     check("lua: the weekly subtitle is one plain line - the number is never marked",
           "MarkLocalized" not in SRC and '"getDesc"' in LUA_TEXT[SPLASH]
           and 'displayLocation = "dailyNotification"' in LUA_TEXT[SPLASH])
@@ -1983,8 +2064,8 @@ def static_checks():
     check("lua: the answer needs the bit AND the reward set AND the client's own item type",
           "glockedNow(n)" in SRC and "GTYPE_A" in SRC and "GTYPE_C" in SRC and "GTYPE_R" in SRC
           and "locked = bit == 1 and greward(n) and not gdefault(n) and not gcarried(n)" in SRC)
-    check("lua: a locked answer is refused when the id's own ref is carried, on both rules",
-          "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 2)
+    check("lua: a locked answer is refused when the id's own ref is carried, on all three rules",
+          "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 3)
     check("lua: types come from the client's own constants and its own getter",
           '"gettypeforid"' in SRC and '"itemTypes"' in SRC and '"ATTACHMENT"' in SRC
           and '"CAMO"' in SRC and '"RETICLE"' in SRC and "GTYPE_A, GTYPE_C, GTYPE_R = na, nc, tonumber(r)" in SRC)
@@ -2063,6 +2144,44 @@ def static_checks():
           and "notify(" not in ar, "%d setdvar" % ar.count("setdvar("))
     check("gsc: the armory script never reads or writes the token channel",
           "pt_tokens" not in ar)
+
+    sfpath = os.path.join(SCRIPTS_DIR, SEE_FIRE_GSC)
+    see = open(sfpath, "rb").read().decode("utf-8", "replace") if os.path.isfile(sfpath) else ""
+    sfl = see.lower()
+    native = ('level utility::callsharedfunc( #"zombie_challenges", #"hash_65886d21168e150a", '
+              '#"zm_sat_super_ee_complete", [ level.players[0] ] );')
+    check("gsc: the see fire script ships one autoexec and arms its one level thread",
+          see.count("autoexec ") == 1
+          and see.count("level thread progression_tuning_see_fire_main();") == 1)
+    check("gsc: the see fire thread stands down on end_game before any state it keeps",
+          see.find('level endon("end_game");') != -1
+          and see.find('level endon("end_game");') < see.find("level.pt_sf_run = 1;"))
+    check("gsc: the see fire script calls the native reporter once, line for line",
+          see.count("callsharedfunc(") == 1 and see.count(native) == 1, "%d callsharedfunc" % see.count("callsharedfunc("))
+    check("gsc: the see fire script writes its two dvars and nothing else",
+          see.count("setdvar(") == 3
+          and set(re.findall(r'setdvar\("([^"]+)"', see)) == {"pt_see_fire", "pt_see_fire_state"}
+          and "setplayerdata" not in sfl and "notify(" not in sfl and "callback::" not in sfl
+          and "logstring" not in sfl and "nengine_store_" not in sfl, "%d setdvar" % see.count("setdvar("))
+    check("gsc: the see fire dvar is polled on level from the one loop, a second apart",
+          see.count("while (true)") == 1 and "wait 1;" in see
+          and see.index('int(getdvar("pt_see_fire", "0")) != 1') > see.index("while (true)"))
+    check("gsc: the state reads armed before the poll and fired with the game's own operator id",
+          see.count('setdvar("pt_see_fire_state", "armed");') == 1
+          and ('setdvar("pt_see_fire_state", "fired " + level.players[0] challenges::getcurrentoperatorlootid());'
+               in see))
+    check("gsc: the one fire breaks the loop and the run guard blocks a second thread",
+          see.count("break;") == 1 and "if (isdefined(level.pt_sf_run))" in see
+          and see.find(native) < see.find("break;"))
+
+    dlua = LUA_TEXT[DIAG]
+    check("diag: the see probe reader sits in the span and reads its one dvar",
+          'local SEE_DV, SEE_LAST = "pt_seeprobe", ""' in dlua
+          and "local v = A.dv(SEE_DV)" in dlua and "v == SEE_LAST" in dlua
+          and "  pcall(see_poll)\n" in dlua)
+    check("diag: the see probe reader prints in the match vm only, before the switch",
+          "local function see_poll()\n  if S.front ~= false then return end" in dlua
+          and dlua.find("  pcall(see_poll)\n") < dlua.find("  if diag_off() then\n"))
 
     info("lua %d B sha256 %s" % (len(SRC.encode()), hashlib.sha256(SRC.encode()).hexdigest().upper()))
     info("mod.json %d B" % os.path.getsize(MODJSON))
@@ -3503,13 +3622,13 @@ def diag_qb_gate(lua51):
     blk = rb_lines(lines_of(rt))
     check("diag B: the second switch prints one block that names its vm, its ref and its cap",
           count_line(blk, "rbdiag: 1 block") == 1
-          and has_line(blk, "rbdiag: 1 block vm=menu ref=sat_pi_alcor cap=40"), " | ".join(blk[:2]))
+          and has_line(blk, "rbdiag: 1 block vm=menu ref=sat_pi_alcor cap=60"), " | ".join(blk[:2]))
     check("diag B: it closes with a line that counts its own lines", rb_end(blk) == len(blk),
           "end=%s lines=%d" % (rb_end(blk), len(blk)))
     check("diag B: every line of it carries the prefix",
           all("rbdiag:" in ln for ln in blk) and blk[-1].startswith("progression_tuning: rbdiag"),
           " | ".join(blk[:2]))
-    check("diag B: the block is bounded", len(blk) <= 40, str(len(blk)))
+    check("diag B: the block is bounded", len(blk) <= 60, str(len(blk)))
     n = len(blk)
     pump(rt, 40)
     check("diag B: it prints once per switch on, not once per tick",
@@ -3740,7 +3859,7 @@ def diag_qb_rewards(lua51):
     check("diag B: QB18 - the default reticle's answer, both bits and the default guard",
           has_line(blk, "QB18 ret=true lock=1 reward=0 default=true"),
           " | ".join([ln for ln in blk if "QB18 " in ln]))
-    check("diag B: the block still closes inside its cap", len(blk) <= 40, str(len(blk)))
+    check("diag B: the block still closes inside its cap", len(blk) <= 60, str(len(blk)))
 
     bare = rb_rt(lua51)
     blk2 = rb_lines(lines_of(bare))
@@ -4108,7 +4227,7 @@ def g32_qb20(lua51):
           has_line(blk, "QB20 OB child 70003 split1= bit=0 reward=0 door=absent ans=absent"),
           " | ".join([x for x in blk if "70003" in x]))
     check("g32 qb20: six children across the three tabs, and the block inside its cap",
-          count_line(blk, " child ") == 6 and len(rb_lines(lines)) <= 40,
+          count_line(blk, " child ") == 6 and len(rb_lines(lines)) <= 60,
           "%d / %d" % (count_line(blk, " child "), len(rb_lines(lines))))
     check("g32 qb20: the three tabs print once each and the block closes",
           count_line(blk, "QB20 OB ") == 4 and count_line(blk, "QB20 BR ") == 2
@@ -4147,6 +4266,241 @@ def g32_qb20(lua51):
           and count_line(blk4, "QB20 BR absent ") == 1
           and count_line(blk4, "QB20 ZM absent ") == 1 and not has_line(blk4, "raised"),
           " | ".join(blk4[:3]))
+
+
+DESC40 = "Complete the Endgame contract to earn this skin for Kagan and no one else"[:40]
+
+# the task-skin door: hash keyed bundles, a premium skin, a season five one, a default, a sold one and a
+# store call that raises
+TASKFIX = r"""
+LOOT.itemTypes.OPERATOR_SKIN = 8
+SKINBUNDLES = {
+  [143284] = { [xhash("season")] = 0, [xhash("ispremium")] = false },
+  [151944] = { [xhash("season")] = 0 },
+  [92066] = { [xhash("season")] = 0, [xhash("ispremium")] = false },
+  [143521] = { [xhash("season")] = 0, [xhash("ispremium")] = false },
+  [143522] = { [xhash("season")] = 5, [xhash("ispremium")] = false },
+  [143523] = { [xhash("season")] = 0, [xhash("ispremium")] = false },
+  [120567] = { [xhash("season")] = 0, [xhash("ispremium")] = true },
+  [144419] = { [xhash("season")] = 5, [xhash("ispremium")] = false },
+}
+SBCALLS = 0
+LOOT[xhash("getscriptbundleforid")] = function(t, id)
+  SBCALLS = SBCALLS + 1
+  if t ~= 8 then return nil end
+  if id == 129403 then error("no bundle") end
+  return SKINBUNDLES[id]
+end
+STORE = { Bundles = {} }
+STORE.Bundles[xhash("IsLootUseableOnCurrentPlatform")] = function(c, id) return true end
+SCALLS = 0
+STORE.Bundles[xhash("GetFirstBundleWithLootId")] = function(c, id)
+  SCALLS = SCALLS + 1
+  if id == 136313 then error("no store row") end
+  if id == 129406 then return 900001 end
+  return nil
+end
+SET_DEFAULT(149872)
+SET_TYPE(143284, 8) SET_TYPE(151944, 8) SET_TYPE(92066, 8) SET_TYPE(143521, 8) SET_TYPE(143522, 8)
+SET_TYPE(143523, 8) SET_TYPE(120567, 8) SET_TYPE(144419, 8) SET_TYPE(149872, 8) SET_TYPE(129406, 8)
+SET_TYPE(136313, 8) SET_TYPE(129403, 8) SET_TYPE(129404, 8)
+"""
+
+# the census groups the list is drawn from, the level skins it adds and the one the user keeps open
+CENSUS_DOC = os.path.join(os.path.dirname(PKG), "progression-tuning", "docs", "OPERATOR-SKIN-CENSUS.md")
+if not os.path.isfile(CENSUS_DOC):
+    CENSUS_DOC = os.path.join(PKG, "docs", "OPERATOR-SKIN-CENSUS.md")
+CENSUS_GROUPS = [
+    "Zombies main quest - Black Ops 7",
+    "Zombies map task/boss",
+    "Endgame (co-op campaign)",
+    "Multiplayer ranked & prestige",
+    "Warzone / Black Ops Royale",
+    "Other",
+]
+CENSUS_LEVEL = [98770, 92060, 98139, 98346, 91985, 94352, 113114, 113115, 113111, 113113,
+                121135, 121671]
+CENSUS_OPEN = [113112]
+
+
+def census_task_ids():
+    """The six census groups plus the level skins, minus the one the user keeps open."""
+    out, take = [], False
+    for ln in open(CENSUS_DOC, encoding="utf-8").read().split("\n"):
+        if ln.startswith("## "):
+            take = re.sub(r"\s*\(\d+\)$", "", ln[3:].strip()) in CENSUS_GROUPS
+            continue
+        m = re.match(r"^\| (\d+) \|", ln) if take else None
+        if m is None:
+            continue
+        i = int(m.group(1))
+        if i not in CENSUS_OPEN and i not in out:
+            out.append(i)
+    out += [i for i in CENSUS_LEVEL if i not in out and i not in CENSUS_OPEN]
+    return out
+
+
+def g33_task_lock(lua51):
+    lockable = [143284, 151944, 92066]
+    premium = [120567]
+    seasonlisted = [144419]
+    unlisted = [143521, 143522]
+    bpr = [143523]
+    dflt = [149872]
+    broken = [136313]
+    nobit = [129404]
+    raised = [129403]
+    sold = [129406]
+    lit = (lockable + premium + seasonlisted + unlisted + bpr + dflt + broken
+           + raised + sold)
+
+    want = census_task_ids()
+    m = re.search(r"local GTASK_IDS = \{(.*?)\}", LUA_TEXT[PRISON], re.S)
+    ids = [int(x) for x in re.findall(r"\d+", m.group(1))] if m else []
+    check("g33 task lock: the table is the census's six groups and the level list, once each",
+          ids == want and len(set(ids)) == len(want),
+          "%d ids of %d, %s" % (len(ids), len(want), sorted(set(ids) ^ set(want))[:6]))
+    check("g33 task lock: the kept-open skin and the id outside every list are not in the table",
+          all(i not in ids for i in (113112, 95279)),
+          str([i for i in (113112, 95279) if i in ids]))
+
+    rt = new_rt(lua51, frontend=True, src=False, pre=TASKFIX)
+    lua_slabs(rt, slabs_of(lit))
+    lua_rslabs(rt, slabs_of(bpr))
+    rt.execute("SET_G11(41)")
+    rt.execute("SET_G12(1)")
+    load(rt)
+    pump(rt, 2)
+
+    check("g33 task lock: the three listed skins the game cannot pay read locked on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in lockable),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in lockable]))
+    check("g33 task lock: a listed skin the game marks premium locks now",
+          rt.eval("ASK_P(%d)" % premium[0]) is False and rt.eval("ASK_L(%d)" % premium[0]) is False,
+          str(rt.eval("ASK_L(%d)" % premium[0])))
+    check("g33 task lock: a listed skin whose own bundle says season five locks now",
+          rt.eval("ASK_P(%d)" % seasonlisted[0]) is False
+          and rt.eval("ASK_L(%d)" % seasonlisted[0]) is False,
+          str(rt.eval("ASK_L(%d)" % seasonlisted[0])))
+    check("g33 task lock: a listed skin whose own bundle getter raises still locks",
+          rt.eval("ASK_P(%d)" % raised[0]) is False and rt.eval("ASK_L(%d)" % raised[0]) is False,
+          str(rt.eval("ASK_L(%d)" % raised[0])))
+    check("g33 task lock: an id outside the list keeps the client's answer, bundle and all",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in unlisted),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in unlisted]))
+    check("g33 task lock: a listed skin the game itself calls a default stays open",
+          rt.eval("ASK_P(%d)" % dflt[0]) is True and rt.eval("ASK_L(%d)" % dflt[0]) is True,
+          str(rt.eval("ASK_L(%d)" % dflt[0])))
+    check("g33 task lock: a listed skin the store sells stays open",
+          rt.eval("ASK_P(%d)" % sold[0]) is True and rt.eval("ASK_L(%d)" % sold[0]) is True,
+          str(rt.eval("ASK_L(%d)" % sold[0])))
+    check("g33 task lock: a listed skin whose store call raises stays open",
+          rt.eval("ASK_P(%d)" % broken[0]) is True and rt.eval("ASK_L(%d)" % broken[0]) is True,
+          str(rt.eval("ASK_L(%d)" % broken[0])))
+    check("g33 task lock: a listed skin with no bit stays open",
+          rt.eval("ASK_P(%d)" % nobit[0]) is True and rt.eval("ASK_L(%d)" % nobit[0]) is True,
+          str(rt.eval("ASK_L(%d)" % nobit[0])))
+    check("g33 task lock: an id outside the list still closes on the reward set, as it did",
+          rt.eval("ASK_P(%d)" % bpr[0]) is False and rt.eval("ASK_L(%d)" % bpr[0]) is False,
+          str(rt.eval("ASK_L(%d)" % bpr[0])))
+    check("g33 task lock: the guard never asks for a skin bundle",
+          num(rt, "SBCALLS") == 0, str(num(rt, "SBCALLS")))
+    check("g33 task lock: one arm line per vm, carrying the table's own count",
+          count_line(lines_of(rt), "skin lock: %d task skins" % len(want)) == 1,
+          str(count_line(lines_of(rt), "skin lock: %d task skins" % len(want))))
+
+    rt.execute("SET_TOGGLE('zm_unlock_operators', '1')")
+    pump(rt, 8)
+    check("g33 task lock: zm_unlock_operators opens every listed skin",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True
+              for i in lockable + premium + seasonlisted + raised + [bpr[0]]),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in lockable]))
+    base = num(rt, "DEFCALLS + SCALLS")
+    rt.execute("SET_TOGGLE('zm_unlock_operators', '0')")
+    pump(rt, 8)
+    check("g33 task lock: and off again closes them without a reload",
+          all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in lockable),
+          str([(i, rt.eval("ASK_L(%d)" % i)) for i in lockable]))
+    check("g33 task lock: a listed skin's two answers are read once, then kept per id",
+          num(rt, "DEFCALLS + SCALLS") == base,
+          "%d then %d" % (base, num(rt, "DEFCALLS + SCALLS")))
+
+    rt3 = new_rt(lua51, frontend=True, src=False, pre=TASKFIX)
+    rt3.execute('LOOT[xhash("isitemdefault")] = nil')
+    lua_slabs(rt3, slabs_of(lockable))
+    rt3.execute("SET_G11(43)")
+    load(rt3)
+    pump(rt3, 2)
+    check("g33 task lock: with the default getter absent every listed skin stays open",
+          all(rt3.eval("ASK_P(%d)" % i) is True and rt3.eval("ASK_L(%d)" % i) is True for i in lockable),
+          str([(i, rt3.eval("ASK_L(%d)" % i)) for i in lockable]))
+
+    rt3b = new_rt(lua51, frontend=True, src=False, pre=TASKFIX)
+    rt3b.execute('STORE.Bundles[xhash("GetFirstBundleWithLootId")] = nil')
+    lua_slabs(rt3b, slabs_of(lockable))
+    rt3b.execute("SET_G11(45)")
+    load(rt3b)
+    pump(rt3b, 2)
+    check("g33 task lock: with the store getter absent every listed skin stays open",
+          all(rt3b.eval("ASK_P(%d)" % i) is True and rt3b.eval("ASK_L(%d)" % i) is True
+              for i in lockable),
+          str([(i, rt3b.eval("ASK_L(%d)" % i)) for i in lockable]))
+
+    rt4 = new_rt(lua51, frontend=False, src=False, pre=TASKFIX)
+    lua_slabs(rt4, slabs_of(lockable))
+    rt4.execute("SET_G11(44)")
+    load(rt4)
+    pump(rt4, 2)
+    check("g33 task lock: the same rule answers in the match vm",
+          all(rt4.eval("ASK_P(%d)" % i) is False and rt4.eval("ASK_L(%d)" % i) is False for i in lockable),
+          str([(i, rt4.eval("ASK_L(%d)" % i)) for i in lockable]))
+
+
+def g33_skins(lua51):
+    rt = rb_rt(lua51, extra=G33FIX)
+    lines = lines_of(rt)
+    blk = [x for x in lines if "QB21 " in x]
+    one = [x for x in blk if "id=143284 " in x]
+    want = ("QB21 skin id=143284 bundle=y unlocktype=custom season=5 premium=false quest=900 "
+            "qtype=900 default=false store=n desc=" + DESC40)
+    check("g33 skins: the bundle and every provenance field the game reads, the desc cut at forty",
+          len(one) == 1 and want in one[0] and " unlocked=" in one[0], " | ".join(one))
+    ids = ("143284", "151944", "92066", "143522", "149872")
+    check("g33 skins: the five ids one per line, then one line naming the three globals",
+          [x.split("id=")[1].split(" ")[0] for x in blk if " id=" in x] == list(ids)
+          and has_line(blk, "QB21 skin globals OPERATOR=y Operator=y getscriptbundleforid=y"),
+          " | ".join(blk))
+    two = [x for x in blk if "id=151944 " in x]
+    check("g33 skins: a bundle with no premium field is answered by its own getter",
+          has_line(two, " season=5 premium=false "), " | ".join(two))
+    thr = [x for x in blk if "id=92066 " in x]
+    check("g33 skins: and a bundle with no season is answered by getitemseasonbyid",
+          has_line(thr, " season=0 premium=true "), " | ".join(thr))
+    four = [x for x in blk if "id=143522 " in x or "id=149872 " in x]
+    check("g33 skins: an id with no bundle still answers, the store the only difference",
+          count_line(four, "bundle=n unlocktype=nil") == 2
+          and has_line(four, "quest=nil qtype=nil default=false store=y desc=nil")
+          and has_line(four, "quest=nil qtype=nil default=false store=n desc=nil"),
+          " | ".join(four))
+    pump(rt, 40)
+    check("g33 skins: the block prints once per vm, not once per tick",
+          count_line(lines_of(rt), "QB21 ") == 6, str(count_line(lines_of(rt), "QB21 ")))
+
+    rt2 = rb_rt(lua51, extra=G33FIX, b=False)
+    for name in ("getscriptbundleforid", "getquestrewardtypeforid", "GetUnlockDescription",
+                 "getitemseasonbyid", "getispremiumforbundle"):
+        rt2.execute('LOOT[xhash("%s")] = nil' % name)
+    rt2.execute('STORE.Bundles[xhash("GetFirstBundleWithLootId")] = nil')
+    rt2.execute("OPERATOR = nil Operator = nil")
+    rt2.execute("SET_TOGGLE('pt_diagb', 1)")
+    pump(rt2, 8)
+    blk2 = [x for x in lines_of(rt2) if "QB21 " in x]
+    check("g33 skins: with none of the getters every field is nil or absent and nothing raises",
+          len(blk2) == 6
+          and has_line(blk2, "bundle=n unlocktype=nil season=absent premium=nil quest=nil "
+                             "qtype=absent default=false store=err desc=nil")
+          and has_line(blk2, "QB21 skin globals OPERATOR=n Operator=n getscriptbundleforid=n"),
+          " | ".join(blk2))
 
 
 def card_vm(lua51, pre, ids, n, ticks=8, cards=True):
@@ -5499,6 +5853,38 @@ def splashck_order(lua51):
     check("order: the diag splash check prints its seven lines in %s order" % LOAD_ORDER,
           len(blk) == 7 and has_line(blk, "splashck: 1 types vm=menu sm=table su=table hm=table"),
           " | ".join(blk))
+
+
+def seeprobe_reader(lua51):
+    rt = new_rt(lua51, frontend=False, src=False)
+    load(rt)
+    check("seeprobe: the reader is silent while the dvar is missing",
+          not has_line(lines_of(rt), "seeprobe:"), " | ".join(lines_of(rt))[:160])
+
+    rt.execute('SET_DVAR("pt_seeprobe", "1 seeprobe: ctx n=1")')
+    rt.eval("pcall(rawget(_G, 'ProgressionTuning').hooks.diag)")
+    one = [ln for ln in lines_of(rt) if "seeprobe:" in ln]
+    check("seeprobe: one new value prints once under the diag prefix",
+          one == ["progression_tuning: 1 seeprobe: ctx n=1"], " | ".join(one))
+
+    rt.eval("pcall(rawget(_G, 'ProgressionTuning').hooks.diag)")
+    same = [ln for ln in lines_of(rt) if "seeprobe:" in ln]
+    check("seeprobe: the same value never prints twice", len(same) == 1, " | ".join(same))
+
+    rt.execute('SET_DVAR("pt_seeprobe", "2 seeprobe: rh n=1 rh_enabled=0")')
+    rt.eval("pcall(rawget(_G, 'ProgressionTuning').hooks.diag)")
+    two = [ln for ln in lines_of(rt) if "seeprobe:" in ln]
+    check("seeprobe: the next value prints, so the counter carries the change",
+          len(two) == 2 and two[1] == "progression_tuning: 2 seeprobe: rh n=1 rh_enabled=0",
+          " | ".join(two))
+
+    menu = new_rt(lua51, frontend=True, src=False)
+    load(menu)
+    menu.execute('SET_DVAR("pt_seeprobe", "3 seeprobe: menu")')
+    menu.eval("pcall(rawget(_G, 'ProgressionTuning').hooks.diag)")
+    check("seeprobe: the menu vm stays silent, one reader in the match",
+          not has_line(lines_of(menu), "seeprobe:"),
+          " | ".join(ln for ln in lines_of(menu) if "seeprobe:" in ln))
 
 
 def clock(rt):
@@ -11236,6 +11622,184 @@ def blueprint_rule(lua51):
                   "%s / %s" % (r.eval("ASK_P(%d)" % VAR_FOREIGN), r.eval("ASK_P(%d)" % FOREIGN_BASE)))
 
 
+def quest_cards(lua51):
+    """G33 a1: the two playdate rewards card once in the match, and a done baseline stays silent."""
+    PRE = r"""
+ST = {}
+OC_ORIG = OnlineChallenges[xhash("getchallengeprogress")]
+OnlineChallenges[xhash("getchallengeprogress")] = function(c, id)
+  local r = OC_ORIG(c, id)
+  if r == nil then r = { progress = { xp = 0, default = 0, rank = 0 } } end
+  local s = ST[tostring(id)]
+  if s ~= nil then r.status = s end
+  return r
+end
+function SET_ST(id, s) ST[tostring(id)] = s end
+SET_LOOT_REF(151944, "sat_usa_pl_amber_super_skin")
+SET_LOOT_REF(149896, "sat_usa_pl_warden")
+SET_ITEM_NAME(151944, "Dempsey Memento Mori")
+SET_ITEM_NAME(149896, "The Warden")
+"""
+
+    def fresh(st11, st14, serial, extra=""):
+        rt = new_rt(lua51, src=False)
+        rt.execute(PRE + extra)
+        if st11 is not None:
+            rt.execute("SET_ST(78011, %d)" % st11)
+        if st14 is not None:
+            rt.execute("SET_ST(78014, %d)" % st14)
+        rt.execute("SET_G11(%d)" % serial)
+        load(rt)
+        return rt
+
+    rt = fresh(3, 3, 200)
+    pump(rt, 24)
+    l = lines_of(rt)
+    check("reward: two rows already done at the arm draw nothing",
+          rt.eval("NEVENTS()") == 0, " | ".join(l[-4:]))
+    check("reward: both are latched done, so no later reading can card them",
+          rt.eval("ProgressionTuning.reward.done['78011']") is True
+          and rt.eval("ProgressionTuning.reward.done['78014']") is True
+          and has_line(l, "reward row 78011 stands done"), " | ".join(l[-6:]))
+
+    rt2 = fresh(1, 1, 201)
+    pump(rt2, 24)
+    check("reward: an open baseline draws nothing", rt2.eval("NEVENTS()") == 0,
+          " | ".join(lines_of(rt2)[-4:]))
+    rt2.execute("SET_ST(78011, 3) SET_ST(78014, 3)")
+    pump(rt2, 60)
+    l = lines_of(rt2)
+    check("reward: the completion draws exactly two item cards",
+          rt2.eval("NAMED('add_message_splash_manager')") == 2,
+          str(rt2.eval("NAMED('add_message_splash_manager')")))
+    check("reward: one line per card, naming the loot, the item, the ref and the row",
+          has_line(l, "reward card 151944 Dempsey Memento Mori ref=sat_usa_pl_amber_super_skin row 78011")
+          and has_line(l, "reward card 149896 The Warden ref=sat_usa_pl_warden row 78014"),
+          " | ".join([x for x in l if "reward card" in x][:3]))
+    check("reward: both cards are the game own weaponProgression card",
+          rt2.eval("EV(1).options.displayLocation") == "weaponProgression"
+          and rt2.eval("EV(1).options.itemRef") == "sat_usa_pl_amber_super_skin"
+          and rt2.eval("EV(1).options.headerText") == "Dempsey Memento Mori"
+          and rt2.eval("EV(2).options.displayLocation") == "weaponProgression"
+          and rt2.eval("EV(2).options.itemRef") == "sat_usa_pl_warden"
+          and rt2.eval("EV(2).options.headerText") == "The Warden",
+          str(rt2.eval("EV(1).options.headerText")))
+    rt2.execute("SET_ST(78011, 1) SET_ST(78014, 1)")
+    pump(rt2, 24)
+    rt2.execute("SET_ST(78011, 3) SET_ST(78014, 3)")
+    pump(rt2, 60)
+    check("reward: the same completion read twice draws nothing more",
+          rt2.eval("NAMED('add_message_splash_manager')") == 2,
+          str(rt2.eval("NAMED('add_message_splash_manager')")))
+
+    # the states are Challenge.State's own (challengeutils.dec.lua:287-295):
+    # invalid 0, in progress 1, claimable 2, finished 3, inactive 4, unscheduled 5, queued 6
+    rt8 = fresh(0, 5, 207)
+    pump(rt8, 24)
+    l = lines_of(rt8)
+    check("reward: invalid 0 and unscheduled 5 at the arm read open, never done",
+          rt8.eval("ProgressionTuning.reward.done['78011']") is not True
+          and rt8.eval("ProgressionTuning.reward.done['78014']") is not True
+          and has_line(l, "reward row 78011 stands open")
+          and has_line(l, "reward row 78014 stands open"),
+          " | ".join([x for x in l if "reward row" in x][:2]))
+    pump(rt8, 280)
+    check("reward: a row that reads 0 forever never fires",
+          rt8.eval("NEVENTS()") == 0, str(rt8.eval("NEVENTS()")))
+    rt8.execute("SET_ST(78011, 3)")
+    pump(rt8, 60)
+    got = rt8.eval("NAMED('add_message_splash_manager')")
+    hdr = rt8.eval("(EV(1) or {options={}}).options.headerText")
+    check("reward: the unstarted row reaching 3 cards once",
+          got == 1 and hdr == "Dempsey Memento Mori", "%s / %s" % (got, hdr))
+    rt8.execute("SET_ST(78014, 6)")
+    pump(rt8, 60)
+    check("reward: the 3 card is not drawn twice and queued 6 draws nothing",
+          rt8.eval("NAMED('add_message_splash_manager')") == 1,
+          str(rt8.eval("NAMED('add_message_splash_manager')")))
+
+    rt9 = fresh(3, 2, 208)
+    pump(rt9, 24)
+    l = lines_of(rt9)
+    check("reward: finished 3 and claimable 2 at the arm stay silent and latch done",
+          rt9.eval("NEVENTS()") == 0
+          and rt9.eval("ProgressionTuning.reward.done['78011']") is True
+          and rt9.eval("ProgressionTuning.reward.done['78014']") is True
+          and has_line(l, "reward row 78011 stands done")
+          and has_line(l, "reward row 78014 stands done"),
+          " | ".join([x for x in l if "reward row" in x][:2]))
+    pump(rt9, 60)
+    check("reward: neither latched row cards later", rt9.eval("NEVENTS()") == 0,
+          str(rt9.eval("NEVENTS()")))
+
+    rt3 = new_rt(lua51, src=False)
+    rt3.execute(PRE)
+    rt3.execute("SET_OC(78011, 0, 0) SET_OC(78014, 0, 0)")
+    rt3.execute("SET_G11(202)")
+    load(rt3)
+    pump(rt3, 24)
+    check("reward: a row with no status field primes on its own progress",
+          rt3.eval("NEVENTS()") == 0, " | ".join(lines_of(rt3)[-4:]))
+    rt3.execute("SET_OC(78011, 1, 0) SET_OC(78014, 1, 0)")
+    pump(rt3, 60)
+    check("reward: the one tier crossing cards both, with no status field at all",
+          rt3.eval("NAMED('add_message_splash_manager')") == 2,
+          str(rt3.eval("NAMED('add_message_splash_manager')")))
+
+    rt4 = fresh(1, 1, 203, extra="SET_NOTIF(1)")
+    pump(rt4, 24)
+    rt4.execute("SET_ST(78011, 3) SET_ST(78014, 3)")
+    pump(rt4, 60)
+    check("reward: the game own notification switch silences the cards",
+          rt4.eval("NEVENTS()") == 0 and has_line(lines_of(rt4), "reward cards stand down"),
+          " | ".join(lines_of(rt4)[-4:]))
+
+    rt5 = fresh(1, 1, 204, extra="SET_TOGGLE('pt_on', 0)")
+    pump(rt5, 24)
+    rt5.execute("SET_ST(78011, 3) SET_ST(78014, 3)")
+    pump(rt5, 60)
+    check("reward: pt_on off draws nothing", rt5.eval("NEVENTS()") == 0,
+          str(rt5.eval("NEVENTS()")))
+
+    rt6 = fresh(1, 1, 205)
+    pump(rt6, 24)
+    rt6.execute("SET_ST(78011, 3)")
+    pump(rt6, 60)
+    check("reward: a single row crossing pays its own card alone",
+          rt6.eval("NAMED('add_message_splash_manager')") == 1
+          and rt6.eval("LASTOF('add_message_splash_manager').options.headerText") == "Dempsey Memento Mori",
+          "%s / %s" % (rt6.eval("NAMED('add_message_splash_manager')"),
+                       rt6.eval("LASTOF('add_message_splash_manager').options.headerText")))
+
+    rt7 = new_rt(lua51, src=False)
+    rt7.execute("SET_G11(206)")
+    load(rt7)
+    pump(rt7, 280)
+    check("reward: a store that answers no row is one loud line and no card",
+          rt7.eval("NEVENTS()") == 0
+          and count_line(lines_of(rt7), "reward row 78011 reads nothing - no card this match") == 1,
+          " | ".join([x for x in lines_of(rt7) if "reward" in x][:2]))
+
+    # the three load orders read the same store and draw the same two cards
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            ro = lua51(unpack_returned_tuples=True)
+            ro.execute(PRELUDE)
+            ro.execute("FRONTEND = false")
+            ro.execute(FIXTURE)
+            ro.execute("SET_TOGGLE('pt_log', 1)")
+            ro.execute(PRE + "SET_ST(78011, 1) SET_ST(78014, 1) SET_G11(210)")
+            for n in LOAD_ORDERS[order]:
+                ro.execute(LUA_TEXT[n])
+            pump(ro, 24)
+            ro.execute("SET_ST(78011, 3) SET_ST(78014, 3)")
+            pump(ro, 60)
+            check("reward: %s order draws the same two cards" % order,
+                  ro.eval("NAMED('add_message_splash_manager')") == 2,
+                  "%s / %s" % (ro.eval("NAMED('add_message_splash_manager')"),
+                               " | ".join([x for x in lines_of(ro) if "reward" in x][:2])))
+
+
 def main():
     print("progression-tuning - offline checks")
     print("source: %d parts under %s" % (len(LUA_FILES), LUA_DIR))
@@ -11303,6 +11867,9 @@ def main():
             diag_qb_rewards(lua51)
             g32_cards(lua51)
             g32_qb20(lua51)
+            g33_skins(lua51)
+            g33_task_lock(lua51)
+            quest_cards(lua51)
             g32_card_files(lua51)
             g32_card_path(lua51)
             g32_card_miss(lua51)
@@ -11327,6 +11894,7 @@ def main():
             splashck_slot(lua51)
             splashck_late(lua51)
             splashck_order(lua51)
+            seeprobe_reader(lua51)
             splash_slot(lua51)
             splash_group(lua51)
             splash_side(lua51)

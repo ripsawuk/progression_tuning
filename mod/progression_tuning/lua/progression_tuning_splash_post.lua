@@ -20,6 +20,7 @@ local function want(...) return A.want(...) end
 local function empty(...) return A.empty(...) end
 local function vlog(...) return A.vlog(...) end
 local function ours(...) return A.ours(...) end
+local function rec_value(...) return A.rec_value(...) end
 
 local PRIO = { level = 1, camo = 3, chal = 4 }
 -- the main part own timer step
@@ -57,6 +58,19 @@ local LAST = nil
 -- the cards parked for a centre card own seq
 local PENDING = {}
 local SEQ, CENTRE = 0, 0
+
+-- the playdate rows that pay a reward card
+local REWARD_ROWS = { { id = 78011, loot = 151944 }, { id = 78014, loot = 149896 } }
+-- the one tier a playdate row carries
+local REWARD_AT = 1
+-- the progress fields a row record can carry
+local REWARD_FIELDS = { "default", "progress", "xp" }
+-- the poll the playdate rows are read on
+local REWARD_POLL = 8
+-- the two challenge states a finished row reads
+local ST_FINISHED, ST_CLAIMABLE = 3, 2
+S.reward = S.reward or { last = {}, bas = {}, done = {}, miss = {} }
+local reward_watch = nil
 
 -- the alias the client own table answers with
 local function alias_of(name)
@@ -174,6 +188,7 @@ end
 
 -- one card per gap, worst first
 local function flush()
+  if reward_watch ~= nil then pcall(reward_watch) end
   if #S.q == 0 then return end
   if S.tick < S.nextAt then return end
   local pick = 1
@@ -562,6 +577,90 @@ local function chal_show(row, target, value)
     end
   elseif said("chalerr:" .. tostring(row.id)) then
     log("daily card id=" .. tostring(row.id) .. " failed: " .. clip(err, 50))
+  end
+end
+
+-- is the row record finished
+local function reward_done(rec)
+  if type(rec) ~= "table" then return nil end
+  local _, st = member(rec, "status")
+  st = tonumber(st)
+  if st ~= nil then return st == ST_FINISHED or st == ST_CLAIMABLE end
+  local v = rec_value(rec, REWARD_FIELDS)
+  if v == nil then return nil end
+  return v >= REWARD_AT
+end
+
+-- draws one playdate reward as an item card
+local function reward_show(e)
+  if notifications_off() then
+    if said("notifoff") then vlog("reward cards stand down - the game own achievement splash switch is off") end
+    return
+  end
+  local LOOT = rawget(_G, "LOOT")
+  local ref = call(LOOT, "getitemreffromid", e.loot)
+  if empty(ref) then
+    log("reward " .. tostring(e.loot) .. " row " .. tostring(e.id) .. " has no ref - no card")
+    return
+  end
+  local ty = call(LOOT, "gettypeforid", e.loot)
+  local name = call(LOOT, "getitemnamebyid", e.loot, true)
+  local image = call(LOOT, "getitemimagebyid", e.loot)
+  local opts = { controllerIndex = 0, displayLocation = "weaponProgression", itemRef = ref,
+                 priority = PROG_PRIO, displayTimeOverride = 30 }
+  if ty ~= nil then opts.itemType = ty end
+  if not empty(name) then opts.headerText = name end
+  if not empty(image) and image ~= "white" then opts.image = image end
+  local ok, err = fire({ name = "add_message_splash_manager", immediate = true, options = opts })
+  if ok then
+    LAST = { kind = "chalD", id = e.id }
+    log("reward card " .. tostring(e.loot) .. " " .. (empty(name) and "?" or clip(name, 30))
+      .. " ref=" .. clip(ref, 28) .. " row " .. tostring(e.id) .. " type=" .. tostring(ty))
+  elseif said("err:reward") then
+    log("reward card " .. tostring(e.loot) .. " failed: " .. clip(err, 60))
+  end
+end
+
+-- queues one playdate card once
+local function reward_card(e)
+  local r = S.reward
+  local k = tostring(e.id)
+  if r.done[k] == true then return false end
+  if not enqueue("chal", function() reward_show(e) end) then return false end
+  r.done[k] = true
+  return true
+end
+
+-- one baseline reading then one cross per row
+reward_watch = function()
+  local r = S.reward
+  if S.tick % REWARD_POLL ~= 0 then return end
+  local read = S.record
+  if type(read) ~= "function" then return end
+  local i = 1
+  while i <= #REWARD_ROWS do
+    local e = REWARD_ROWS[i]
+    local now = reward_done(read(e.id))
+    if now ~= nil then
+      local k = tostring(e.id)
+      if r.bas[k] == nil then
+        if r.last[k] == now then
+          r.bas[k] = now
+          if now then r.done[k] = true end
+          vlog("reward row " .. k .. " stands " .. (now and "done" or "open"))
+        else
+          r.last[k] = now
+        end
+      elseif now ~= r.bas[k] then
+        r.bas[k] = now
+        if now then reward_card(e) end
+      end
+    else
+      local k = tostring(e.id)
+      r.miss[k] = (r.miss[k] or 0) + 1
+      if r.miss[k] == 32 then log("reward row " .. k .. " reads nothing - no card this match") end
+    end
+    i = i + 1
   end
 end
 
