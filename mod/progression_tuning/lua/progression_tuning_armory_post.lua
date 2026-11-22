@@ -1,6 +1,6 @@
 local PART = "armory"
 
-local VERSION = "v14"
+local VERSION = "v15"
 local PREFIX = "progression_tuning: "
 -- the armory schedule gate a key with no name
 local SCHED = "0a6376439b2d40dc"
@@ -9,10 +9,6 @@ local MAX_TRIES = 480
 -- the activation row the client asks about the active item
 local ACTIVATION = 52813
 local ACT_STR = tostring(ACTIVATION)
--- the wz activation row beside it
-local ACT_WZ = 52814
--- the akita loot the armory tile carries
-local PR_LOOT = 94890
 -- the channel the hook half reads a pick on
 local CH = "pt_armory_ch"
 -- the record getter an arm needs
@@ -715,6 +711,8 @@ local function record(id, ref)
   end
 end
 
+local uon
+
 -- the clients own press first then the row
 local function wrap_press()
   local tbl = rawget(_G, "ARMORY")
@@ -722,6 +720,8 @@ local function wrap_press()
   if k == nil then return false end
   if OURS[orig] then return true end
   local w = function(menu, c, ...)
+    -- a press changes nothing while the armory is unlocked
+    if uon() then return end
     local res = pack(pcall(orig, menu, c, ...))
     if not res[1] then return end
     local ok, id, ref, tried = pcall(press_row, c, menu, ...)
@@ -765,15 +765,12 @@ local function wrap_focus()
 end
 
 local lk_arm
--- the probe line and the clients own getter behind it
-local PR_SAY, OCORIG
 
 -- the activation record answers the pick for this session
 local function wrap_answer()
   local OC = rawget(_G, "OnlineChallenges")
   local k, orig = slot_of(OC, OCG)
   if k == nil then return false end
-  if OCORIG == nil then OCORIG = orig end
   if OURS[orig] then return true end
   local w = function(c, id, ...)
     local res = pack(pcall(orig, c, id, ...))
@@ -783,8 +780,9 @@ local function wrap_answer()
       return UNPACK(res, 2, res.n)
     end
     pcall(lk_arm)
-    if PR_SAY ~= nil then pcall(PR_SAY) end
     local rec = res[2]
+    -- an unlocked armory presents no active item
+    if uon() then return rec end
     if OUR_RECS[rec] then return rec end
     if Ar.pick == nil then pcall(seed, true) end
     local picked = Ar.pick
@@ -869,7 +867,7 @@ local function lk_now()
 end
 
 -- the unlock flag the snapshot holds
-local function uon()
+uon = function()
   return lk_now().u == true
 end
 
@@ -883,50 +881,6 @@ local function lk_free(loot)
   if s.sw.all then return true end
   local k = KIND[loot]
   return k ~= nil and s.sw.t[k] == true
-end
-
--- the clients own activation for one row now
-local function pr_act(row)
-  local g = OCORIG
-  if g == nil then g = fn_of(rawget(_G, "OnlineChallenges"), OCG) end
-  if g == nil then return "none" end
-  local ok, rec = pcall(g, 0, row)
-  if not ok or type(rec) ~= "table" then return "none" end
-  local okv, v = pcall(function() return rec.progress.last_activation end)
-  if not okv then return "none" end
-  local n = tonumber(v)
-  if n == nil then return "none" end
-  return tostring(n)
-end
-
--- the doors own verdict for the akita loot
-local function pr_loot()
-  local locks = S.locks
-  if type(locks) ~= "table" then return "none" end
-  local okA, locked = pcall(locks.answer, PR_LOOT)
-  if okA and locked == true then return "locked" end
-  local okO, open = pcall(locks.open, PR_LOOT)
-  if okO and open == true then return "open" end
-  return "client"
-end
-
--- the two probe points each say this once
-local PR = { act = false, door = false }
-
-PR_SAY = function(door)
-  if door == nil then
-    if PR.act then return end
-    if not uon() then return end
-    PR.act = true
-  else
-    if PR.door then return end
-    if not uon() then return end
-    PR.door = true
-  end
-  local d = "none"
-  if door ~= nil then d = door .. "=locked" end
-  log("armory probe act=" .. pr_act(ACTIVATION) .. "/" .. pr_act(ACT_WZ)
-    .. " loot=" .. pr_loot() .. " door=" .. d)
 end
 
 -- each streak ref and the loot row behind it
@@ -1031,11 +985,7 @@ local function lk_answer(locks)
         return not (ok and free == true)
       end
     end
-    local v = lk_thru(orig, id)
-    if PR_SAY ~= nil and PR.door ~= true and Ar.u == true and loot ~= nil and v == true then
-      pcall(PR_SAY, loot)
-    end
-    return v
+    return lk_thru(orig, id)
   end
   LKW[w] = true
   locks.answer = w
