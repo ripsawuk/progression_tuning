@@ -59,6 +59,10 @@ rem armory.c carries the xp feed's line, its state, its change log and the pay t
 rem so its driver links the shipped g11.c beside it (the page checks and the name hash are g11's) and resolve.c
 rem (the record array's two addresses), exactly as pick_test does.
 call :build armory_test "%~dp0armory_test.c" "%~dp0..\src\armory.c" "%~dp0..\src\g11.c" "%~dp0..\src\resolve.c"
+rem research.c carries the augment research channel's line, its file and its own pay over the same feed, so
+rem its driver links the shipped armory.c (the feed parse, the row reads and the pay shape), g11.c and
+rem resolve.c, exactly as armory_test does.
+call :build research_test "%~dp0research_test.c" "%~dp0..\src\research.c" "%~dp0..\src\armory.c" "%~dp0..\src\g11.c" "%~dp0..\src\resolve.c"
 call :build publish_test "%~dp0publish_test.c" "%~dp0..\src\publish.c"
 call :build nativepay_test "%~dp0nativepay_test.c" "%~dp0..\src\nativepay.c" "%~dp0..\src\resolve.c"
 rem resolve_check.exe is the resolver's own checker: the shipped src\resolve.c over a PE file on disk.
@@ -83,8 +87,8 @@ echo BUILT: the drivers in %~dp0..\build
 exit /b 0
 
 :build
-rem %1 = exe name, %2 = driver source, %3..%5 = the units under test (any may be empty)
-cl /nologo /O2 /W3 /Brepro "%~2" %3 %4 %5 /Fo"%~dp0..\build\testsrc\\" /Fe:"%~dp0..\build\%~1.exe" ^
+rem %1 = exe name, %2 = driver source, %3..%6 = the units under test (any may be empty)
+cl /nologo /O2 /W3 /Brepro "%~2" %3 %4 %5 %6 /Fo"%~dp0..\build\testsrc\\" /Fe:"%~dp0..\build\%~1.exe" ^
    /link user32.lib /MACHINE:X64
 if errorlevel 1 (
     echo ERROR: %~1 failed

@@ -43,7 +43,7 @@ rem /Brepro: deterministic output. Without it every build stamps a new timestamp
 rem the rebuilt bytes never equal the installed ones and "hash read back equal" silently stops meaning
 rem anything. With it a rebuild from the same source reproduces the same DLL.
 rem
-rem The eleven sources, and what each carries:
+rem The twelve sources, and what each carries:
 rem   proxy_main.c  the 17 exports, the one-file System32 resolve, the host guard, DllMain
 rem   frame.c       the identification pass, the g11 lock payload, the ptsplash_paid publish, the forced
 rem                 publish's thread and its two triggers, the client's ops check, the channels' tick (tokens,
@@ -55,6 +55,7 @@ rem                 switch, the record fingerprint
 rem   g11.c         the payload's pure half (hex, split, header, name hash, canary)
 rem   tokens.c      the token channel's dvar and its file: the one-line form, the tmp-and-rename write
 rem   pick.c        the armory pick channel's dvar and its file, the queue, the advance request
+rem   research.c    the augment research channel's dvar and its file, and its own pay of the same feed
 rem   armory.c      the armory xp feed: the mod's dvar read, parsed, and logged when the match total moves
 rem   master.c      the master-prestige level byte, hooked at the level function's five call sites
 rem   nativepay.c   the 5 bytes at the award's call site: ev=95 pays the game's own field 45
@@ -63,7 +64,7 @@ rem
 rem `src\version_floor.c` is deliberately NOT compiled in: the user's 2026-11-12 decision is that the hook has
 rem no game-version restriction. The files stay on disk, untouched, as the record of build 26.
 rem /W3 and zero warnings is a build requirement, not an aspiration.
-cl /nologo /LD /O2 /W3 /Brepro /DUNICODE /D_UNICODE "%~dp0src\proxy_main.c" "%~dp0src\frame.c" "%~dp0src\resolve.c" "%~dp0src\publish.c" "%~dp0src\g11.c" "%~dp0src\tokens.c" "%~dp0src\pick.c" "%~dp0src\armory.c" "%~dp0src\master.c" "%~dp0src\nativepay.c" "%~dp0src\pubxp.c" ^
+cl /nologo /LD /O2 /W3 /Brepro /DUNICODE /D_UNICODE "%~dp0src\proxy_main.c" "%~dp0src\frame.c" "%~dp0src\resolve.c" "%~dp0src\publish.c" "%~dp0src\g11.c" "%~dp0src\tokens.c" "%~dp0src\pick.c" "%~dp0src\research.c" "%~dp0src\armory.c" "%~dp0src\master.c" "%~dp0src\nativepay.c" "%~dp0src\pubxp.c" ^
    /link /DEF:"%~dp0src\version_proxy.def" /OUT:version.dll user32.lib /MACHINE:X64
 set RC=%ERRORLEVEL%
 

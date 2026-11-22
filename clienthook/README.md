@@ -59,6 +59,17 @@ completion. That file is the only one it reads: with `armory.txt` absent the cha
 the hook writes is said as `pick: saved <line>`, once per distinct line, so each adopted change leaves a log line of
 its own.
 
+**It keeps the augment research pick alive, and pays it.** The augments menu's research press happens in the front
+end too, so the pick lives in `pt_research_ch` - one line, `a=<achievement id>` with `a=0` for none - and in
+`cod25\players\research.txt` beside it. The hook registers the dvar at boot from that file, adopts every valid change
+the menu writes, saves each one through the same temporary file and rename, and flushes a last one at detach. The pay
+takes the same match operator XP the armory feed carries and keeps its own paid and pending, so both features are
+credited the same XP independently. It names the row by that row's own private trigger (kind 437, triggers
+200077..200108), calls the game's own award once with the unpaid total, and reads the credit back from the row. One
+look a second, only while the feed is live and the row is not complete; a completion is logged and the research stays
+selected - no advance. The kill switch is `%TEMP%\progression-tuning\research_pay_off.txt`, and while
+`zm_unlock_augments` or `zm_unlock_all` reads 1 the pay pauses and says so.
+
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the
 byte it changed and reads it back. One byte, and the decision is the client's own, not ours.
@@ -110,6 +121,7 @@ or skip with a `SKIP` line.
     src\g11.c               the lock payload's pure half: hex, split, header, name hash, canary
     src\tokens.c            the token channel's dvar and its file: the one-line form, the tmp-and-rename write
     src\pick.c              the armory pick channel's dvar and its file, the queue and the advance
+    src\research.c          the augment research channel's dvar and its file, and its own pay of the same feed
     src\armory.c            the armory xp feed, and the pay that rides the client's own award
     src\master.c            the master-prestige level byte, at its call sites
     src\nativepay.c         the five bytes at the award's call site, and the seams the frame hangs on them

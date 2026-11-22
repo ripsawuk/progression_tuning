@@ -33,6 +33,9 @@ void tokens_stop(void)
 void pick_stop(void)
 {
 }
+void research_stop(void)
+{
+}
 
 // The shipped functions.
 BOOL ch_arm_for_image(const wchar_t *image_path);

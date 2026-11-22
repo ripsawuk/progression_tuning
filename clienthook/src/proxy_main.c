@@ -439,6 +439,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
     void opsfix_stop(void);
     void tokens_stop(void);
     void pick_stop(void);
+    void research_stop(void);
 
     switch (reason)
     {
@@ -455,14 +456,15 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         }
         // Two writers to one append-only file, both opening with share-all and writing whole lines: the proxy's
         // one-line writer (this file) and nativepay's buffered writer. Interleaving per line is expected.
-        // the banner is measured, not estimated: 484 chars, so the formatted line is 19 + 2 + 484 + 2 = 507
-        // bytes, 5 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
-        log_line("proxy attached (version.dll build 39: one file - the system copy loads at run time, every "
+        // the banner is measured, not estimated: 478 chars, so the formatted line is 19 + 2 + 478 + 2 = 501
+        // bytes, 10 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
+        log_line("proxy attached (version.dll build 40: one file - system copy loads at run time, every "
                  "address from the game own code, the award call site pays field 45 on ev=95, "
                  "zm_g11_* the lock bitmap, zm_g12_* the challenge reward set, "
-                 "master.c extends the level byte, an ops check branch forced on, state republished in match, "
-                 "pt_tokens_ch, pt_armory_ch in players/armory.txt, pt_armory_xp at boot, "
-                 "and the armory pay rides the award wrapper in a live match, paused while unlock armory is on)");
+                 "master.c extends the level byte, an ops branch forced on, "
+                 "pt_tokens_ch, pt_armory_ch in players/armory.txt, pt_research_ch in players/research.txt, "
+                 "pt_armory_xp at boot, both pays riding the award wrapper in a live match, "
+                 "paused while an unlock row is on)");
         // the client ops check armed before the client is mapped
         opsfix_start();
         // the frame first: it owns the paid hook and the install gate nativepay needs, and it starts the threads
@@ -480,6 +482,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         // the token channel's last write, first of all: it is the only thing here whose loss would be data
         tokens_stop();
         pick_stop();
+        research_stop();
         nativepay_stop();
         // The loader notification is unregistered here, never from inside the callback that receives it.
         opsfix_stop();

@@ -38,6 +38,7 @@
 #include "tokens.h"
 #include "pick.h"
 #include "armory.h"
+#include "research.h"
 
 void ch_logf(const char *fmt, ...);
 
@@ -356,6 +357,9 @@ static int g11_arm(HMODULE client)
     // the armory xp feed: same register, same hash, same slot, its value from the mod's gsc at a level start
     armory_arm(reg, salt, off);
 
+    // the augment research channel: same register, same slot, its pick from its own file
+    research_arm(reg, salt, off);
+
     // Find all 35 - and create any that are not there, through the client's own register-or-find. The default
     // is the SENTINEL, so a dvar this call creates is indistinguishable from one the mod's GSC made and the
     // canary below passes for both; asking with the probe default here would make the hook refuse itself.
@@ -504,6 +508,7 @@ static DWORD WINAPI g11_thread(LPVOID unused)
         tokens_tick();
         pick_tick();
         armory_tick();
+        research_tick();
         if (G11_OFF)
         {
             continue;
@@ -1571,6 +1576,27 @@ static DWORD WINAPI probe_thread(LPVOID unused)
     return 0;
 }
 
+// one pay seam two pays each under its own latch
+static void pay_dispatch(np_fn orig, int *kill, int *crit)
+{
+    __try
+    {
+        armory_pay(orig, kill, crit);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        ch_logf("armory: pay faulted outside its own latch");
+    }
+    __try
+    {
+        research_pay(orig, kill, crit);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        research_pay_latch();
+    }
+}
+
 void ch_frame_start(void)
 {
     // One mutex shared with nativepay.c's installer, so the two patch windows (master.c's five call sites and
@@ -1588,10 +1614,11 @@ void ch_frame_start(void)
     // and the match boundary: the same call site sees ev=109 before the client's `log_events` gate, which is the
     // only boundary signal that exists with the stock `log_events 0`.
     nativepay_set_match_reset_hook(pubxp_match_reset);
-    // and the armory pay: the wrapper calls it after every event the client dispatches, on the same thread and
-    // under the same store lock, which is the only place the client's own award can be handed a row's private
-    // trigger. It gates itself on the feed being live and the pick naming one of our rows.
-    nativepay_set_pay_hook(armory_pay);
+    // the two pays: the wrapper calls each after every event the game dispatches, on the same thread and
+    // under the same store lock, which is the only place the game own award can be handed a row private
+    // trigger. Each gates itself on the feed being live and its own channel naming one of our rows, and each
+    // latches its own fault, so one can never take the other down.
+    nativepay_set_pay_hook(pay_dispatch);
     // one line, once, so a reader of the log knows what the boundary depends on
     ch_logf("frame: the match boundary comes from the payment's call site - with the payment hook off, the "
             "published per-match figures do not reset");
