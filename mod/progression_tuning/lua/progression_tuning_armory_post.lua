@@ -1,6 +1,6 @@
 local PART = "armory"
 
-local VERSION = "v12"
+local VERSION = "v13"
 local PREFIX = "progression_tuning: "
 -- the armory schedule gate a key with no name
 local SCHED = "0a6376439b2d40dc"
@@ -210,7 +210,7 @@ S.parts[PART] = true
 local A = S.api
 local Ar = { tries = 0, ticks = 0, installed = false, said = false, pick = nil, hover = nil, hoverRef = nil,
   noRoute = false, seen = false, pressed = false, presses = 0, snap = 0, wrote = nil, rline = nil,
-  retired = false }
+  retired = false, u = false }
 
 -- one line through the mod log when it is up
 local function log(msg)
@@ -532,9 +532,27 @@ local function join(list)
   return out
 end
 
+-- the unlock field one and zero
+local UON, UOFF = "1", "0"
+
+-- the unlock flag a line carries
+local function uof(v)
+  if type(v) ~= "string" then return false end
+  return string.match(v, ";u=(%d+)") == UON
+end
+
+-- the unlock field a line carries as text
+local function ufield(v)
+  if type(v) ~= "string" then return "" end
+  local n = string.match(v, ";u=(%d+)")
+  if n == nil then return "" end
+  if n == UON then return ";u=1" end
+  return ";u=0"
+end
+
 -- one channel write only after a line was read
-local function dchput(val)
-  if not (Ar.seen or Ar.pressed) then return false end
+local function dchput(val, force)
+  if not (force == true or Ar.seen or Ar.pressed) then return false end
   if DSET == nil then DSET = fn_of(rawget(_G, "Dvar"), "SetDvarString") end
   if DSET == nil then return false end
   local key = dvkey()
@@ -548,9 +566,11 @@ end
 local function dchwrite(id)
   local val = CHVAL[id]
   if val == nil then return false end
-  local q = qlist(dget())
+  local v = dget()
+  local q = qlist(v)
   if q == nil then q = Ar.q end
   if q ~= nil and #q > 0 then val = val .. ";q=" .. join(q) end
+  val = val .. ufield(v)
   return dchput(val)
 end
 
@@ -558,6 +578,7 @@ end
 local function seed(late)
   local v = dget()
   if type(v) ~= "string" then return false end
+  Ar.u = uof(v)
   local q = qlist(v)
   if q ~= nil then Ar.q = q end
   local id = chrow(v)
@@ -577,6 +598,7 @@ local function watch()
   local v = dget()
   if type(v) ~= "string" or v == Ar.rline then return false end
   Ar.rline = v
+  Ar.u = uof(v)
   if v == Ar.wrote or Ar.presses ~= Ar.snap then return false end
   local id = chrow(v)
   if id == nil or not MINE[id] then return false end
@@ -586,6 +608,32 @@ local function watch()
   Ar.pick = id
   log("armory pick " .. id .. " (advanced)")
   return true
+end
+
+-- the unlock flag read from the channel now
+local function uread()
+  local ok, v = pcall(dget)
+  if ok then Ar.u = uof(v) end
+  return Ar.u == true
+end
+
+-- the unlock flag as its channel text
+local function uw()
+  if Ar.u == true then return UON end
+  return UOFF
+end
+
+-- the unlock flag written into the channel line
+local function dchu(on)
+  Ar.u = on == true
+  local v = dget()
+  local a = chrow(v)
+  if a == nil then a = Ar.pick or 0 end
+  local val = "a=" .. a
+  local q = qlist(v)
+  if q ~= nil then val = val .. ";q=" .. join(q) end
+  val = val .. ";u=" .. uw()
+  return dchput(val, true)
 end
 
 -- the queue the page holds in its own order
@@ -625,7 +673,7 @@ local function armq()
   if qlist(v) ~= nil then return end
   local a = chrow(v)
   if a == nil then a = Ar.pick or 0 end
-  dchput("a=" .. a .. ";q=" .. join(q))
+  dchput("a=" .. a .. ";q=" .. join(q) .. ufield(v))
 end
 
 -- a table copied field by field
@@ -748,7 +796,7 @@ local function wrap_answer()
   return true
 end
 
-local LK = { at = nil, at2 = nil, done = nil, sw = nil, busy = false }
+local LK = { at = nil, at2 = nil, done = nil, sw = nil, busy = false, u = false }
 local LKW = setmetatable({}, { __mode = "k" })
 -- the progress fields a record carries in order
 local LK_FIELDS = { "default", "progress", "xp" }
@@ -806,15 +854,21 @@ local function lk_now()
     end
   end
   local done = lk_pass()
-  LK.sw, LK.done = sw, done
+  LK.sw, LK.done, LK.u = sw, done, uread()
   LK.at, LK.at2 = t1, t2
   LK.busy = false
   return LK
 end
 
+-- the unlock flag the snapshot holds
+local function uon()
+  return lk_now().u == true
+end
+
 -- held open by its own row or by its switch
 local function lk_free(loot)
   local s = lk_now()
+  if s.u == true then return true end
   if s.done == nil then return false end
   if s.done[loot] == true then return true end
   if s.sw == nil then return false end
@@ -871,6 +925,7 @@ local function craft_locked(c, item, orig, ...)
   end
   local okf, free = pcall(lk_free, loot)
   if okf and free == true then
+    if uon() then return false end
     if ok then return locked end
     return false
   end
@@ -1411,8 +1466,35 @@ end
 
 S.probes.armory = function() return Ar.installed end
 
+-- the debug row this part adds through the options part
+local ROW = {
+  id = "pt_unlock_armory",
+  name = "Unlock Armory",
+  desc = "All Armory items. Off: earn them in the Armory with XP; earned items stay unlocked.",
+  kind = "toggle",
+  get = function() return uread() end,
+  set = function(on) return dchu(on) end,
+}
+
+-- registers the row or leaves it to options
+local function rowadd()
+  local f = A.optrow_add
+  if type(f) == "function" then
+    local ok, v = pcall(f, ROW)
+    if ok then return v == true end
+  end
+  local q = S.optrows
+  if type(q) ~= "table" then
+    q = {}
+    S.optrows = q
+  end
+  q[#q + 1] = ROW
+  return false
+end
+
 pcall(attempt)
 pcall(arm, ARMF)
+pcall(rowadd)
 if not start() then
   log("armory retry timer is not armed - no lui root")
 end

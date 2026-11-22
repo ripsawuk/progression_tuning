@@ -53,6 +53,9 @@ local ONOFF = { "Off", "On" }
 -- the row our two sit behind
 local ANCHOR = "5a6d0000000000be"
 
+-- the rows other parts add in their order
+local EXT, EXTBY = {}, {}
+
 -- the page row ids the menu builds a second time
 local DUP = {}
 for _, t in next, {
@@ -274,6 +277,19 @@ local function isAnchor(v)
   return string.sub(h, 1, #ANCHOR) == ANCHOR or string.sub(h, -#ANCHOR) == ANCHOR
 end
 
+-- ours appended in their own order
+local function ours(out, n, mine)
+  if mine[1] ~= nil then n = n + 1; out[n] = mine[1] end
+  if mine[2] ~= nil then n = n + 1; out[n] = mine[2] end
+  local i = 1
+  while i <= #EXT do
+    local it = mine[EXT[i].id]
+    if it ~= nil then n = n + 1; out[n] = it end
+    i = i + 1
+  end
+  return n
+end
+
 -- ours placed after the anchor on a copy
 local function afterAnchor(items, key)
   local anchor, rest = nil, {}
@@ -286,6 +302,8 @@ local function afterAnchor(items, key)
       if mine[1] == nil then mine[1] = it end
     elseif v == ID2 then
       if mine[2] == nil then mine[2] = it end
+    elseif v ~= nil and EXTBY[v] ~= nil then
+      if mine[v] == nil then mine[v] = it end
     else
       rest[#rest + 1] = it
       if anchor == nil and isAnchor(v) then anchor = #rest end
@@ -297,15 +315,11 @@ local function afterAnchor(items, key)
   while i <= #rest do
     n = n + 1
     out[n] = rest[i]
-    if i == anchor then
-      if mine[1] ~= nil then n = n + 1; out[n] = mine[1] end
-      if mine[2] ~= nil then n = n + 1; out[n] = mine[2] end
-    end
+    if i == anchor then n = ours(out, n, mine) end
     i = i + 1
   end
   if anchor == nil then
-    if mine[1] ~= nil then n = n + 1; out[n] = mine[1] end
-    if mine[2] ~= nil then n = n + 1; out[n] = mine[2] end
+    n = ours(out, n, mine)
     if #mine > 0 and once("anchor") then log("options anchor missing") end
     return out
   end
@@ -344,7 +358,7 @@ local function findMine(t, depth, acc)
       local it = t[i]
       if type(it) == "table" then
         for _, v in next, it do
-          if v == ID or v == ID2 then return t end
+          if v == ID or v == ID2 or EXTBY[v] ~= nil then return t end
         end
       end
       i = i + 1
@@ -474,6 +488,56 @@ local function tokenRow() return mkRow(ID, NAME, DESC, LABELS, DROP, answer) end
 -- the permanent row the options page shows
 local function permRow() return mkRow(ID2, NAME2, DESC2, ONOFF, TOG, flip) end
 
+-- the answer a row another part owns gives the page
+local function extAnswer(rec)
+  return function(c, v)
+    local ok, on = pcall(rec.get)
+    if not ok then on = false end
+    if type(v) == "number" then
+      pcall(rec.set, v == 2)
+      ok, on = pcall(rec.get)
+      if not ok then on = false end
+    end
+    if on == true then return 2 end
+    return 1
+  end
+end
+
+-- the row another part owns the options page shows
+local function extRow(rec) return mkRow(rec.id, rec.name, rec.desc, ONOFF, TOG, rec.fn) end
+
+-- adds a row another part owns to this page
+local function optrow_add(spec)
+  if type(spec) ~= "table" then return false end
+  local id = spec.id
+  if type(id) ~= "string" or id == "" then return false end
+  if type(spec.get) ~= "function" or type(spec.set) ~= "function" then return false end
+  if spec.kind ~= nil and spec.kind ~= "toggle" then return false end
+  if id == ID or id == ID2 then return false end
+  if EXTBY[id] ~= nil then return true end
+  local rec = { id = id, name = tostring(spec.name or id), desc = tostring(spec.desc or ""),
+    get = spec.get, set = spec.set }
+  rec.fn = extAnswer(rec)
+  EXT[#EXT + 1] = rec
+  EXTBY[id] = rec
+  return true
+end
+
+S.api.optrow_add = optrow_add
+
+-- picks up the rows queued before this part
+local function drain()
+  local q = S.optrows
+  if type(q) ~= "table" then return end
+  local i = 1
+  while i <= #q do
+    pcall(optrow_add, q[i])
+    i = i + 1
+  end
+end
+
+pcall(drain)
+
 -- the first stock id in a list
 local function sibling(items)
   if type(items) ~= "table" or type(items[1]) ~= "table" then return nil end
@@ -482,7 +546,7 @@ local function sibling(items)
   local i = 1
   while i <= #items do
     local v = rawget(items[i], k)
-    if v ~= nil and v ~= ID and v ~= ID2 then return v end
+    if v ~= nil and v ~= ID and v ~= ID2 and EXTBY[v] == nil then return v end
     i = i + 1
   end
   return nil
@@ -506,9 +570,15 @@ end
 -- answers our ids and passes the rest on
 local function wrapData(cur)
   return function(id, ...)
-    if id == ID or id == ID2 then
+    if id == ID or id == ID2 or EXTBY[id] ~= nil then
       local b = nil
-      if id == ID then b = tokenRow() else b = permRow() end
+      if id == ID then
+        b = tokenRow()
+      elseif id == ID2 then
+        b = permRow()
+      else
+        b = extRow(EXTBY[id])
+      end
       if b == nil and once("notpl" .. id) then log("options data id=" .. id .. " no bundle") end
       return b
     end
@@ -587,6 +657,11 @@ local function wrapList(cur, key)
       if over(rawget(_G, "OPTIONS"), key, w) then strip(items, k) end
       addRow(items, ID, k)
       addRow(items, ID2, k)
+      local i = 1
+      while i <= #EXT do
+        addRow(items, EXT[i].id, k)
+        i = i + 1
+      end
     end)
     if not ok and once("raise") then log("options append raised") end
     return unpackAll(res)
