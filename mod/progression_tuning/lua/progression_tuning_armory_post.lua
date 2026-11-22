@@ -1,6 +1,6 @@
 local PART = "armory"
 
-local VERSION = "v12"
+local VERSION = "v19"
 local PREFIX = "progression_tuning: "
 -- the armory schedule gate a key with no name
 local SCHED = "0a6376439b2d40dc"
@@ -210,7 +210,7 @@ S.parts[PART] = true
 local A = S.api
 local Ar = { tries = 0, ticks = 0, installed = false, said = false, pick = nil, hover = nil, hoverRef = nil,
   noRoute = false, seen = false, pressed = false, presses = 0, snap = 0, wrote = nil, rline = nil,
-  retired = false }
+  retired = false, u = false }
 
 -- one line through the mod log when it is up
 local function log(msg)
@@ -532,9 +532,27 @@ local function join(list)
   return out
 end
 
+-- the unlock field one and zero
+local UON, UOFF = "1", "0"
+
+-- the unlock flag a line carries
+local function uof(v)
+  if type(v) ~= "string" then return false end
+  return string.match(v, ";u=(%d+)") == UON
+end
+
+-- the unlock field a line carries as text
+local function ufield(v)
+  if type(v) ~= "string" then return "" end
+  local n = string.match(v, ";u=(%d+)")
+  if n == nil then return "" end
+  if n == UON then return ";u=1" end
+  return ";u=0"
+end
+
 -- one channel write only after a line was read
-local function dchput(val)
-  if not (Ar.seen or Ar.pressed) then return false end
+local function dchput(val, force)
+  if not (force == true or Ar.seen or Ar.pressed) then return false end
   if DSET == nil then DSET = fn_of(rawget(_G, "Dvar"), "SetDvarString") end
   if DSET == nil then return false end
   local key = dvkey()
@@ -548,9 +566,11 @@ end
 local function dchwrite(id)
   local val = CHVAL[id]
   if val == nil then return false end
-  local q = qlist(dget())
+  local v = dget()
+  local q = qlist(v)
   if q == nil then q = Ar.q end
   if q ~= nil and #q > 0 then val = val .. ";q=" .. join(q) end
+  val = val .. ufield(v)
   return dchput(val)
 end
 
@@ -558,6 +578,7 @@ end
 local function seed(late)
   local v = dget()
   if type(v) ~= "string" then return false end
+  Ar.u = uof(v)
   local q = qlist(v)
   if q ~= nil then Ar.q = q end
   local id = chrow(v)
@@ -577,6 +598,7 @@ local function watch()
   local v = dget()
   if type(v) ~= "string" or v == Ar.rline then return false end
   Ar.rline = v
+  Ar.u = uof(v)
   if v == Ar.wrote or Ar.presses ~= Ar.snap then return false end
   local id = chrow(v)
   if id == nil or not MINE[id] then return false end
@@ -586,6 +608,40 @@ local function watch()
   Ar.pick = id
   log("armory pick " .. id .. " (advanced)")
   return true
+end
+
+-- the raw line the unlock flag was last parsed from
+local UC = { raw = nil, on = false }
+
+-- the unlock flag read from the channel now
+local function uread()
+  local ok, v = pcall(dget)
+  if ok then
+    if v ~= UC.raw then
+      UC.raw, UC.on = v, uof(v)
+    end
+    Ar.u = UC.on
+  end
+  return Ar.u == true
+end
+
+-- the unlock flag as its channel text
+local function uw()
+  if Ar.u == true then return UON end
+  return UOFF
+end
+
+-- the unlock flag written into the channel line
+local function dchu(on)
+  Ar.u = on == true
+  local v = dget()
+  local a = chrow(v)
+  if a == nil then a = Ar.pick or 0 end
+  local val = "a=" .. a
+  local q = qlist(v)
+  if q ~= nil then val = val .. ";q=" .. join(q) end
+  val = val .. ";u=" .. uw()
+  return dchput(val, true)
 end
 
 -- the queue the page holds in its own order
@@ -625,7 +681,7 @@ local function armq()
   if qlist(v) ~= nil then return end
   local a = chrow(v)
   if a == nil then a = Ar.pick or 0 end
-  dchput("a=" .. a .. ";q=" .. join(q))
+  dchput("a=" .. a .. ";q=" .. join(q) .. ufield(v))
 end
 
 -- a table copied field by field
@@ -663,6 +719,8 @@ local function record(id, ref)
   end
 end
 
+local uon
+
 -- the clients own press first then the row
 local function wrap_press()
   local tbl = rawget(_G, "ARMORY")
@@ -670,6 +728,8 @@ local function wrap_press()
   if k == nil then return false end
   if OURS[orig] then return true end
   local w = function(menu, c, ...)
+    -- a press changes nothing while the armory is unlocked
+    if uon() then return end
     local res = pack(pcall(orig, menu, c, ...))
     if not res[1] then return end
     local ok, id, ref, tried = pcall(press_row, c, menu, ...)
@@ -729,6 +789,8 @@ local function wrap_answer()
     end
     pcall(lk_arm)
     local rec = res[2]
+    -- an unlocked armory presents no active item
+    if uon() then return rec end
     if OUR_RECS[rec] then return rec end
     if Ar.pick == nil then pcall(seed, true) end
     local picked = Ar.pick
@@ -812,9 +874,15 @@ local function lk_now()
   return LK
 end
 
+-- the unlock flag read live so a late line counts
+uon = function()
+  return uread()
+end
+
 -- held open by its own row or by its switch
 local function lk_free(loot)
   local s = lk_now()
+  if uread() then return true end
   if s.done == nil then return false end
   if s.done[loot] == true then return true end
   if s.sw == nil then return false end
@@ -871,6 +939,7 @@ local function craft_locked(c, item, orig, ...)
   end
   local okf, free = pcall(lk_free, loot)
   if okf and free == true then
+    if uon() then return false end
     if ok then return locked end
     return false
   end
@@ -902,8 +971,8 @@ local function craft_arm()
 end
 
 -- a call through that never rethrows
-local function lk_thru(f, id)
-  local ok, v = pcall(f, id)
+local function lk_thru(f, ...)
+  local ok, v = pcall(f, ...)
   if not ok then return nil end
   return v
 end
@@ -1014,9 +1083,64 @@ lk_arm = function()
   return a and o
 end
 
+-- the armory row name the barracks buttons list carries
+local HUB = "armorylandingscreen"
+
+-- the armory row locked while the flag is on
+local function hub_mark(row)
+  if type(row) ~= "table" or rawget(row, "menu") ~= HUB then return end
+  local orig = rawget(row, "disabledFunc")
+  if OURS[orig] then return end
+  local df = function()
+    if lk_thru(orig) then return true end
+    return uon()
+  end
+  OURS[df] = true
+  rawset(row, "disabledFunc", df)
+end
+
+-- wraps the barracks row builder once a vm
+local function wrap_hub()
+  local tbl = rawget(_G, "CUSTOMIZE_MENU")
+  if type(tbl) ~= "table" then return false end
+  local k, orig = slot_of(tbl, "getbarracksbuttondatatable")
+  if k == nil or type(orig) ~= "function" then return false end
+  if OURS[orig] then return true end
+  local w = function(c, row, ev)
+    local out = lk_thru(orig, c, row, ev)
+    hub_mark(out)
+    return out
+  end
+  OURS[w] = true
+  tbl[k] = w
+  return true
+end
+
+-- the armory shut while the flag is on
+local function wrap_armlock()
+  local tbl = rawget(_G, "ARMORY")
+  if type(tbl) ~= "table" then return false end
+  local k, orig = slot_of(tbl, "isarmorylocked")
+  if k == nil or type(orig) ~= "function" then return false end
+  if OURS[orig] then return true end
+  local w = function(c)
+    if uon() then return true end
+    return lk_thru(orig, c)
+  end
+  OURS[w] = true
+  tbl[k] = w
+  return true
+end
+
 -- wrapped or missing for the arm line
 local function word(v)
   if v then return "wrapped" end
+  return "missing"
+end
+
+-- in or out for the padlock fields
+local function ok_word(v)
+  if v then return "ok" end
   return "missing"
 end
 
@@ -1033,8 +1157,9 @@ local function armable()
 end
 
 -- what this vm needs in place before the timer rests
-local ARMF = { gate = false, press = false, answer = false, lock = false, own = false, craft = false }
-local FIELDS = { "gate", "press", "answer", "lock", "own", "craft" }
+local ARMF = { gate = false, press = false, answer = false, lock = false, own = false, craft = false,
+  hub = false, locked = false }
+local FIELDS = { "gate", "press", "answer", "lock", "own", "craft", "hub", "locked" }
 
 local card_word
 
@@ -1046,6 +1171,8 @@ local function attempt()
   ARMF.own = wrap_own()
   ARMF.lock = lk_arm()
   ARMF.craft = craft_arm()
+  ARMF.hub = wrap_hub()
+  ARMF.locked = wrap_armlock()
   if ARMF.press then wrap_focus() end
   return ARMF
 end
@@ -1065,6 +1192,7 @@ local function arm_line(st)
   log("armory armed " .. VERSION .. " vm=" .. vm_kind() .. " gate=" .. word(st.gate)
     .. " pick=" .. word(st.press) .. " answer=" .. word(st.answer) .. " lock=" .. word(st.lock)
     .. " own=" .. word(st.own) .. " vars=" .. VARA .. "+" .. VARW .. " craft=" .. craft_word()
+    .. " hub=" .. ok_word(st.hub) .. " locked=" .. ok_word(st.locked)
     .. " card=" .. card_word()
     .. " rows=" .. #ROWS .. " pick=" .. tostring(Ar.pick or 0)
     .. " q=" .. tostring(Ar.q and #Ar.q or 0))
@@ -1097,7 +1225,7 @@ local function arm(st)
   armq()
   arm_line(st)
   FIRST = { gate = st.gate, press = st.press, answer = st.answer, lock = st.lock, own = st.own,
-    craft = st.craft }
+    craft = st.craft, hub = st.hub, locked = st.locked }
   LATE_ON = not armed(st)
 end
 
@@ -1411,8 +1539,35 @@ end
 
 S.probes.armory = function() return Ar.installed end
 
+-- the debug row this part adds through the options part
+local ROW = {
+  id = "pt_unlock_armory",
+  name = "Unlock Armory",
+  desc = "All Armory items. Off: earn them in the Armory with XP; earned items stay unlocked.",
+  kind = "toggle",
+  get = function() return uread() end,
+  set = function(on) return dchu(on) end,
+}
+
+-- registers the row or leaves it to options
+local function rowadd()
+  local f = A.optrow_add
+  if type(f) == "function" then
+    local ok, v = pcall(f, ROW)
+    if ok then return v == true end
+  end
+  local q = S.optrows
+  if type(q) ~= "table" then
+    q = {}
+    S.optrows = q
+  end
+  q[#q + 1] = ROW
+  return false
+end
+
 pcall(attempt)
 pcall(arm, ARMF)
+pcall(rowadd)
 if not start() then
   log("armory retry timer is not armed - no lui root")
 end

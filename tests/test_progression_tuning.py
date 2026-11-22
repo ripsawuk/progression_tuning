@@ -92,7 +92,10 @@ The cases:
       debug page: the inner layer puts its own rows above the stock ones and drops the dead unlock row,
       the page's second layer then takes the slot over ours and every row is still there once - the
       block the inner layer built is dropped rather than repeated - the page reads the same either way,
-      and rebuilds plus a repeat hook leave one of every row.
+      and rebuilds plus a repeat hook leave one of every row. And the row another part registers
+      (`optrow_add`): queued before this part loads or handed straight to the api, it sits after our two
+      and only once, with its own label, description and toggle, and its flag on the armory channel keeps
+      the pick and the queue the line carried.
   23. the token channel (`pt_tokens_ch`): a full line is read into its fields and written back with its
       serial risen and every other field kept; a field this build does not parse is ignored on the read
       and dropped by the next write; a line with no counts seeds them from the client's own record
@@ -135,13 +138,17 @@ The cases:
       exactly once, a plain and a hashed slot and a table rebuilt after the arm are all wrapped, a
       raising getter answers not owned rather than raising, a vm with no getter says `own=missing`, and
       the three load orders agree.
-      And the blueprint rule the lock door owns, for every gun (C87 a4 v12): a blueprint id is listed in
+      And the blueprint rule the lock door owns, for every gun (C87 a4 v13): a blueprint id is listed in
       every build list and padlocked unless its own gun is unlocked by the door's own answer for that
       base id and the blueprint switch is on, everything unlocked opens it whatever else says, the
       base comes from the game's own `WEAPON.getbaseweaponlootidfromblueprint` and is cached per id, the
       gun's own row test (`PROGRESSION.ownsBlueprintOfWeapon`) answers not owned while that gun is
       locked, an owned blueprint never opens a locked gun, no other id moves, and the three load orders
       agree.
+      And the unlock armory flag (u= on the armory channel): u=1 answers unlocked for the 76 base ids,
+      the 147 attachment versions, the ownership getter and the four streaks at the crafting table, the
+      blueprint rule then sees an armory base open and follows its own switch, u=0 answers exactly as
+      before, a line that arrives late is read on a later tick, and the three load orders agree.
 
 The mod is eleven `*_post.lua` parts (D96 split): main, weaponxp, splash, camos, challenges, prison,
 reticles, armory, diag, options, tokens. `load()` runs all eleven in that order; `SRC` is their
@@ -1008,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 274804
-SHIP_LUA_SHA = "B9946256216BA4E93A409F1F845DF3E26A93AEE125F5AA8682F4B06344B5E027"
-LITERAL_SHA = "EF0E2CC050787619ACC87ABC0E21DAAA7817A181AF8609A70F763C4914190F7F"
+SHIP_LUA_LEN = 280859
+SHIP_LUA_SHA = "605A4E25FF87E77050034A73DD771ED4E5EAFB808A4D4963292CA2CE902E77B9"
+LITERAL_SHA = "9EA7DFA1521ECAED2452137F944B5A1FE74511BC382C85FC403DA115CF673C9D"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1195,7 +1202,7 @@ LITERAL_ADDED = [
     " types=attachment,camo,reticle",
     " vars=",
     " vm=",
-    "v12",
+    "v19",
     " why=",
     " wkhead=",
     " wlevel=",
@@ -1952,9 +1959,11 @@ def static_checks():
     check("lua: the seed reads a merged line and the writer keeps the queue it read",
           'string.match(v, "^a=(%d+)")' in LUA_TEXT[ARMORY]
           and 'string.match(v, "q=([%d,]+)")' in LUA_TEXT[ARMORY]
-          and 'val = val .. ";q=" .. join(q)' in LUA_TEXT[ARMORY])
-    check("lua: one channel writer, so the arm and the press cannot disagree",
-          LUA_TEXT[ARMORY].count("dchput(") == 3 and LUA_TEXT[ARMORY].count("return dchput(val)") == 1,
+          and 'val = val .. ";q=" .. join(q)' in LUA_TEXT[ARMORY]
+          and 'string.match(v, ";u=(%d+)")' in LUA_TEXT[ARMORY])
+    check("lua: one channel writer, so the arm, the press and the unlock flag cannot disagree",
+          LUA_TEXT[ARMORY].count("dchput(") == 4 and LUA_TEXT[ARMORY].count("return dchput(val)") == 1
+          and LUA_TEXT[ARMORY].count("return dchput(val, true)") == 1,
           "%d call(s)" % LUA_TEXT[ARMORY].count("dchput("))
     check("lua: the armory part never rethrows - every call through is a pcall with a safe answer",
           "error(" not in LUA_TEXT[ARMORY] and LUA_TEXT[ARMORY].count("pcall(orig") == 7
@@ -9320,23 +9329,24 @@ def options_rows(lua51):
     check("opts: the list member keeps every return the page gave it", int(rt.eval("NRET")) == 2,
           str(rt.eval("NRET")))
     check("opts: the list member appends both rows to the debug tab",
-          int(rt.eval("#LIST")) == 5
+          int(rt.eval("#LIST")) == 6
           and rt.eval('LIST[4][xhash("settingId")]') == "pt_token_amount"
-          and rt.eval('LIST[5][xhash("settingId")]') == "pt_permanent",
+          and rt.eval('LIST[5][xhash("settingId")]') == "pt_permanent"
+          and rt.eval('LIST[6][xhash("settingId")]') == "pt_unlock_armory",
           "%s rows" % rt.eval("#LIST"))
     rt.execute("W1(%s, 0, 1)" % tab)
     check("opts: and appends them once - a second build of the same list adds nothing",
-          int(rt.eval("#LIST")) == 5 and count_line(lines_of(rt), "options row added") <= 1,
+          int(rt.eval("#LIST")) == 6 and count_line(lines_of(rt), "options row added") <= 1,
           "%s rows" % rt.eval("#LIST"))
     rt.execute("W1(%s, 0, 1)" % other)
     check("opts: and adds nothing to a list that is not the debug tab",
-          int(rt.eval("#LIST")) == 5 and count_line(lines_of(rt), "options row added") <= 1)
+          int(rt.eval("#LIST")) == 6 and count_line(lines_of(rt), "options row added") <= 1)
 
     rt.execute('OPTIONS[xhash("createoptionlist")](nil, nil, LIST, false)')
-    ids = [rt.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 6)]
+    ids = [rt.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 7)]
     check("opts: the page build moves both rows to sit directly after the anchor",
           ids == ["#x7a1b0000000000a1", "0x5a6d0000000000be", "pt_token_amount",
-                  "pt_permanent", "#x2c9f0000000000d4"], " | ".join(ids))
+                  "pt_permanent", "pt_unlock_armory", "#x2c9f0000000000d4"], " | ".join(ids))
 
     rt.execute('DR = OPTIONS["#xe7686f7a9907efd8"]')
     rt.execute('TROW = DR("pt_token_amount", 0)')
@@ -9385,17 +9395,123 @@ def options_rows(lua51):
           and count_line(lines_of(rm), "options move raised") == 0)
 
 
+UNLOCK_DESC = ("All Armory items. Off: earn them in the Armory with XP; earned items stay unlocked.")
+UNLOCK_CH = "a=69320;q=69316,69324"
+
+
+def unlock_row(lua51):
+    """The unlock armory row: one toggle after our two, its flag on the armory channel."""
+    rt = new_rt(lua51, pre=OPTIONSFIX + "\n" + ARMORY_FIX
+                + "\nSET_DVAR('pt_armory_ch', '%s;u=0')" % UNLOCK_CH)
+    check("unlock row: the armory part and the options part arm in one vm",
+          rt.eval("ProgressionTuning.probes.options()") is True
+          and rt.eval("ProgressionTuning.probes.armory()") is True,
+          " | ".join(lines_of(rt)[-3:]))
+    rt.execute('W1 = OPTIONS["#x7bf7f57679e8d050"]')
+    rt.execute('W1({ 7, "debug" }, 0, 1)')
+    ids = [rt.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 7)]
+    check("unlock row: the debug list carries it once, after our two rows",
+          ids == ["#x7a1b0000000000a1", "0x5a6d0000000000be", "#x2c9f0000000000d4",
+                  "pt_token_amount", "pt_permanent", "pt_unlock_armory"], " | ".join(ids))
+    rt.execute('OPTIONS[xhash("createoptionlist")](nil, nil, LIST, false)')
+    rt.execute('W1({ 7, "debug" }, 0, 1)')
+    ids = [rt.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 7)]
+    check("unlock row: and the page build moves it in behind them, where a rebuild leaves it",
+          ids == ["#x7a1b0000000000a1", "0x5a6d0000000000be", "pt_token_amount",
+                  "pt_permanent", "pt_unlock_armory", "#x2c9f0000000000d4"], " | ".join(ids))
+
+    rt.execute('UROW = OPTIONS["#xe7686f7a9907efd8"]("pt_unlock_armory", 0)')
+    check("unlock row: its bundle is a toggle named Unlock Armory with off and on",
+          rt.eval('UROW[xhash("settingId")]') == "pt_unlock_armory"
+          and rt.eval('UROW[xhash("label")]') == "Unlock Armory"
+          and [rt.eval('UROW[xhash("labels")][%d]' % i) for i in (1, 2)] == ["Off", "On"]
+          and rt.eval('UROW[xhash("widgetType")]') == "ToggleButton",
+          "%s / %s" % (rt.eval('UROW[xhash("label")]'), rt.eval('UROW[xhash("widgetType")]')))
+    check("unlock row: and the description is the one the armory part gave it",
+          rt.eval('UROW[xhash("description")]') == UNLOCK_DESC,
+          str(rt.eval('UROW[xhash("description")]')))
+    check("unlock row: the flag reads off the channel - off while u is zero",
+          int(rt.eval('UROW[xhash("getter")](0)')) == 1,
+          str(rt.eval('UROW[xhash("getter")](0)')))
+    rt.execute('UROW[xhash("setter")](0, 2)')
+    check("unlock row: setting it on writes u=1 and keeps the pick and the queue",
+          str(rt.eval("DVARS[xhashdvar('pt_armory_ch')]")) == UNLOCK_CH + ";u=1"
+          and int(rt.eval('UROW[xhash("getter")](0)')) == 2,
+          str(rt.eval("DVARS[xhashdvar('pt_armory_ch')]")))
+    rt.execute('UROW[xhash("setter")](0, 1)')
+    check("unlock row: and setting it off writes u=0 over the same line",
+          str(rt.eval("DVARS[xhashdvar('pt_armory_ch')]")) == UNLOCK_CH + ";u=0"
+          and int(rt.eval('UROW[xhash("getter")](0)')) == 1,
+          str(rt.eval("DVARS[xhashdvar('pt_armory_ch')]")))
+
+    rp = new_rt(lua51, pre=OPTIONSFIX + "\n" + ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69320')")
+    rp.execute('OPTIONS["#x7bf7f57679e8d050"]({ 7, "debug" }, 0, 1)')
+    check("unlock row: a line with no u reads off, the default the hook promises",
+          int(rp.eval('OPTIONS["#xe7686f7a9907efd8"]("pt_unlock_armory", 0)[xhash("getter")](0)')) == 1,
+          str(rp.eval("DVARS[xhashdvar('pt_armory_ch')]")))
+    ru = new_rt(lua51, pre=OPTIONSFIX + "\n" + ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69320;u=1')")
+    ru.execute('OPTIONS["#x7bf7f57679e8d050"]({ 7, "debug" }, 0, 1)')
+    check("unlock row: a line already carrying u=1 reads on at the first ask",
+          int(ru.eval('OPTIONS["#xe7686f7a9907efd8"]("pt_unlock_armory", 0)[xhash("getter")](0)')) == 2,
+          str(ru.eval("DVARS[xhashdvar('pt_armory_ch')]")))
+
+    re = new_rt(lua51, pre=OPTIONSFIX + "\n" + ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', '')")
+    re.execute('OPTIONS["#x7bf7f57679e8d050"]({ 7, "debug" }, 0, 1)')
+    re.execute('UROW = OPTIONS["#xe7686f7a9907efd8"]("pt_unlock_armory", 0)')
+    re.execute('UROW[xhash("setter")](0, 2)')
+    check("unlock row: on an empty channel it writes the flag alone with the pick at zero",
+          str(re.eval("DVARS[xhashdvar('pt_armory_ch')]")) == "a=0;u=1"
+          and int(re.eval('UROW[xhash("getter")](0)')) == 2,
+          str(re.eval("DVARS[xhashdvar('pt_armory_ch')]")))
+
+    # the registration paths: queued before options loads, straight after it is up
+    pre = OPTIONSFIX + "\n" + ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', '%s;u=0')" % UNLOCK_CH
+    rq = new_rt(lua51, pre=pre, src=False)
+    rq.execute(LUA_TEXT[ARMORY])
+    check("unlock row: an armory part that loads first leaves its row queued",
+          int(rq.eval("#rawget(_G, 'ProgressionTuning').optrows")) == 1
+          and rq.eval("rawget(_G, 'ProgressionTuning').api.optrow_add") is None,
+          str(rq.eval("#rawget(_G, 'ProgressionTuning').optrows")))
+    rq.execute(LUA_TEXT[OPTIONS])
+    rq.execute('W1 = OPTIONS["#x7bf7f57679e8d050"]')
+    rq.execute('W1({ 7, "debug" }, 0, 1)')
+    ids = [rq.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 7)]
+    check("unlock row: and the options part takes that queued row up when it loads",
+          ids == ["#x7a1b0000000000a1", "0x5a6d0000000000be", "#x2c9f0000000000d4",
+                  "pt_token_amount", "pt_permanent", "pt_unlock_armory"], " | ".join(ids))
+
+    rd = new_rt(lua51, pre=pre, src=False)
+    rd.execute(LUA_TEXT[OPTIONS])
+    rd.execute(LUA_TEXT[ARMORY])
+    rd.execute('W1 = OPTIONS["#x7bf7f57679e8d050"]')
+    rd.execute('W1({ 7, "debug" }, 0, 1)')
+    ids = [rd.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 7)]
+    check("unlock row: an options part already up takes the row straight through the api",
+          rd.eval("rawget(_G, 'ProgressionTuning').optrows") is None
+          and ids == ["#x7a1b0000000000a1", "0x5a6d0000000000be", "#x2c9f0000000000d4",
+                      "pt_token_amount", "pt_permanent", "pt_unlock_armory"],
+          " | ".join(ids))
+    rd.execute("ProgressionTuning.api.optrow_add({ id = 'pt_unlock_armory', get = function() end,"
+               " set = function() end })")
+    rd.execute('W1({ 7, "debug" }, 0, 1)')
+    ids = [rd.eval('LIST[%d][xhash("settingId")]' % i) for i in range(1, 7)]
+    check("unlock row: a second registration of the same id adds no second row",
+          ids.count("pt_unlock_armory") == 1 and len(ids) == 6, " | ".join(ids))
+
+
 def options_layers(lua51):
     """The debug page through both layers: one of every row, whether we hold the slot or sit under it."""
     dbg = ["#x3" + h for h in ("5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa")]
     stock = ["5a6d0000000000a1", "5a6d0000000000be", "5a6d0000000000aa"]
     dead = "3f58d23122dd68ae"
-    token, perm = "pt_token_amount", "pt_permanent"
+    token, perm, unlock = "pt_token_amount", "pt_permanent", "pt_unlock_armory"
     trow, prow = token + "|XP Token Amount|Dropdown", perm + "|Enable Double XP|ToggleButton"
+    urow = unlock + "|Unlock Armory|ToggleButton"
     da, db = "#xe7686f7a9907efd8", "#x9f6c4b08602983fb"
 
     def data(rt):
-        return [str(rt.eval('DLBL("%s", "%s")' % (m, i))) for m in (da, db) for i in (token, perm)]
+        return [str(rt.eval('DLBL("%s", "%s")' % (m, i))) for m in (da, db)
+                for i in (token, perm, unlock)]
 
     rt = new_rt(lua51, pre=OPTIONSLAY)
     inner = str(rt.eval("K1LIST()")).split(",")
@@ -9405,9 +9521,9 @@ def options_layers(lua51):
 
     top = str(rt.eval("PAGELIST()")).split(",")
     check("opts: holding the slot, the rebuild above and the stock rows below are on the page once each",
-          top == [dbg[0], dbg[1], token, perm, dbg[2]] + stock, " | ".join(top))
-    check("opts: holding the slot, our two rows answer their own bundle",
-          data(rt) == [trow, prow, trow, prow], " | ".join(data(rt)))
+          top == [dbg[0], dbg[1], token, perm, unlock, dbg[2]] + stock, " | ".join(top))
+    check("opts: holding the slot, our three rows answer their own bundle",
+          data(rt) == [trow, prow, urow, trow, prow, urow], " | ".join(data(rt)))
 
     rb = new_rt(lua51, pre=OPTIONSLAY)
     rb.execute("KRONOSHOOK()")
@@ -9415,10 +9531,10 @@ def options_layers(lua51):
           rb.eval("OPTIONS[SKSECT] == KHOOKS[SKSECT]") is True
           and rb.eval("OPTIONS[SKSECT] ~= K1") is True)
     buried = str(rb.eval("PAGELIST()")).split(",")
-    check("opts: under that layer, the stock rows are on the page once and our two once",
-          buried == [dbg[0], dbg[1], token, perm, dbg[2]], " | ".join(buried))
-    check("opts: and under that layer our two rows still answer their own bundle",
-          data(rb) == [trow, prow, trow, prow], " | ".join(data(rb)))
+    check("opts: under that layer, the stock rows are on the page once and our three once",
+          buried == [dbg[0], dbg[1], token, perm, unlock, dbg[2]], " | ".join(buried))
+    check("opts: and under that layer our three rows still answer their own bundle",
+          data(rb) == [trow, prow, urow, trow, prow, urow], " | ".join(data(rb)))
 
     rb.execute("KRONOSHOOK()")
     builds = [str(rb.eval("PAGELIST()")) for _ in range(3)]
@@ -9763,9 +9879,9 @@ def armory_gate(lua51):
     rt = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
     l = lines_of(rt)
     check("armory: the schedule gate is wrapped and the one arm line names the count",
-          armory_line(l) == ["progression_tuning: armory armed v12 vm=menu gate=wrapped pick=wrapped "
+          armory_line(l) == ["progression_tuning: armory armed v19 vm=menu gate=wrapped pick=wrapped "
                              "answer=wrapped lock=%s own=wrapped vars=147+309 craft=n/a "
-                             "card=missing rows=76 pick=0 q=0" % lock_word()],
+                             "hub=missing locked=missing card=missing rows=76 pick=0 q=0" % lock_word()],
           " | ".join(armory_line(l)))
     hook = rt.eval("rawget(_G, 'ProgressionTuning').hooks.armory")
     check("armory: it arms on its own lui timer and main registers no hook for it",
@@ -9809,9 +9925,9 @@ def armory_gate(lua51):
     rt3 = new_rt(lua51, frontend=False, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
     l3 = lines_of(rt3)
     check("armory: a match vm arms on the same gate and answer and says which vm it is",
-          armory_line(l3) == ["progression_tuning: armory armed v12 vm=match gate=wrapped pick=wrapped "
+          armory_line(l3) == ["progression_tuning: armory armed v19 vm=match gate=wrapped pick=wrapped "
                               "answer=wrapped lock=%s own=wrapped vars=147+309 craft=wrapped "
-                              "card=missing rows=76 pick=69318 q=0" % lock_word()],
+                              "hub=missing locked=missing card=missing rows=76 pick=69318 q=0" % lock_word()],
           " | ".join(armory_line(l3)))
     check("armory: and the game's own in-match card gets the pick the seed carries",
           rt3.eval("ASK(69316, '1793811600')") is True
@@ -9824,9 +9940,10 @@ def armory_gate(lua51):
                                    "SET_DVAR('pt_armory_ch', 'a=69320')")
     rt3b.execute(LUA_TEXT[ARMORY])
     check("armory: a match vm with no press arms on the gate and the answer alone",
-          armory_line(lines_of(rt3b)) == ["progression_tuning: armory armed v12 vm=match gate=wrapped "
+          armory_line(lines_of(rt3b)) == ["progression_tuning: armory armed v19 vm=match gate=wrapped "
                                           "pick=missing answer=wrapped lock=missing own=wrapped "
-                                          "vars=147+309 craft=wrapped card=missing rows=76 pick=69320 q=0"]
+                                          "vars=147+309 craft=wrapped hub=missing locked=missing "
+                                          "card=missing rows=76 pick=69320 q=0"]
           and rt3b.eval("OC_LAST(52813)") == "69320"
           and int(rt3b.eval("QUEUED()")) == 1,
           " | ".join(armory_line(lines_of(rt3b)) + [str(rt3b.eval("QUEUED()"))]))
@@ -9847,9 +9964,9 @@ def armory_gate(lua51):
     l5 = lines_of(rt4)
     check("armory: the tick picks the gate up when the table turns up late",
           rt4.eval("ASK(69316, '1793811600')") is True
-          and armory_line(l5) == ["progression_tuning: armory armed v12 vm=menu gate=wrapped pick=wrapped "
+          and armory_line(l5) == ["progression_tuning: armory armed v19 vm=menu gate=wrapped pick=wrapped "
                                   "answer=wrapped lock=wrapped own=wrapped vars=147+309 craft=n/a "
-                                  "card=missing rows=76 pick=0 q=0"],
+                                  "hub=missing locked=missing card=missing rows=76 pick=0 q=0"],
           " | ".join(armory_line(l5)))
     pump(rt4, 8)
     check("armory: and the arm line stays one line",
@@ -9860,9 +9977,9 @@ def armory_gate(lua51):
     pump(rt5, 480)
     l6 = lines_of(rt5)
     check("armory: an armory table with no gate gives up quietly after the tries run out",
-          armory_line(l6) == ["progression_tuning: armory armed v12 vm=menu gate=missing pick=missing "
+          armory_line(l6) == ["progression_tuning: armory armed v19 vm=menu gate=missing pick=missing "
                               "answer=wrapped lock=wrapped own=missing vars=147+309 craft=n/a "
-                              "card=missing rows=76 pick=0 q=0"],
+                              "hub=missing locked=missing card=missing rows=76 pick=0 q=0"],
           " | ".join(armory_line(l6)))
     check("armory: its own watch still ticks once the tries run out, main's timer stands too",
           int(rt5.eval("QUEUED()")) == 2, str(rt5.eval("QUEUED()")))
@@ -9872,9 +9989,9 @@ def armory_gate(lua51):
     rt6.execute(LUA_TEXT[ARMORY])
     l7 = lines_of(rt6)
     check("armory: the part arms in a vm with no main part in it at all",
-          armory_line(l7) == ["progression_tuning: armory armed v12 vm=menu gate=wrapped pick=wrapped "
+          armory_line(l7) == ["progression_tuning: armory armed v19 vm=menu gate=wrapped pick=wrapped "
                               "answer=wrapped lock=missing own=wrapped vars=147+309 craft=n/a "
-                              "card=missing rows=76 pick=0 q=0"]
+                              "hub=missing locked=missing card=missing rows=76 pick=0 q=0"]
           and rt6.eval("ASK(69316, '1793811600')") is True
           and rt6.eval("rawget(_G, 'ProgressionTuning').hooks.armory") is None,
           " | ".join(armory_line(l7)))
@@ -10018,9 +10135,10 @@ def armory_pick(lua51):
     check("armory pick: a pick already in the channel is adopted at arm",
           pick_lines(lines_of(rs)) == ["progression_tuning: armory pick 69318"]
           and rs.eval("OC_LAST(52813)") == "69318"
-          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v12 vm=menu gate=wrapped "
+          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v19 vm=menu gate=wrapped "
                                             "pick=wrapped answer=wrapped lock=%s own=wrapped "
                                             "vars=147+309 craft=n/a "
+                                            "hub=missing locked=missing "
                                             "card=missing rows=76 pick=69318 q=0" % lock_word()],
           " | ".join(lines_of(rs)))
     rw = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=12345')")
@@ -10057,7 +10175,8 @@ def armory_pick(lua51):
     check("armory pick: a press under a padded hash is found and wrapped",
           rp2.eval("OC_LAST(52813)") == "69320"
           and count_line(lines_of(rp2), "lock=%s own=wrapped vars=147+309 craft=n/a "
-                                       "card=missing rows=76 pick=" % lock_word()) == 1,
+                                       "hub=missing locked=missing card=missing rows=76 pick="
+                                       % lock_word()) == 1,
           " | ".join(lines_of(rp2)[-2:]))
 
     # a match vm
@@ -10093,8 +10212,9 @@ def armory_queue(lua51):
     check("armory queue: nothing is written into a channel before the hook put a line in it",
           rq.eval("CH()") == "", str(rq.eval("CH()")))
     check("armory queue: the arm line names the pick it has and how many ids the queue holds",
-          armory_line(lines_of(rq)) == ["progression_tuning: armory armed v12 vm=menu gate=wrapped pick=wrapped "
+          armory_line(lines_of(rq)) == ["progression_tuning: armory armed v19 vm=menu gate=wrapped pick=wrapped "
                                         "answer=wrapped lock=%s own=wrapped vars=147+309 craft=n/a "
+                                        "hub=missing locked=missing "
                                         "card=missing rows=76 pick=0 q=3" % lock_word()],
           " | ".join(armory_line(lines_of(rq))))
     rq.execute("SET_FOCUS(69318); PRESS()")
@@ -10111,8 +10231,9 @@ def armory_queue(lua51):
     rs = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69320;q=69318,69316')")
     check("armory queue: a merged line in the channel seeds the row and the queue",
           rs.eval("CH()") == "a=69320;q=69318,69316"
-          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v12 vm=menu gate=wrapped pick=wrapped "
+          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v19 vm=menu gate=wrapped pick=wrapped "
                                             "answer=wrapped lock=%s own=wrapped vars=147+309 craft=n/a "
+                                            "hub=missing locked=missing "
                                             "card=missing rows=76 pick=69320 q=2" % lock_word()],
           " | ".join(armory_line(lines_of(rs)) + pick_lines(lines_of(rs))))
     rs.execute("SET_FOCUS(69324); PRESS()")
@@ -11119,7 +11240,7 @@ def armory_craft(lua51):
     pump(rt, 1)
     line = armory_line(lines_of(rt))
     check("craft: a match vm wraps the table lock and the arm line says which vm and which side",
-          len(line) == 1 and line[0].startswith("progression_tuning: armory armed v12 vm=match ")
+          len(line) == 1 and line[0].startswith("progression_tuning: armory armed v19 vm=match ")
           and " vars=147+309 " in line[0] and " craft=wrapped " in line[0]
           and " own=wrapped " in line[0] and " obw=" not in line[0],
           " | ".join(line))
@@ -11378,9 +11499,338 @@ def armory_own(lua51):
                   "%s / %s" % (r.eval("OWNED(142465)"), r.eval("OWNED(126608)")))
 
 
+def armory_unlock(lua51):
+    """The unlock armory flag: u=1 opens every armory id, u=0 is the answer before it."""
+    items, att = items76(), attachment_versions()
+    on = "SET_DVAR('pt_armory_ch', 'a=69320;q=69316;u=1')"
+    off = "SET_DVAR('pt_armory_ch', 'a=69320;q=69316;u=0')"
+    rt = lock_rt(lua51, frontend=False, pre=on)
+    load(rt)
+    pump(rt, 1)
+    check("unlock: u=1 answers unlocked for all 76 on both doors",
+          all(rt.eval("ASK_P(%d)" % i[0]) is True and rt.eval("ASK_L(%d)" % i[0]) is True
+              for i in items),
+          str([i[0] for i in items if rt.eval("ASK_P(%d)" % i[0]) is not True][:4]))
+    check("unlock: and for all 147 attachment versions",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in att),
+          str([i for i in att if rt.eval("ASK_P(%d)" % i) is not True][:4]))
+    check("unlock: the answer side says unlocked rather than open, as a switch does",
+          rt.eval("ANS(142465)") is False and rt.eval("OPN(142465)") is True
+          and rt.eval("ANS(126626)") is False and rt.eval("OPN(126626)") is True,
+          "%s / %s" % (rt.eval("ANS(142465)"), rt.eval("OPN(142465)")))
+    check("unlock: the ownership getter hands every armory id back to the client",
+          all(rt.eval("OWNED(%d)" % i) == 1 for i in LOCK_IDS)
+          and rt.eval("OWNED(%d)" % att[0]) == 1,
+          str([(i, rt.eval("OWNED(%d)" % i)) for i in LOCK_IDS]))
+    check("unlock: the four streaks read unlocked at the crafting table",
+          all(v is False for _r, v in craft_asks(rt)), str(craft_asks(rt)))
+    check("unlock: every id outside the armory keeps the client's own answer",
+          rt.eval("ASK_P(126608)") is False and rt.eval("ASK_L(200000)") is False
+          and rt.eval("CRAFT_ASK('rcxd')") is False,
+          "%s / %s" % (rt.eval("ASK_P(126608)"), rt.eval("CRAFT_ASK('rcxd')")))
+    check("unlock: the card watch keeps its baseline and draws nothing on the paused pay",
+          int(rt.eval("NEVENTS()")) == 0, str(rt.eval("NEVENTS()")))
+
+    rt.execute(off)
+    pump(rt, 1)
+    check("unlock: u=0 puts all 76 back to locked with no row done",
+          all(rt.eval("ASK_P(%d)" % i[0]) is False and rt.eval("ASK_L(%d)" % i[0]) is False
+              for i in items),
+          str([i[0] for i in items if rt.eval("ASK_P(%d)" % i[0]) is not False][:4]))
+    check("unlock: and the 147 versions, the ownership answer and the table with them",
+          all(rt.eval("OWNED(%d)" % i) == 0 for i in LOCK_IDS)
+          and rt.eval("OWNED(%d)" % att[0]) == 0
+          and all(v is True for _r, v in craft_asks(rt)),
+          str(craft_asks(rt)))
+    rt.execute("LK_DONE(75671)")
+    pump(rt, 1)
+    check("unlock: with u=0 a finished row opens only its own item, as it does today",
+          rt.eval("ASK_P(142465)") is True and rt.eval("ASK_P(140458)") is False,
+          "%s / %s" % (rt.eval("ASK_P(142465)"), rt.eval("ASK_P(140458)")))
+    rt.execute(on)
+    pump(rt, 1)
+    check("unlock: and u=1 again opens the rest while that row stays open",
+          rt.eval("ASK_P(140458)") is True and rt.eval("ASK_P(142465)") is True)
+
+    # a line that arrives late is read on a later tick, the way the pick seed reads one
+    rl = lock_rt(lua51, frontend=False)
+    load(rl)
+    pump(rl, 1)
+    late = rl.eval("ASK_P(142465)")
+    rl.execute(on)
+    pump(rl, 1)
+    check("unlock: a channel line the hook registers late turns the flag on at the next tick",
+          late is False and rl.eval("ASK_P(142465)") is True,
+          "%s / %s" % (late, rl.eval("ASK_P(142465)")))
+
+    # the flag read live: the channel takes the line and the door answers without a tick behind it
+    rv = lock_rt(lua51, frontend=False,
+                 pre="SET_DVAR('pt_armory_ch', 'a=64774;q=69316;u=0')\n"
+                     "OC_PUT(52813, { id = 52813, progress = { last_activation = 0 } })")
+    load(rv)
+    pump(rv, 1)
+    shut = rv.eval("ASK_P(94890)")
+    rv.execute("SET_DVAR('pt_armory_ch', 'a=64774;q=69316;u=1')")
+    check("unlock: a flag the channel takes with no tick opens the door at once",
+          shut is False and rv.eval("ASK_P(94890)") is True,
+          "%s / %s" % (shut, rv.eval("ASK_P(94890)")))
+    check("unlock: and the answer hands the activation row back to the client at once",
+          rv.eval("OC_OWN(52813)") is True and rv.eval("OC_LAST(52813)") == "0",
+          "%s own=%s" % (rv.eval("OC_LAST(52813)"), rv.eval("OC_OWN(52813)")))
+
+    # the gun beneath a blueprint: the rule reads the door, so an open base follows the switch
+    rb = bp_rt(lua51, pre=on)
+    load(rb)
+    pump(rb, 1)
+    check("unlock: with its base open the blueprint follows the blueprint switch - shut while off",
+          rb.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]) is False
+          and rb.eval("ASK_L(%d)" % VAR_BLUEPRINT[0]) is False
+          and rb.eval("OBW('%s')" % GUN_REF) is True,
+          "%s / %s" % (rb.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]), rb.eval("OBW('%s')" % GUN_REF)))
+    rb.execute('SET_DVAR("zm_unlock_blueprints", "1")')
+    pump(rb, 1)
+    check("unlock: and opens on both doors once that switch is on too",
+          rb.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]) is True
+          and rb.eval("ASK_L(%d)" % VAR_BLUEPRINT[0]) is True,
+          "%s / %s" % (rb.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]),
+                       rb.eval("ASK_L(%d)" % VAR_BLUEPRINT[0])))
+    rb.execute(off)
+    pump(rb, 1)
+    check("unlock: with u=0 the same blueprint shuts again although the switch is on",
+          rb.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]) is False
+          and rb.eval("OBW('%s')" % GUN_REF) is False,
+          "%s / %s" % (rb.eval("ASK_P(%d)" % VAR_BLUEPRINT[0]), rb.eval("OBW('%s')" % GUN_REF)))
+
+    # a menu vm answers the same, and so does every load order
+    rm = lock_rt(lua51, pre=on)
+    load(rm)
+    pump(rm, 1)
+    check("unlock: a menu vm opens the 76 and the versions too",
+          all(rm.eval("ASK_P(%d)" % i[0]) is True for i in items)
+          and all(rm.eval("ASK_P(%d)" % i) is True for i in att),
+          str([i for i in att if rm.eval("ASK_P(%d)" % i) is not True][:4]))
+    if LOAD_ORDER == "harness":
+        for order in ("harness", "alphabetical", "reversed"):
+            r = lock_rt(lua51, frontend=False, pre=on)
+            for n in LOAD_ORDERS[order]:
+                r.execute(LUA_TEXT[n])
+            pump(r, 1)
+            check("unlock: %s order opens every armory id" % order,
+                  all(r.eval("ASK_P(%d)" % i[0]) is True for i in items)
+                  and all(r.eval("ASK_L(%d)" % i) is True for i in att)
+                  and all(v is False for _r, v in craft_asks(r)),
+                  str([i[0] for i in items if r.eval("ASK_P(%d)" % i[0]) is not True][:4]))
+
+
+def armory_freeze(lua51):
+    """C96 a3: unlock armory on shows no active item and holds the pick where it was."""
+    on = "SET_DVAR('pt_armory_ch', 'a=69320;q=69316;u=1')"
+    off = "SET_DVAR('pt_armory_ch', 'a=69320;q=69316;u=0')"
+    zero = "OC_PUT(52813, { id = 52813, progress = { last_activation = 0 } })"
+
+    # the answer: the client's own record, and its own nil when it keeps none
+    rt = lock_rt(lua51, frontend=False, pre=on)
+    load(rt)
+    pump(rt, 1)
+    check("freeze: with u=1 and no record behind the row the answer is the clients own nil",
+          rt.eval("OC_ASK(52813)") is None and rt.eval("OC_OWN(52813)") is True,
+          str(rt.eval("OC_ASK(52813)")))
+    rt.execute(zero)
+    check("freeze: with u=1 the activation row is the clients own record, its zero kept",
+          rt.eval("OC_LAST(52813)") == "0" and rt.eval("OC_ID(52813)") == "52813"
+          and rt.eval("OC_OWN(52813)") is True,
+          "%s own=%s" % (rt.eval("OC_LAST(52813)"), rt.eval("OC_OWN(52813)")))
+
+    # a press: nothing runs, nothing is adopted, nothing is written
+    rt.execute("SET_FOCUS(69324, 'sat_ar_emu')")
+    got = rt.eval("PRESS()")
+    check("freeze: a press with u=1 does not run the clients own press at all",
+          str(got) == "nil,nil" and int(rt.eval("PRESSCALLS()")) == 0,
+          "%s calls=%s" % (got, rt.eval("PRESSCALLS()")))
+    check("freeze: and leaves the channels a and q as the hook had them, no pick line",
+          rt.eval("CH()") == "a=69320;q=69316;u=1"
+          and count_line(pick_lines(lines_of(rt)), "69324") == 0,
+          "%s | %s" % (rt.eval("CH()"), " | ".join(pick_lines(lines_of(rt)))))
+    check("freeze: and the answer is still the clients own record, the seeded pick not shown",
+          rt.eval("OC_OWN(52813)") is True and rt.eval("OC_LAST(52813)") == "0",
+          str(rt.eval("OC_LAST(52813)")))
+    rt.execute("SET_FOCUS(69318, 'sat_ar_emu'); PRESS()")
+    check("freeze: a second press changes nothing either",
+          rt.eval("CH()") == "a=69320;q=69316;u=1" and int(rt.eval("PRESSCALLS()")) == 0
+          and rt.eval("OC_LAST(52813)") == "0",
+          "%s / %s" % (rt.eval("CH()"), rt.eval("OC_LAST(52813)")))
+
+    # and off, the pick it had answers and a press moves it again
+    rt.execute(off)
+    pump(rt, 1)
+    check("freeze: with u=0 the pre u pick answers again from a copy of the clients record",
+          rt.eval("OC_LAST(52813)") == "69320" and rt.eval("OC_OWN(52813)") is False,
+          "%s own=%s" % (rt.eval("OC_LAST(52813)"), rt.eval("OC_OWN(52813)")))
+    rt.execute("SET_FOCUS(69324, 'sat_ar_emu')")
+    got = rt.eval("PRESS()")
+    check("freeze: a press with u=0 runs the press, adopts the row and writes the channel",
+          str(got) == "client-ret,7" and int(rt.eval("PRESSCALLS()")) == 1
+          and rt.eval("CH()") == "a=69324;q=69316;u=0"
+          and rt.eval("OC_LAST(52813)") == "69324",
+          "%s calls=%s %s %s" % (got, rt.eval("PRESSCALLS()"), rt.eval("CH()"),
+                                 rt.eval("OC_LAST(52813)")))
+    rt.execute("SET_DVAR('pt_armory_ch', 'a=69324;q=69316;u=1')")
+    pump(rt, 1)
+    check("freeze: u on again hides the pick it had just adopted and keeps the line",
+          rt.eval("OC_LAST(52813)") == "0" and rt.eval("CH()") == "a=69324;q=69316;u=1",
+          "%s / %s" % (rt.eval("OC_LAST(52813)"), rt.eval("CH()")))
+
+    # the menu vm the user clicks in answers the same
+    rm = lock_rt(lua51, pre=on)
+    load(rm)
+    pump(rm, 1)
+    rm.execute("SET_FOCUS(69324, 'sat_ar_emu')")
+    got = rm.eval("PRESS()")
+    check("freeze: a menu vm press is frozen the same way",
+          str(got) == "nil,nil" and int(rm.eval("PRESSCALLS()")) == 0
+          and rm.eval("CH()") == "a=69320;q=69316;u=1"
+          and rm.eval("OC_LAST(52813)") == "none",
+          "%s calls=%s %s %s" % (got, rm.eval("PRESSCALLS()"), rm.eval("CH()"),
+                                 rm.eval("OC_LAST(52813)")))
+
+
+# the two front end tables the padlock wraps: the barracks row builder and the armory door
+PADFIX = r"""
+CUSTOMIZE_MENU = CUSTOMIZE_MENU or {}
+HUB_CALLS = 0
+HUB_RAISE = false
+HUB_ORIG = false
+HUB_DF = function() return HUB_ORIG end
+CUSTOMIZE_MENU.getbarracksbuttondatatable = function(c, row, ev)
+  HUB_CALLS = HUB_CALLS + 1
+  if HUB_RAISE then error("the barracks builder raised") end
+  return { label = row.label, menu = row.menu, disabledFunc = row.disabledFunc }
+end
+function HUB_ROW(menu, df) return { label = menu, menu = menu, disabledFunc = df } end
+function HUB_ASK(menu, df)
+  local t = CUSTOMIZE_MENU.getbarracksbuttondatatable(0, HUB_ROW(menu, df))
+  if type(t) ~= "table" or type(t.disabledFunc) ~= "function" then return "none" end
+  local ok, v = pcall(t.disabledFunc)
+  if not ok then return "raised" end
+  return tostring(v)
+end
+function HUB_KEPT(menu, df)
+  local t = CUSTOMIZE_MENU.getbarracksbuttondatatable(0, HUB_ROW(menu, df))
+  return t.disabledFunc == df
+end
+function HUB_LABEL(menu, df)
+  local t = CUSTOMIZE_MENU.getbarracksbuttondatatable(0, HUB_ROW(menu, df))
+  return tostring(t.label)
+end
+function HUB_N() return HUB_CALLS end
+function HUB_RAISE_ON(v) HUB_RAISE = v end
+function HUB_ORIG_ON(v) HUB_ORIG = v end
+function HUB_SNAP() HUBW = CUSTOMIZE_MENU.getbarracksbuttondatatable end
+function HUB_SAME() return CUSTOMIZE_MENU.getbarracksbuttondatatable == HUBW end
+LOCK_CALLS = 0
+ARM_ORIG = false
+ARMORY.isarmorylocked = function(c) LOCK_CALLS = LOCK_CALLS + 1 return ARM_ORIG end
+function ARM_ASK() return ARMORY.isarmorylocked(0) end
+function ARM_ORIG_ON(v) ARM_ORIG = v end
+function ARM_N() return LOCK_CALLS end
+function ARM_SNAP() ARMW = ARMORY.isarmorylocked end
+function ARM_SAME() return ARMORY.isarmorylocked == ARMW end
+"""
+
+# an armory door that raises from the start, to see what the wrap answers then
+PADRAISE = r"""
+CUSTOMIZE_MENU = CUSTOMIZE_MENU or {}
+CUSTOMIZE_MENU.getbarracksbuttondatatable = function(c, row, ev) error("the barracks builder raised") end
+function HUB_TRY(menu)
+  local ok, v = pcall(CUSTOMIZE_MENU.getbarracksbuttondatatable, 0, { menu = menu })
+  if not ok then return "raised" end
+  return tostring(v)
+end
+ARMORY.isarmorylocked = function(c) error("the armory lock raised") end
+function ARM_TRY()
+  local ok, v = pcall(ARMORY.isarmorylocked, 0)
+  if not ok then return "raised" end
+  return tostring(v)
+end
+"""
+
+
+def armory_pad(lua51):
+    """C97 a1: unlock armory on padlocks the armory row and shuts every armory door."""
+    on = "SET_DVAR('pt_armory_ch', 'a=69320;q=69316;u=1')"
+    off = "SET_DVAR('pt_armory_ch', 'a=69320;q=69316;u=0')"
+    hub, other = "armorylandingscreen", "challengeselectmenu"
+
+    rt = lock_rt(lua51, frontend=True, pre=PADFIX + "\n" + on)
+    load(rt)
+    pump(rt, 1)
+    line = armory_line(lines_of(rt))
+    check("pad: the arm line says the barracks row and the armory door are in place",
+          len(line) == 1 and " hub=ok locked=ok " in line[0], " | ".join(line))
+
+    check("pad: with u=1 the armory row answers disabled",
+          rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "true",
+          str(rt.eval("HUB_ASK('%s', HUB_DF)" % hub)))
+    check("pad: and the row the builder handed back keeps its own fields",
+          rt.eval("HUB_LABEL('%s', HUB_DF)" % hub) == hub, str(rt.eval("HUB_LABEL('%s', HUB_DF)" % hub)))
+    check("pad: and every other barracks row keeps its own answer and its own function",
+          rt.eval("HUB_ASK('%s', HUB_DF)" % other) == "false"
+          and rt.eval("HUB_KEPT('%s', HUB_DF)" % other) is True,
+          "%s kept=%s" % (rt.eval("HUB_ASK('%s', HUB_DF)" % other),
+                          rt.eval("HUB_KEPT('%s', HUB_DF)" % other)))
+    rt.execute("HUB_ORIG_ON(true)")
+    check("pad: a row whose own disabledFunc says yes still says yes",
+          rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "true")
+    rt.execute("HUB_ORIG_ON(false)")
+
+    check("pad: with u=1 the armory door is locked and the client is never asked",
+          rt.eval("ARM_ASK()") is True and int(rt.eval("ARM_N()")) == 0,
+          str(rt.eval("ARM_N()")))
+    calls = int(rt.eval("HUB_N()"))
+    rt.execute("HUB_ASK('%s', HUB_DF)" % hub)
+    check("pad: and the barracks builder is still asked exactly once a row",
+          int(rt.eval("HUB_N()")) - calls == 1, str(int(rt.eval("HUB_N()")) - calls))
+    rt.execute("HUB_SNAP(); ARM_SNAP()")
+    pump(rt, 4)
+    check("pad: neither table is wrapped twice as the ticks go by",
+          rt.eval("HUB_SAME()") is True and rt.eval("ARM_SAME()") is True)
+
+    rt.execute(off)
+    pump(rt, 1)
+    check("pad: with u=0 the armory row answers what its own disabledFunc answers",
+          rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "false"
+          and rt.eval("HUB_KEPT('%s', HUB_DF)" % other) is True,
+          str(rt.eval("HUB_ASK('%s', HUB_DF)" % hub)))
+    rt.execute("HUB_ORIG_ON(true)")
+    check("pad: and a yes of its own is passed through untouched",
+          rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "true")
+    rt.execute("HUB_ORIG_ON(false)")
+    n = int(rt.eval("ARM_N()"))
+    check("pad: with u=0 the armory door answers the client's own answer",
+          rt.eval("ARM_ASK()") is False and int(rt.eval("ARM_N()")) - n == 1,
+          "%s %s" % (rt.eval("ARM_ASK()"), int(rt.eval("ARM_N()")) - n))
+    rt.execute("ARM_ORIG_ON(true)")
+    check("pad: a client that locks the armory by rank still locks it with the flag off",
+          rt.eval("ARM_ASK()") is True)
+    rt.execute("ARM_ORIG_ON(false)")
+    rt.execute(on)
+    pump(rt, 1)
+    check("pad: u on again shuts the door and the row in the same tick",
+          rt.eval("ARM_ASK()") is True and rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "true")
+
+    # a client that raises: the wrap answers no rather than carrying the error into the menu
+    rr = lock_rt(lua51, frontend=True, pre=PADRAISE + "\n" + off)
+    load(rr)
+    pump(rr, 1)
+    check("pad: a barracks builder that raises hands the page nothing and says nothing",
+          rr.eval("HUB_TRY('%s')" % hub) == "nil" and " raised" not in " ".join(lines_of(rr)),
+          str(rr.eval("HUB_TRY('%s')" % hub)))
+    check("pad: an armory door that raises answers no instead of rethrowing", rr.eval("ARM_TRY()") == "nil",
+          str(rr.eval("ARM_TRY()")))
+
+
 GUN_REF = "sat_pi_alcor"
 FOREIGN_REF = "sat_lm_hades"
-
 
 def bp_rt(lua51, pre=""):
     """A door with the client's own blueprint test and our part over it."""
@@ -11487,19 +11937,19 @@ def blueprint_own(lua51):
 
 
 def blueprint_list(lua51):
-    """C87 a4 v12: the builds window lists every blueprint id, in any lock state."""
+    """C87 a4 v13: the builds window lists every blueprint id, in any lock state."""
     bp, att = blueprints(), attachment_versions()
     check("blueprint list: the table splits into 309 weapon ids and 147 attachment ones, none shared",
           len(bp) == 309 and len(att) == 147 and not (set(bp) & set(att)),
           "%d / %d" % (len(bp), len(att)))
-    check("blueprint list: the armory part is v12 and the window has moved to the lock door",
-          'local VERSION = "v12"' in LUA_TEXT[ARMORY]
+    check("blueprint list: the armory part is v19 and the window has moved to the lock door",
+          'local VERSION = "v19"' in LUA_TEXT[ARMORY]
           and "LISTING" not in LUA_TEXT[ARMORY] and "BPID" not in LUA_TEXT[ARMORY]
           and "getmodifications" not in LUA_TEXT[ARMORY]
           and LUA_TEXT[PRISON].count('"getmodifications"') == 1
           and LUA_TEXT[ARMORY].count('"getitemnamebyid"') == 1
           and LUA_TEXT[ARMORY].count('"getweapondataforref"') == 1,
-          "v12 pins")
+          "v19 pins")
 
     rt = list_rt(lua51)
     rt.execute("GM_SET({151472, 153766, 142465, %d})" % VAR_FOREIGN)
@@ -11993,6 +12443,7 @@ def main():
             utc_fill(lua51)
             options_rows(lua51)
             options_layers(lua51)
+            unlock_row(lua51)
             tokens_channel(lua51)
             armory_gate(lua51)
             armory_pick(lua51)
@@ -12003,6 +12454,9 @@ def main():
             armory_lock(lua51)
             armory_craft(lua51)
             armory_own(lua51)
+            armory_unlock(lua51)
+            armory_freeze(lua51)
+            armory_pad(lua51)
             blueprint_own(lua51)
             blueprint_list(lua51)
 

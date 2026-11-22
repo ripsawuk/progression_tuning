@@ -350,6 +350,7 @@ static int AW_TAIL_ZERO = 0;
 static long AW_TAKE = -1;   // -1 = the whole held amount
 static int AW_FAULT = 0;
 static int ACTIVE = 0;      // what the pick channel would answer
+static int UNLOCKED = 0;    // and what its unlock armory row would answer
 static int ADV_POSTS = 0;   // how many advance requests the pay posted
 static int ADV_ID = 0;      // the last row it posted
 static int IN_ADV_OFF = 0;  // the advance kill switch as the shell would pass it
@@ -358,6 +359,12 @@ static int IN_ADV_OFF = 0;  // the advance kill switch as the shell would pass i
 int pick_active(void)
 {
     return ACTIVE;
+}
+
+// and its unlock row
+int pick_unlocked(void)
+{
+    return UNLOCKED;
 }
 
 // and its one write: the request the tick would serve
@@ -460,6 +467,7 @@ static void pay_setup(unsigned long long beat_ms)
     KILL = 7;
     CRIT = 5;
     ACTIVE = 0;
+    UNLOCKED = 0;
     ADV_POSTS = 0;
     ADV_ID = 0;
     IN_ADV_OFF = 0;
@@ -473,6 +481,7 @@ static int look(unsigned long long now, int active, long pending)
 {
     arm_pay_in in;
     in.active = active;
+    in.unlocked = UNLOCKED;
     in.off = 0;
     in.advance_off = IN_ADV_OFF;
     in.recs = RECS;
@@ -490,6 +499,7 @@ static int look_off(unsigned long long now, int active, long pending)
 {
     arm_pay_in in;
     in.active = active;
+    in.unlocked = UNLOCKED;
     in.off = 1;
     in.advance_off = IN_ADV_OFF;
     in.recs = RECS;
@@ -559,6 +569,32 @@ static int pay_mode(void)
     pay_setup(10000);
     ok(look(13000, 75680, 900) == 0 && AW_CALLS == 0, "pay: a beat older than the window pays nothing");
     ok(look_off(10000, 75680, 900) == 0 && AW_CALLS == 0, "pay: the kill switch pays nothing");
+
+    // ---- 11b. unlock armory on pauses the pay --------------------------------------------------------
+    pay_setup(10000);
+    UNLOCKED = 1;
+    ok(look(10000, 75680, 1200) == 1 && RES.why == ARM_PAY_PAUSE && AW_CALLS == 0,
+       "pay: unlock armory on pays nothing");
+    ok(arm_row_xp(row_at(0)) == 0 && ST.paid == 0 && ST.pending == 1200,
+       "pay: the row does not move and nothing is credited");
+    armory_pay_log();
+    ok(LOGS == 1 && strcmp(LAST_LOG, "armory: pay paused (unlock armory on)") == 0,
+       "pay: the pause is one line");
+    ok(look(11000, 75680, 1200) == 0 && AW_CALLS == 0, "pay: a later look while paused still pays nothing");
+    armory_pay_log();
+    ok(LOGS == 1, "pay: the pause is said once, not once a look");
+    ST.beat_ms = 12000;
+    ok(look(12000, 75681, 900) == 0 && ADV_POSTS == 0,
+       "advance: a complete row posts no advance while paused");
+    UNLOCKED = 0;
+    ST.beat_ms = 13000;
+    ok(look(13000, 75680, 1200) == 1 && RES.why == ARM_PAY_RESUME && AW_CALLS == 0,
+       "pay: the first look after it goes off says the pay resumed");
+    armory_pay_log();
+    ok(LOGS == 2 && strcmp(LAST_LOG, "armory: pay resumed") == 0, "pay: the resume is one line");
+    ST.beat_ms = 14000;
+    ok(look(14000, 75680, 1200) == 1 && RES.why == ARM_PAY_DONE && AW_CALLS == 1,
+       "pay: and the next look pays again");
 
     // ---- 12. the complete row ------------------------------------------------------------------------
     pay_setup(10000);

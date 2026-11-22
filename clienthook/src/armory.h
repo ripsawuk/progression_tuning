@@ -45,6 +45,8 @@
 #define ARM_PAY_COMPLETE 3  // the row reads complete
 #define ARM_PAY_FAULT 4     // a fault latched the pay off for the process
 #define ARM_PAY_NOTE 5      // a second thread was inside the window
+#define ARM_PAY_PAUSE 6     // unlock armory came on so the pay stopped
+#define ARM_PAY_RESUME 7    // unlock armory went off so the pay runs again
 
 // the three fields of one line
 typedef struct
@@ -85,6 +87,7 @@ typedef struct
 typedef struct
 {
     int active;                 // pick_active() 0 = nothing picked
+    int unlocked;               // pick_unlocked() 1 = unlock armory on
     int off;                    // the pay kill switch
     int advance_off;            // the advance kill switch
     const unsigned char *recs;  // the client record array
@@ -107,6 +110,7 @@ typedef struct
 {
     unsigned long long last_look; // the look clock
     int latched;                  // a fault latched the pay off
+    int paused;                   // 1 while unlock armory is on
 } arm_pay_state;
 
 // 1 when s is a line this unit can read
