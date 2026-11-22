@@ -1,28 +1,38 @@
-"""The augment part's replay: the store's own numbers, or the switches' full house.
+"""The augment part's replay: the store's ladder, the nine slots, the count and the press.
 
 Read-only. Nothing is installed and nothing is launched. The stubbed frontend VM, its two hash
 namespaces and its clock come from `test_progression_tuning.py` by import (`PRELUDE`, `lines_of`,
 `has_line`, `count_line`, `pump`); this file only adds what augments need - a hash-keyed
-`ZMAUGMENT` with its augment cache, the game's own `cacheaugmenttierdata` reading
-`Challenge.getchallengeprogress`, a refresh that forces every row complete the way the shipped
-overrides do, and the hashed dev bool the tier code asks for.
+`ZMAUGMENT` with its augment cache and its ladder rows, the game's own `cacheaugmenttierdata`
+reading `Challenge.getchallengeprogress`, the count pass reading the user state, the nine slot
+publisher over a datasource tree that defaults `is_unlocked` to true, the press and the read-back
+the menu's research flow uses, and the hashed dev bool the tier code asks for.
 
 The cases:
 
-  1. the switches off: after a refresh every cached row ends on the numbers the game's own tier
-     pass wrote - not the forced complete flag, not 100, not the last tier;
-  2. the switches on (`zm_unlock_augments`, then `zm_unlock_all`): the forced values stand and
-     the part writes nothing over them;
-  3. the arm line: exactly one line with the three fields, said once across four refreshes, and
-     nothing else is ever printed;
-  4. the dev bool: read from the game's own `Dvar.GetDvarBool` call during the tier pass, printed
-     as `true`, as `false`, and as `unread` when no tier pass ran;
-  5. the plain-name fixture: a table keyed by plain names is never touched, and nothing is printed;
-  6. the load orders: the module present at load, the module appearing after the part's own timer
-     ticks, and the part loaded twice - one wrapper and one line in each;
-  7. the decoy: a key one digit off the store's hash is left alone;
-  8. the file rule: lowercase comments of ten words at most with no punctuation, no mention of the
-     client, and no plain-name indexing of the augmented table.
+   1. the switches off: after a refresh every cached row ends on the numbers the game's own tier
+      pass wrote - not the forced complete flag, not 100, not the last tier;
+   2. the switches on (`zm_unlock_augments`, then `zm_unlock_all`): the forced values stand, the
+      slots keep their default, the count pass never runs and a press records nothing;
+   3. the arm line: exactly one line with the three fields, said once across four refreshes, plus
+      one line for the owned count and the cache's key type; nothing else is ever printed;
+   4. the dev bool: read from the game's own `Dvar.GetDvarBool` call during the tier pass, printed
+      as `true`, as `false`, and as `unread` when no tier pass ran;
+   5. the ticks: at no progress every augment slot reads false including the slots past the
+      bundle's count, past the first step only the first tier reads true;
+   6. the count: the number of owned augment loot ids is what the game's own count pass reads, the
+      user state member and the ownership member are the same objects after a pass;
+   7. the press: event 846 records the achievement id and one line, 53979 and 47576 answer
+      `last_activation` with it, every other id passes through as the game's own object;
+   8. the string keyed cache: a numeric twin is added to the game's own table, same row object;
+   9. the chain: a foreign wrapper put above ours on the refresh, the send and the progress read is
+      never wrapped again by us, and the work still happens once through it;
+  10. the plain-name fixture: a table keyed by plain names is never touched, and nothing is printed;
+  11. the load orders: the module present at load, the module appearing after the part's own timer
+      ticks, the part loaded twice, and the timer's own pass once the table arrives;
+  12. the decoy: a key one digit off the store's hash is left alone;
+  13. the file rule: lowercase comments of ten words at most with no punctuation, no mention of the
+      client, and no plain-name indexing of the augmented table.
 """
 import os
 import re
@@ -60,78 +70,197 @@ with open(PART, "rb") as fh:
     RAW = fh.read()
 SRC = RAW.decode("utf-8")
 
-# the four keys the augment table carries, the way the engine hands them out
+# the members the part reaches by hash, the way the engine hands them out
 ZMFIX = r"""
 STORE_K = "#x0d847872560dcd8e4"
 DIFF_K = "#x0d847872560dcd8e5"
 REFRESH_K = "#x052e47d640bf4ca01"
+COUNT_K = "#x0633a1942eeae0eaa"
+SLOTS_K = "#x0bd666394faa4374c"
+SEND_K = "#x0e636d3bf423fd414"
+PROG_K = "#x031eee6570ef4bb8b"
+USV_K = "#x0a82011d283698aa4"
 DEV_K = setmetatable({}, { __tostring = function() return "xhash: #x1d428ffe65b5694d6" end })
 DEVON = false
 AID = 40001
 BID = 40002
 PROG = { [tostring(AID)] = 0, [tostring(BID)] = 0 }
 function SET_PROG(id, v) PROG[tostring(id)] = v end
-Challenge[xhash("getchallengeprogress")] = function(c, id) return PROG[tostring(id)] or 0 end
-Dvar[xhash("GetDvarBool")] = function(k, d)
+local function HK(n) return xhash(n) end
+Challenge[HK("getchallengeprogress")] = function(c, id) return PROG[tostring(id)] or 0 end
+Challenge[HK("getaeeventid")] = function(name) return 846 end
+Challenge[HK("GetAEEventKeyID")] = function(name, key) return 74 end
+Challenge[HK("GetAEKindID")] = function(name) return 437 end
+Challenge[HK("GetFileTableByType")] = function(kind)
+  return { [HK("file")] = "aug.csv", [HK("cols")] = { [0] = "id" } }
+end
+StringTable = StringTable or {}
+ROW0 = { [HK("amount")] = "0|3|6", [HK("augment_unlocks")] = "7001+7002|7003|7004" }
+StringTable[HK("tablelookuprowwithcolumndata")] = function(file, row, cols) return ROW0 end
+Dvar[HK("GetDvarBool")] = function(k, d)
   if k == DEV_K then return DEVON end
   return d
 end
 GETSTR = Dvar[xhash("GetDvarString")]
-function ROWS()
-  return { [1] = { progress = 0 }, [2] = { progress = 0 }, [3] = { progress = 0 },
-           isResearchComplete = true, totalProgress = 100, currentTier = 3, isUnlocked = true }
+
+local function row(loot)
+  return { [HK("lootid")] = loot, [HK("IsUnlocked")] = true, [HK("progress")] = 0,
+           [HK("displayname")] = "aug" .. loot }
+end
+local function rows()
+  return { row(801), row(802), row(803), isResearchComplete = true, totalProgress = 100,
+           currentTier = 3, isUnlocked = true, amountNeededToUnlock = "0" }
 end
 Z = {}
-Z[STORE_K] = { sat_aug_one = ROWS(), sat_aug_two = ROWS() }
-Z[DIFF_K] = { decoy = ROWS() }
-Z.lootid_to_ref = { [7001] = "sat_aug_one", [7002] = "sat_aug_two" }
-Z[xhash("augmentresearchchallenges")] = {
-  [7001] = { achievementID = AID, amount = "70000|140000|275000" },
-  [7002] = { achievementID = BID, amount = "70000|140000|275000" },
+Z[STORE_K] = { sat_aug_one = rows(), sat_aug_two = rows() }
+Z[DIFF_K] = { decoy = rows() }
+Z[HK("lootid_to_ref")] = { [7001] = "sat_aug_one", [7002] = "sat_aug_two" }
+Z[HK("augmentresearchchallenges")] = {
+  [7001] = { [HK("achievementID")] = AID, [HK("amount")] = "70000|140000|275000" },
+  [7002] = { [HK("achievementID")] = BID, [HK("amount")] = "70000|140000|275000" },
 }
-Z[xhash("cacheaugmenttierdata")] = function(c, ch, loot)
-  local ref = Z.lootid_to_ref[loot]
+Z[HK("cacheaugmenttierdata")] = function(c, ch, loot)
+  local ref = Z[HK("lootid_to_ref")][loot]
   local entry = ref ~= nil and Z[STORE_K][ref] or nil
   if entry == nil then return end
-  local p = Challenge[xhash("getchallengeprogress")](c, ch.achievementID)
-  local dev = Dvar[xhash("GetDvarBool")](DEV_K, false)
+  local p = Challenge[HK("getchallengeprogress")](c, ch[HK("achievementID")])
+  local dev = Dvar[HK("GetDvarBool")](DEV_K, false)
   entry.currentTier = 1
   entry.totalProgress = 0
   entry.isResearchComplete = dev and true or false
   entry.tierAt = p
 end
 function TIER_ALL(c)
-  for loot, ch in pairs(Z[xhash("augmentresearchchallenges")]) do
-    Z[xhash("cacheaugmenttierdata")](c, ch, loot)
+  for loot, ch in pairs(Z[HK("augmentresearchchallenges")]) do
+    Z[HK("cacheaugmenttierdata")](c, ch, loot)
   end
 end
-CALLS = 0
 function TOGGLED()
   return GETSTR(xhashdvar("zm_unlock_augments")) == "1"
       or GETSTR(xhashdvar("zm_unlock_all")) == "1"
 end
+CALLS = 0
 Z[REFRESH_K] = function(c)
   CALLS = CALLS + 1
   TIER_ALL(c)
   for _, e in pairs(Z[STORE_K]) do e.isResearchComplete = true end
   if TOGGLED() then
     for _, e in pairs(Z[STORE_K]) do
-      for i = 1, #e do if type(e[i]) == "table" then e[i].progress = 1 end end
+      for i = 1, #e do if type(e[i]) == "table" then e[i][HK("progress")] = 1 end end
       e.isUnlocked, e.isResearchComplete, e.totalProgress, e.currentTier = true, true, 100, #e
     end
   end
 end
+
+BUNDLE_N = 3
+PUBLISHED = 0
+local ARR = {}
+for i = 1, 9 do ARR[i] = {} end
+local LEAF = {
+  [HK("GetValue")] = function(self, c) return self.v end,
+  [HK("SetValue")] = function(self, c, x) self.v = x; return true end,
+}
+local function dleaf(v) return setmetatable({ v = v }, { __index = LEAF }) end
+for i = 1, 9 do ARR[i][HK("is_unlocked")] = dleaf(true) end
+_DataSources = { [HK("zm")] = { [HK("frontend")] = { [HK("augment_select")] = {
+  [HK("current_augment_research")] = ARR } } } }
+function SLOTV(i) return ARR[i][HK("is_unlocked")].v end
+function SLALL() local s = ""; for i = 1, 9 do s = s .. (ARR[i][HK("is_unlocked")].v and "1" or "0") end; return s end
+function SLRESET() for i = 1, 9 do ARR[i][HK("is_unlocked")].v = true end end
+function PUB(c, ref)
+  ZMAUGMENT[SLOTS_K](c, dleaf(ref))
+end
+Z[SLOTS_K] = function(c, item)
+  PUBLISHED = PUBLISHED + 1
+  local get = item and item[HK("GetValue")]
+  local ref = get and get(item, c) or nil
+  local list = ref and Z[STORE_K][ref] or nil
+  for i = 1, BUNDLE_N do
+    local e = list and list[i] or nil
+    local ds = ARR[i][HK("is_unlocked")]
+    if e ~= nil then ds.v = e[HK("IsUnlocked")] else ds.v = false end
+  end
+end
+
+COUNTED, COUNT_ROW, COUNT_CALLS = nil, nil, 0
+Z[COUNT_K] = function(c, row)
+  COUNT_CALLS = COUNT_CALLS + 1
+  COUNT_ROW = row
+  local OP = rawget(_G, "OnlineProgression")
+  local f = OP and OP[USV_K]
+  local got = nil
+  if type(f) == "function" then
+    local r = f(c, { "k" })
+    got = r and r["k"]
+  end
+  COUNTED = got
+  for _, e in pairs(Z[STORE_K]) do e.amountNeededToUnlock = tostring(got) end
+  return 0
+end
+
+OnlineProgression = {}
+USV_CALLS = 0
+USV_ORIG = function(c, keys) USV_CALLS = USV_CALLS + 1; return {} end
+OnlineProgression[USV_K] = USV_ORIG
+function USV_SAME() return OnlineProgression[USV_K] == USV_ORIG end
+function USV_N() local n = 0; for _ in pairs(OnlineProgression) do n = n + 1 end; return n end
+
+PROXY_LOOT = {}
+PO_ORIG = function(c, id) return 1 end
+PROXY_LOOT[HK("IsOwned")] = PO_ORIG
+function PO_SAME() return PROXY_LOOT[HK("IsOwned")] == PO_ORIG end
+function PO_N() local n = 0; for _ in pairs(PROXY_LOOT) do n = n + 1 end; return n end
+
+Challenges = Challenges or {}
+SENT = 0
+SEND_ORIG = function(c, ev, n, ...) SENT = SENT + 1; return true end
+Challenges[SEND_K] = SEND_ORIG
+PROG_ROWS = {}
+PROG_ORIG = function(c, id)
+  local k = tostring(id)
+  PROG_ROWS[k] = PROG_ROWS[k] or { progress = { xp = 0 } }
+  return PROG_ROWS[k]
+end
+OnlineChallenges[PROG_K] = PROG_ORIG
+
 function MAKEZM() ZMAUGMENT = Z end
 function REFRESH(c) ZMAUGMENT[REFRESH_K](c) end
 function FIELD(ref, name) local e = ZMAUGMENT[STORE_K][ref]; return tostring(e and e[name]) end
 function TIER(ref, i)
   local e = ZMAUGMENT[STORE_K][ref]
-  local v = e and e[i] and e[i].progress
+  local v = e and e[i] and e[i][xhash("progress")]
   return tostring(v)
 end
-function WRAPPED() return ZMAUGMENT[REFRESH_K] == nil end
-function FORCE42() for _, e in pairs(Z[STORE_K]) do e.totalProgress = 42 end end
-function FACED() local f = ZMAUGMENT[REFRESH_K]; return f ~= nil end
+function LOCKS(ref)
+  local e = ZMAUGMENT[STORE_K][ref]
+  local s = ""
+  for i = 1, 3 do s = s .. (e[i][xhash("IsUnlocked")] and "1" or "0") end
+  return s
+end
+function PRESS(id) Challenges[SEND_K](0, 846, 2, 74, id, 2048) end
+function LAST(id)
+  local r = OnlineChallenges[PROG_K](0, id)
+  local p = r and r.progress
+  return tostring(p and p.last_activation)
+end
+function OTHER(id)
+  local r = OnlineChallenges[PROG_K](0, id)
+  return tostring(r == PROG_ROWS[tostring(id)]), tostring(r and r.progress and r.progress.last_activation)
+end
+function STRKEYS()
+  local C = Z[HK("augmentresearchchallenges")]
+  C["7001"] = C[7001]
+  C[7001] = nil
+  C["7002"] = C[7002]
+  C[7002] = nil
+end
+function SAMEROW(k)
+  local C = Z[HK("augmentresearchchallenges")]
+  return tostring(C[7001] == C[k])
+end
+function CACHEK() return type(next(Z[HK("augmentresearchchallenges")])) end
+CARDED = 0
+Z[HK("initcurrentactiveresearch")] = function(c) CARDED = CARDED + 1 end
 """
 
 # the same table keyed the plain way - never indexed by the part
@@ -150,7 +279,7 @@ PLAIN_FACE = ZMAUGMENT.refresh
 function PLAIN_SAME() return ZMAUGMENT.refresh == PLAIN_FACE end
 """
 
-# the hash-keyed table with no tier pass in it: nothing to re-run, nothing to read
+# the hash-keyed table with no tier pass and no cache: nothing to re-run, nothing to read
 ZMNOTIER = r"""
 STORE_K = "#x0d847872560dcd8e4"
 REFRESH_K = "#x052e47d640bf4ca01"
@@ -192,10 +321,19 @@ def arm_line(lines):
     return out[0] if out else ""
 
 
-# --- 1 and 2: the switches decide whose numbers stand ------------------------------------------
+def owned_line(lines):
+    out = [ln for ln in lines if "augments owned=" in ln]
+    return out[0] if out else ""
+
+
+def off(r):
+    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+
+
+# --- 1: the switches decide whose numbers stand ------------------------------------------------
 def case_off(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r)
     r.execute("REFRESH(0)")
     check("off: a row ends incomplete, not forcibly complete", val(r, "FIELD('sat_aug_one','isResearchComplete')") == "false",
           "isResearchComplete=" + val(r, "FIELD('sat_aug_one','isResearchComplete')"))
@@ -218,6 +356,7 @@ def case_off(lua51):
     check("off: the refresh the game owns still ran once per call", val(r, "CALLS") == "2", "calls=" + val(r, "CALLS"))
 
 
+# --- 2: the switches on leave every new answer alone -------------------------------------------
 def case_on(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
     r.execute("SET_DVAR('zm_unlock_all', '0'); SET_DVAR('zm_unlock_augments', '1')")
@@ -231,41 +370,209 @@ def case_on(lua51):
           "currentTier=" + val(r, "FIELD('sat_aug_one','currentTier')"))
     check("on (augments): the tier progress stands at one", val(r, "TIER('sat_aug_one',1)") == "1",
           "tier1=" + val(r, "TIER('sat_aug_one',1)"))
+    check("on: no tick is written and no count is fed",
+          val(r, "LOCKS('sat_aug_one')") == "111" and val(r, "COUNT_CALLS") == "0",
+          "locks=" + val(r, "LOCKS('sat_aug_one')") + " count=" + val(r, "COUNT_CALLS"))
+    r.execute("PUB(0, 'sat_aug_one')")
+    check("on: the slots keep the game's own default", val(r, "SLALL()") == "111111111", val(r, "SLALL()"))
+    r.execute("PRESS(40001)")
+    check("on: a press records nothing and says nothing",
+          val(r, "ProgressionTuning.aug.active") in ("0", "0.0")
+          and count_line(lines_of(r), "augments research start") == 0,
+          "active=" + val(r, "ProgressionTuning.aug.active"))
     r2 = rt(ZMFIX + "\nMAKEZM()")
     r2.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '1')")
     r2.execute("REFRESH(0)")
     check("on (all): every forced value stands with the other switch",
           val(r2, "FIELD('sat_aug_one','totalProgress')") == "100" and val(r2, "TIER('sat_aug_one',1)") == "1",
           "total=" + val(r2, "FIELD('sat_aug_one','totalProgress')") + " tier1=" + val(r2, "TIER('sat_aug_one',1)"))
-    check("on: the arm line names the switch that is on", "unlock=1" in arm_line(lines_of(r)),
+    check("on: the arm line names the switches it read", "unlock=1" in arm_line(lines_of(r)),
           arm_line(lines_of(r)))
 
 
-# --- 3 and 4: the one line, and the bool it carries --------------------------------------------
+# --- 3 and 4: the two lines, and the bool the first one carries --------------------------------
 def case_line(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r)
     r.execute("REFRESH(0)")
     l = lines_of(r)
-    check("line: one arm line and nothing else", len(l) == 1, "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v1 unlock=0 all=0 devcomplete=false"
-    check("line: the exact wording", arm_line(l) == want, arm_line(l))
+    check("line: one arm line, one owned line and nothing else", len(l) == 2,
+          "%d lines: %s" % (len(l), " | ".join(l[:3])))
+    want = "progression_tuning: augments armed v2 unlock=0 all=0 devcomplete=false"
+    check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
+    check("line: the owned line names the count and the key type",
+          owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
     r.execute("REFRESH(0); REFRESH(0); REFRESH(0)")
     check("line: said once over four refreshes", count_line(lines_of(r), "augments armed") == 1,
           "%d" % count_line(lines_of(r), "augments armed"))
+    check("line: the owned line once as well", count_line(lines_of(r), "augments owned") == 1,
+          "%d" % count_line(lines_of(r), "augments owned"))
     r3 = rt(ZMFIX + "\nMAKEZM()")
     r3.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0'); DEVON = true")
     r3.execute("REFRESH(0)")
     check("line: devcomplete reads the bool the game asked for",
           "devcomplete=true" in arm_line(lines_of(r3)), arm_line(lines_of(r3)))
     r4 = rt(ZMNOTIER + "\nMAKEZM()")
-    r4.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r4)
     r4.execute("REFRESH(0)")
     check("line: no tier pass to run means no claim and no line", len(lines_of(r4)) == 0,
           " | ".join(lines_of(r4)[:2]))
 
 
-# --- 5, 6, 7: what must not be touched, and every load order -----------------------------------
+# --- 5: the nine ticks follow the ladder reached ------------------------------------------------
+def case_ticks(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    r.execute("SLRESET(); PUB(0, 'sat_aug_one')")
+    check("ticks: no progress leaves every augment entry locked", val(r, "LOCKS('sat_aug_one')") == "000",
+          "locks=" + val(r, "LOCKS('sat_aug_one')"))
+    check("ticks: no progress leaves all nine slots locked past the bundle count too",
+          val(r, "SLALL()") == "000000000", val(r, "SLALL()"))
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("SET_PROG(40002, 0)")
+    r.execute("REFRESH(0)")
+    r.execute("SLRESET(); PUB(0, 'sat_aug_one')")
+    check("ticks: past the first step only the first tier reads researched",
+          val(r, "LOCKS('sat_aug_one')") == "100", "locks=" + val(r, "LOCKS('sat_aug_one')"))
+    check("ticks: the first slot reads unlocked and the rest locked", val(r, "SLALL()") == "100000000",
+          val(r, "SLALL()"))
+    r.execute("SET_PROG(40001, 150000)")
+    r.execute("REFRESH(0)")
+    r.execute("SLRESET(); PUB(0, 'sat_aug_one')")
+    check("ticks: past the second step two tiers read researched",
+          val(r, "LOCKS('sat_aug_one')") == "110" and val(r, "SLALL()") == "110000000",
+          "locks=" + val(r, "LOCKS('sat_aug_one')") + " slots=" + val(r, "SLALL()"))
+    r.execute("SET_PROG(40001, 300000)")
+    r.execute("REFRESH(0)")
+    check("ticks: a finished ladder leaves all three tiers researched",
+          val(r, "LOCKS('sat_aug_one')") == "111", "locks=" + val(r, "LOCKS('sat_aug_one')"))
+    r.execute("SET_PROG(40001, 0)")
+    r.execute("REFRESH(0)")
+    r.execute("PUB(0, 'sat_aug_one')")
+    check("ticks: a slot past the bundle count is written by the publisher wrapper",
+          val(r, "SLOTV(9)") == "False", "slot9=" + val(r, "SLOTV(9)"))
+
+
+# --- 6: the count the game's own ladder pass reads ----------------------------------------------
+def case_count(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    check("count: nothing owned feeds a zero", val(r, "COUNTED") in ("0", "0.0"), "counted=" + val(r, "COUNTED"))
+    r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r.execute("REFRESH(0)")
+    check("count: two researched tiers feed the ladders' owned ids",
+          val(r, "COUNTED") in ("3", "3.0"), "counted=" + val(r, "COUNTED"))
+    check("count: the game's own pass reads the row the table holds", val(r, "COUNT_ROW == ROW0") == "True",
+          val(r, "COUNT_ROW == ROW0"))
+    check("count: the ladder gate follows the count the pass saw",
+          val(r, "FIELD('sat_aug_one','amountNeededToUnlock')") == "3",
+          val(r, "FIELD('sat_aug_one','amountNeededToUnlock')"))
+    check("count: the user state reader is the same function after the pass", val(r, "USV_SAME()") == "True",
+          val(r, "USV_SAME()"))
+    check("count: the user state table keeps its one member", val(r, "USV_N()") == "1", val(r, "USV_N()"))
+    check("count: the ownership getter is the same function after the pass", val(r, "PO_SAME()") == "True",
+          val(r, "PO_SAME()"))
+    check("count: the ownership table keeps its one member", val(r, "PO_N()") == "1", val(r, "PO_N()"))
+    before = val(r, "COUNT_CALLS")
+    r.execute("REFRESH(0); REFRESH(0)")
+    check("count: one feed per refresh pass", int(val(r, "COUNT_CALLS")) == int(before) + 2,
+          "%s -> %s" % (before, val(r, "COUNT_CALLS")))
+
+
+# --- 7: the press and the read-back -------------------------------------------------------------
+def case_press(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    r.execute("PRESS(40001)")
+    check("press: the achievement id is recorded", val(r, "ProgressionTuning.aug.active") in ("40001", "40001.0"),
+          "active=" + val(r, "ProgressionTuning.aug.active"))
+    check("press: one line names the id",
+          count_line(lines_of(r), "progression_tuning: augments research start id=40001") == 1,
+          " | ".join([ln for ln in lines_of(r) if "research start" in ln][:2]))
+    check("press: 53979 answers the activation with it", val(r, "LAST(53979)") == "40001", val(r, "LAST(53979)"))
+    check("press: 47576 answers the activation with it", val(r, "LAST(47576)") == "40001", val(r, "LAST(47576)"))
+    check("press: the game's own send still ran once", val(r, "SENT") == "1", "sent=" + val(r, "SENT"))
+    r.execute("Challenges[SEND_K](0, 999, 2, 74, 40002, 2048)")
+    check("press: another event passes through and changes nothing",
+          count_line(lines_of(r), "augments research start") == 1
+          and val(r, "ProgressionTuning.aug.active") in ("40001", "40001.0"),
+          "active=" + val(r, "ProgressionTuning.aug.active"))
+    r.execute("LAST(12345)")
+    check("press: an unrelated row is the game's own object untouched",
+          val(r, "OTHER(12345)") == "('true', 'nil')", val(r, "OTHER(12345)"))
+    r.execute("REFRESH(0)")
+    check("press: the card is asked for once the press lands",
+          val(r, "CARDED") in ("1", "1.0") and r.eval("ProgressionTuning.aug.dirty") is False,
+          "carded=" + val(r, "CARDED"))
+    r2 = rt(ZMFIX + "\nMAKEZM()")
+    off(r2)
+    r2.execute("REFRESH(0)")
+    r2.execute("PRESS(40002)")
+    check("press: a second press moves the answer", val(r2, "LAST(53979)") == "40002"
+          and count_line(lines_of(r2), "augments research start") == 1, val(r2, "LAST(53979)"))
+
+
+# --- 8: the string keyed cache gets a numeric twin ----------------------------------------------
+def case_alias(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("STRKEYS()")
+    check("alias: the cache is string keyed to start with", val(r, "CACHEK()") == "string", val(r, "CACHEK()"))
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("alias: the numeric twin is the same row object", val(r, "SAMEROW(7001)") == "true",
+          val(r, "SAMEROW(7001)"))
+    check("alias: the ticks still follow the ladder through the twin",
+          val(r, "LOCKS('sat_aug_one')") == "100", "locks=" + val(r, "LOCKS('sat_aug_one')"))
+    check("alias: the line names the string keys", "keys=string" in owned_line(lines_of(r)), owned_line(lines_of(r)))
+
+
+# --- 9: the chain stays bounded under a foreign wrapper ----------------------------------------
+def case_chain(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    r.execute("""
+      KEEP = ZMAUGMENT[REFRESH_K]
+      TOP = function(c) KEEP(c); for _, e in pairs(Z[STORE_K]) do e.totalProgress = 42 end end
+      ZMAUGMENT[REFRESH_K] = TOP
+      KEEPS = Challenges[SEND_K]
+      TOPS = function(c, ev, n, ...) return KEEPS(c, ev, n, ...) end
+      Challenges[SEND_K] = TOPS
+      KEEPP = OnlineChallenges[PROG_K]
+      TOPP = function(c, id, ...) return KEEPP(c, id, ...) end
+      OnlineChallenges[PROG_K] = TOPP
+    """)
+    for _ in range(6):
+        pump(r, 1)
+        r.execute("REFRESH(0)")
+    check("chain: the refresh wrapper the foreign one holds is not wrapped again",
+          val(r, "ZMAUGMENT[REFRESH_K] == TOP") == "True", val(r, "ZMAUGMENT[REFRESH_K] == TOP"))
+    check("chain: the send wrapper the foreign one holds is not wrapped again",
+          val(r, "Challenges[SEND_K] == TOPS") == "True", val(r, "Challenges[SEND_K] == TOPS"))
+    check("chain: the progress wrapper the foreign one holds is not wrapped again",
+          val(r, "OnlineChallenges[PROG_K] == TOPP") == "True", val(r, "OnlineChallenges[PROG_K] == TOPP"))
+    before = val(r, "COUNT_CALLS")
+    r.execute("REFRESH(0)")
+    check("chain: the pass still runs once through the foreign wrapper",
+          int(val(r, "COUNT_CALLS")) == int(before) + 1, "%s -> %s" % (before, val(r, "COUNT_CALLS")))
+    r.execute("PRESS(40001)")
+    check("chain: one press through the foreign wrapper says one line",
+          count_line(lines_of(r), "augments research start") == 1,
+          "%d" % count_line(lines_of(r), "augments research start"))
+    check("chain: the answer still comes through the foreign wrapper", val(r, "LAST(53979)") == "40001",
+          val(r, "LAST(53979)"))
+    check("chain: a foreign wrapper that forces a number is answered by the next pass",
+          val(r, "FIELD('sat_aug_one','totalProgress')") == "42", val(r, "FIELD('sat_aug_one','totalProgress')"))
+    pump(r, 8)
+    check("chain: the timer's own pass puts the store's number back",
+          val(r, "FIELD('sat_aug_one','totalProgress')") == "0", val(r, "FIELD('sat_aug_one','totalProgress')"))
+
+
+# --- 10, 11, 12: what must not be touched, and every load order ---------------------------------
 def case_plain(lua51):
     r = rt(ZMPLAIN)
     pump(r, 3)
@@ -282,19 +589,46 @@ def case_late(lua51):
           "%d lines" % len(lines_of(r)))
     r.execute("MAKEZM()")
     pump(r, 2)
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r)
     r.execute("REFRESH(0)")
     check("late: the timer arms when the table arrives",
           val(r, "FIELD('sat_aug_one','totalProgress')") == "0",
           "total=" + val(r, "FIELD('sat_aug_one','totalProgress')"))
     check("late: one arm line once the table is there", count_line(lines_of(r), "augments armed") == 1,
           "%d" % count_line(lines_of(r), "augments armed"))
+    check("late: the press is caught once the table is there",
+          (r.execute("PRESS(40001)") or True) and val(r, "LAST(53979)") == "40001", val(r, "LAST(53979)"))
+
+
+def case_late_read(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()\nOC_SAVE = OnlineChallenges\nOnlineChallenges = nil")
+    off(r)
+    pump(r, 2)
+    r.execute("PRESS(40001)")
+    check("late read: a press is recorded while the read table is absent",
+          val(r, "ProgressionTuning.aug.active") in ("40001", "40001.0")
+          and count_line(lines_of(r), "augments research start") == 1,
+          "active=" + val(r, "ProgressionTuning.aug.active"))
+    r.execute("OnlineChallenges = OC_SAVE")
+    pump(r, 1)
+    check("late read: the read is wrapped once the table arrives", val(r, "LAST(53979)") == "40001",
+          val(r, "LAST(53979)"))
+
+
+def case_tick_pass(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    pump(r, 1)
+    first = val(r, "COUNT_CALLS")
+    pump(r, 8)
+    check("tick: the timer runs a pass of its own", int(val(r, "COUNT_CALLS")) > int(first),
+          "%s -> %s" % (first, val(r, "COUNT_CALLS")))
 
 
 def case_twice(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
     r.execute(SRC)
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r)
     r.execute("REFRESH(0)")
     check("twice: the second load wraps nothing again", val(r, "CALLS") == "1", "calls=" + val(r, "CALLS"))
     check("twice: still one arm line", count_line(lines_of(r), "augments armed") == 1,
@@ -305,31 +639,16 @@ def case_twice(lua51):
 
 def case_decoy(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r)
     r.execute("REFRESH(0)")
     check("decoy: the key one digit off the store is left alone",
           val(r, "ZMAUGMENT['#x0d847872560dcd8e5'].decoy.totalProgress") == "100",
           val(r, "ZMAUGMENT['#x0d847872560dcd8e5'].decoy.totalProgress"))
 
 
-def case_rewrap(lua51):
-    r = rt(ZMFIX + "\nMAKEZM()")
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
-    r.execute("REFRESH(0)")
-    r.execute("KEEP = ZMAUGMENT[REFRESH_K]; ZMAUGMENT[REFRESH_K] = function(c) KEEP(c); FORCE42() end")
-    r.execute("REFRESH(0)")
-    late = val(r, "FIELD('sat_aug_one','totalProgress')")
-    pump(r, 1)
-    r.execute("REFRESH(0)")
-    check("rewrap: a wrapper put above ours is wrapped again on the next tick",
-          late == "42" and val(r, "FIELD('sat_aug_one','totalProgress')") == "0",
-          "before=" + late + " after=" + val(r, "FIELD('sat_aug_one','totalProgress')"))
-    check("rewrap: the game's own pass still runs once per call", val(r, "CALLS") == "3", "calls=" + val(r, "CALLS"))
-
-
 def case_blind(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
-    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0')")
+    off(r)
     r.execute("Dvar[xhash('GetDvarString')] = nil")
     r.execute("REFRESH(0)")
     check("blind: an unreadable switch leaves the pass alone",
@@ -382,8 +701,9 @@ def case_missing(lua51):
 def main():
     LuaRuntime = lua51()
     info("replay: the augment part under a stubbed frontend vm")
-    for case in (case_off, case_on, case_line, case_plain, case_late, case_twice, case_decoy,
-                 case_rewrap, case_blind, case_missing):
+    for case in (case_off, case_on, case_line, case_ticks, case_count, case_press, case_alias,
+                 case_chain, case_plain, case_late, case_late_read, case_tick_pass, case_twice,
+                 case_decoy, case_blind, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)

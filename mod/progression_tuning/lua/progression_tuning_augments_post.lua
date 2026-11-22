@@ -4,14 +4,29 @@ local PART = "augments"
 local K_STORE = "d847872560dcd8e4"
 -- the pass a menu refresh runs
 local K_REFRESH = "52e47d640bf4ca01"
+-- the count pass over the unlock ladder
+local K_COUNT = "633a1942eeae0eaa"
+-- the nine slot publisher
+local K_SLOTS = "bd666394faa4374c"
+-- the send a press goes through
+local K_SEND = "e636d3bf423fd414"
+-- the progress read the menu asks
+local K_PROG = "31eee6570ef4bb8b"
+-- the one call user state reader
+local K_USV = "a82011d283698aa4"
 -- the dev bool the tier code reads
 local DEV = "d428ffe65b5694d6"
 -- the two switches that want a full house
 local DV_ONE, DV_TWO = "zm_unlock_augments", "zm_unlock_all"
+-- the activation rows and the start event
+local ACT_A, ACT_B = 53979, 47576
+local START_EVENT, START_KEY = 846, 74
+local SLOTS = 9
 
-local VERSION = "v1"
+local VERSION = "v2"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
+local PASS_TICKS = 8
 
 local S = rawget(_G, "ProgressionTuning")
 if type(S) ~= "table" then
@@ -21,7 +36,8 @@ end
 if S.parts[PART] == true then return end
 S.parts[PART] = true
 
-local G = { said = false, devseen = false, dev = nil, table = nil, key = nil, wrap = nil, ticks = 0 }
+local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
+  active = 0, tier = {}, rows = 0, owned = 0, ev = nil, key = nil }
 S.aug = G
 
 -- says a thing once
@@ -59,6 +75,7 @@ end
 
 -- a member by the hash it carries
 local function key_hex(tbl, hex)
+  if type(tbl) ~= "table" then return nil end
   local ok, k = pcall(next, tbl)
   while ok and k ~= nil do
     if hex_of(k) == hex then return k end
@@ -69,31 +86,47 @@ local function key_hex(tbl, hex)
   return nil
 end
 
--- a member by its engine hash
-local function named(tbl, name, want)
-  local k = xh(name)
-  if k == nil or type(tbl) ~= "table" then return nil, nil end
+-- a field through the table it sits on
+local function field(tbl, k)
+  if tbl == nil or k == nil then return nil end
   local ok, v = pcall(function() return tbl[k] end)
-  if ok and type(v) == want then return k, v end
+  if ok then return v end
+  return nil
+end
+
+-- a field by plain name then by hash
+local function hfield(tbl, name)
+  local v = field(tbl, name)
+  if v ~= nil then return v end
+  return field(tbl, xh(name))
+end
+
+-- a member and the key it sits under
+local function slot_of(tbl, name)
+  if type(tbl) ~= "table" then return nil, nil end
+  local ok, v = pcall(rawget, tbl, name)
+  if ok and v ~= nil then return name, v end
+  local h = xh(name)
+  if h ~= nil then
+    local ok2, v2 = pcall(rawget, tbl, h)
+    if ok2 and v2 ~= nil then return h, v2 end
+  end
   return nil, nil
 end
 
--- a function by its engine hash
-local function fn_by(tbl, name)
-  return named(tbl, name, "function")
+-- a function member by name
+local function fn_of(tbl, name)
+  local _, v = slot_of(tbl, name)
+  if type(v) == "function" then return v end
+  return nil
 end
 
--- a table by its engine hash
-local function tbl_by(tbl, name)
-  return named(tbl, name, "table")
-end
-
--- one switch value by its dvar name
+-- a switch value by its dvar name
 local function dv(name)
-  local k = xhd(name)
-  local _, f = fn_by(rawget(_G, "Dvar"), "GetDvarString")
-  if k == nil or f == nil then return nil end
-  local ok, v = pcall(f, k)
+  local key = xhd(name)
+  local _, f = slot_of(rawget(_G, "Dvar"), "GetDvarString")
+  if type(f) ~= "function" or key == nil then return nil end
+  local ok, v = pcall(f, key)
   if not ok or v == nil then return nil end
   return tostring(v)
 end
@@ -115,8 +148,8 @@ end
 -- keeps the dev bool the tier code asks for
 local function spy_on()
   local D = rawget(_G, "Dvar")
-  local k, orig = fn_by(D, "GetDvarBool")
-  if k == nil then return nil, nil end
+  local k, orig = slot_of(D, "GetDvarBool")
+  if k == nil or type(orig) ~= "function" then return nil, nil end
   local wrap = function(key, ...)
     local v = orig(key, ...)
     if G.devseen ~= true and hex_of(key) == DEV then
@@ -135,14 +168,100 @@ local function spy_off(k, orig)
   pcall(function() D[k] = orig end)
 end
 
+-- a field written under the key it lives in
+local function put(tbl, name, v)
+  if type(tbl) ~= "table" then return false end
+  local h = xh(name)
+  local hp, pp = false, false
+  if h ~= nil then
+    local ok, rv = pcall(rawget, tbl, h)
+    hp = ok and rv ~= nil
+  end
+  do
+    local ok, rv = pcall(rawget, tbl, name)
+    pp = ok and rv ~= nil
+  end
+  if hp then return pcall(function() tbl[h] = v end) end
+  if pp then return pcall(function() tbl[name] = v end) end
+  local a = pcall(function() tbl[name] = v end)
+  if h == nil then return a end
+  pcall(function() tbl[h] = v end)
+  return a
+end
+
+-- the cached ladder rows by equipment
+local function cache_of(Z)
+  local _, v = slot_of(Z, "augmentresearchchallenges")
+  if type(v) == "table" then return v end
+  local found = nil
+  pcall(function()
+    local k, val = next(Z)
+    while k ~= nil and found == nil do
+      if type(val) == "table" then
+        local _, one = next(val)
+        if type(one) == "table" and type(hfield(one, "amount")) == "string" then found = val end
+      end
+      k, val = next(Z, k)
+    end
+  end)
+  return found
+end
+
+-- the ref map by its first number
+local function map_of(Z)
+  local _, v = slot_of(Z, "lootid_to_ref")
+  if type(v) == "table" then return v end
+  local found = nil
+  pcall(function()
+    local k, val = next(Z)
+    while k ~= nil and found == nil do
+      if type(val) == "table" then
+        local k2, v2 = next(val)
+        if type(k2) == "number" and type(v2) == "string" then found = val end
+      end
+      k, val = next(Z, k)
+    end
+  end)
+  return found
+end
+
+-- the ref one cached key names
+local function ref_of(map, k)
+  if type(map) ~= "table" then return nil end
+  local n = tonumber(k)
+  local ref = nil
+  if n ~= nil then ref = field(map, n) end
+  if type(ref) ~= "string" then ref = field(map, k) end
+  if type(ref) ~= "string" and n ~= nil then ref = field(map, tostring(n)) end
+  if type(ref) ~= "string" then return nil end
+  return ref
+end
+
+-- the ladder steps one row reaches
+local function steps(c, ch)
+  local amount = hfield(ch, "amount")
+  local id = tonumber(hfield(ch, "achievementID"))
+  if type(amount) ~= "string" or id == nil then return 0 end
+  local p = 0
+  local get = fn_of(rawget(_G, "Challenge"), "getchallengeprogress")
+  if get ~= nil then
+    local ok, v = pcall(get, c, id)
+    if ok then p = tonumber(v) or 0 end
+  end
+  local n = 0
+  for tok in string.gmatch(amount, "[^|]+") do
+    local step = tonumber(tok)
+    if step == nil or p < step then break end
+    n = n + 1
+  end
+  return n
+end
+
 -- the game own tier pass over every row it cached
-local function retier(c)
+local function retier(c, cache)
   local Z = rawget(_G, "ZMAUGMENT")
-  if type(Z) ~= "table" then return 0 end
-  local _, tier = fn_by(Z, "cacheaugmenttierdata")
-  if tier == nil then return 0 end
-  local _, cache = tbl_by(Z, "augmentresearchchallenges")
-  if cache == nil then return 0 end
+  local _, tier = slot_of(Z, "cacheaugmenttierdata")
+  if type(tier) ~= "function" then return 0 end
   local n = 0
   for loot, ch in pairs(cache) do
     if type(ch) == "table" and pcall(tier, c, ch, loot) then n = n + 1 end
@@ -150,47 +269,359 @@ local function retier(c)
   return n
 end
 
+-- numeric twins for string keyed rows
+local function alias(cache)
+  local out = {}
+  for k, ch in pairs(cache) do
+    if type(k) == "string" then
+      local n = tonumber(k)
+      if n ~= nil and field(cache, n) == nil then out[#out + 1] = { n, ch } end
+    end
+  end
+  for i = 1, #out do cache[out[i][1]] = out[i][2] end
+  return #out
+end
+
+-- how the cached rows are keyed
+local function kindword(cache)
+  local kind = "none"
+  for k in pairs(cache) do
+    if type(k) == "string" then return "string" end
+    kind = "number"
+  end
+  return kind
+end
+
+-- the ticks and the owned count
+local function ticks(c, store, cache, map)
+  local owned, seen, rows = 0, {}, 0
+  local tiers = {}
+  for k, ch in pairs(cache) do
+    if type(ch) == "table" and seen[ch] == nil then
+      seen[ch] = true
+      local ref = ref_of(map, k)
+      local list = field(store, ref)
+      if type(list) == "table" then
+        rows = rows + 1
+        local t = steps(c, ch)
+        if t > #list then t = #list end
+        tiers[ref] = t
+        for i = 1, #list do
+          local e = list[i]
+          if type(e) == "table" then
+            local want = i <= t
+            if hfield(e, "IsUnlocked") ~= want then put(e, "IsUnlocked", want) end
+            if want then owned = owned + 1 end
+          end
+        end
+      end
+    end
+  end
+  return owned, tiers, rows
+end
+
+-- the row the ladder thresholds sit on
+local rowzero
+
+-- the count the native ladder pass reads
+local function feed(c, count)
+  local Z = rawget(_G, "ZMAUGMENT")
+  local kc = key_hex(Z, K_COUNT)
+  if kc == nil then return false end
+  local f = field(Z, kc)
+  if type(f) ~= "function" then return false end
+  local row = rowzero()
+  if row == nil then return false end
+  local OP = rawget(_G, "OnlineProgression")
+  local ku, cur = slot_of(OP, "getuserstatesvalues")
+  local kh = key_hex(OP, K_USV)
+  if kh ~= nil then ku, cur = kh, field(OP, kh) end
+  if type(cur) ~= "function" or ku == nil then return false end
+  local one = function() return setmetatable({}, { __index = function() return count end }) end
+  if not pcall(function() OP[ku] = one end) then return false end
+  local ok = pcall(f, c, row)
+  if field(OP, ku) == one then pcall(function() OP[ku] = cur end) end
+  return ok
+end
+
+-- every panel slot follows the tier
+local function slots(c, t)
+  local root = rawget(_G, "_DataSources") or rawget(_G, "DataSources")
+  if root == nil then return 0 end
+  local node = hfield(hfield(hfield(root, "zm"), "frontend"), "augment_select")
+  local arr = hfield(node, "current_augment_research")
+  if type(arr) ~= "table" then return 0 end
+  local n = 0
+  for i = 1, SLOTS do
+    local slot = field(arr, i)
+    if type(slot) == "table" then
+      local ds = hfield(slot, "is_unlocked")
+      local set = hfield(ds, "SetValue")
+      if type(set) == "function" then
+        local want = i <= t
+        local have = nil
+        local get = hfield(ds, "GetValue")
+        if type(get) == "function" then
+          local ok, v = pcall(get, ds, c)
+          if ok then have = v end
+        end
+        if have ~= want and pcall(set, ds, c, want) then n = n + 1 end
+      end
+    end
+  end
+  return n
+end
+
+-- the ref one focused item names
+local function ref_of_item(v, c)
+  if type(v) == "string" then return v end
+  if type(v) ~= "table" then return nil end
+  local rv = hfield(v, "ref")
+  if type(rv) == "string" then return rv end
+  local g = nil
+  if type(rv) == "function" then g = rv else g = hfield(rv, "GetValue") end
+  if type(g) ~= "function" then return nil end
+  local ok, x = pcall(g, rv or v, c)
+  if ok and type(x) == "string" then return x end
+  return nil
+end
+
+-- the item the publisher is drawing
+local function slotted(c, item)
+  local get = hfield(item, "GetValue")
+  if type(get) ~= "function" then return 0 end
+  local ok, v = pcall(get, item, c)
+  if not ok or v == nil then return 0 end
+  local ref = ref_of_item(v, c)
+  if ref == nil then return 0 end
+  G.last = ref
+  local t = G.tier[ref]
+  if t == nil then return 0 end
+  return slots(c, t)
+end
+
 -- one refresh ends on the game own numbers
-local function pass(c)
-  if c == nil then c = 0 end
+local function whole(c)
+  local Z = rawget(_G, "ZMAUGMENT")
+  if type(Z) ~= "table" then return 0 end
+  local ks = key_hex(Z, K_STORE)
+  if ks == nil then return 0 end
+  local store = field(Z, ks)
+  local cache = cache_of(Z)
+  if type(store) ~= "table" or type(cache) ~= "table" then return 0 end
+  local k, o = spy_on()
+  local n = 0
+  local ok = pcall(function() n = retier(c, cache) end)
+  spy_off(k, o)
+  if not ok then n = 0 end
+  local owned, tiers, rows = 0, {}, 0
+  pcall(function()
+    alias(cache)
+    owned, tiers, rows = ticks(c, store, cache, map_of(Z))
+  end)
+  G.tier, G.rows, G.owned = tiers, rows, owned
+  if rows > 0 then feed(c, owned) end
+  if G.last ~= nil and G.tier[G.last] ~= nil then slots(c, G.tier[G.last]) end
+  if G.ownSaid ~= true and rows > 0 then
+    G.ownSaid = true
+    dp("augments owned=" .. owned .. " keys=" .. kindword(cache))
+  end
+  return n
+end
+
+local pass
+
+-- the start event and the key it carries
+local function startid()
+  if G.ev ~= nil then return G.ev, G.key end
+  local ch = rawget(_G, "Challenge")
+  local fe, fk = fn_of(ch, "getaeeventid"), fn_of(ch, "GetAEEventKeyID")
+  local ev, key = START_EVENT, START_KEY
+  if fe ~= nil then
+    local ok, v = pcall(fe, "zm_augment_start_progression")
+    if ok and tonumber(v) ~= nil then ev = math.floor(tonumber(v)) end
+  end
+  if fk ~= nil then
+    local ok, v = pcall(fk, "zm_augment_start_progression", "activate_id")
+    if ok and tonumber(v) ~= nil then key = math.floor(tonumber(v)) end
+  end
+  G.ev, G.key = ev, key
+  return ev, key
+end
+
+-- the value carried beside a key
+local function pair_of(key, a, n)
+  local i = 1
+  while i + 1 <= n do
+    if tonumber(a[i]) == key then return tonumber(a[i + 1]) end
+    i = i + 2
+  end
+  return nil
+end
+
+-- the press the menu sends
+local function caught(ev, ...)
+  local id = tonumber(ev)
+  if id == nil then return end
+  local one, two = dv(DV_ONE), dv(DV_TWO)
+  if one == nil or two == nil then return end
+  if one == "1" or two == "1" then return end
+  local want, key = startid()
+  if id ~= want and id ~= START_EVENT then return end
+  local a = { ... }
+  local v = pair_of(key, a, #a)
+  if v == nil then v = tonumber(a[2]) end
+  if v == nil or v < 1 then return end
+  G.active, G.dirty = math.floor(v), true
+  dp("augments research start id=" .. G.active)
+end
+
+-- the answer the activation rows carry
+local function answered(r, id)
+  local n = tonumber(id)
+  if n ~= ACT_A and n ~= ACT_B then return r end
+  if G.active < 1 then return r end
+  local t = r
+  if type(t) ~= "table" then t = {} end
+  local p = field(t, "progress")
+  if type(p) ~= "table" then
+    p = {}
+    if not pcall(function() t.progress = p end) then return r end
+  end
+  put(p, "last_activation", G.active)
+  return t
+end
+
+-- the row the ladder thresholds sit on
+rowzero = function()
+  if G.row ~= nil then return G.row end
+  local ch, st = rawget(_G, "Challenge"), rawget(_G, "StringTable")
+  local fe, ft = fn_of(ch, "GetAEKindID"), fn_of(ch, "GetFileTableByType")
+  local lr = fn_of(st, "tablelookuprowwithcolumndata")
+  if fe == nil or ft == nil or lr == nil then return nil end
+  local okk, kind = pcall(fe, "ae_kind_zm_augment")
+  if not okk or kind == nil then return nil end
+  local okt, table2 = pcall(ft, kind)
+  if not okt or type(table2) ~= "table" then return nil end
+  local file, cols = hfield(table2, "file"), hfield(table2, "cols")
+  if file == nil or type(cols) ~= "table" then return nil end
+  local okr, row = pcall(lr, file, 0, cols)
+  if not okr or type(row) ~= "table" then return nil end
+  if type(hfield(row, "amount")) ~= "string" then return nil end
+  if type(hfield(row, "augment_unlocks")) ~= "string" then return nil end
+  G.row = row
+  return row
+end
+
+-- a pass that keeps the menu on the store
+pass = function(c)
+  if c == nil then c = G.c end
+  G.c = c
   local one, two = dv(DV_ONE), dv(DV_TWO)
   if one == nil or two == nil then return end
   local on = (one == "1") or (two == "1")
   local n = 0
-  if not on then
-    local k, orig = spy_on()
-    local ok = pcall(function() n = retier(c) end)
-    spy_off(k, orig)
-    if not ok then n = 0 end
+  if not on then n = whole(c) end
+  if G.said ~= true and (on or n > 0) then
+    G.said = true
+    dp("augments armed " .. VERSION .. " unlock=" .. word(one) .. " all=" .. word(two)
+      .. " devcomplete=" .. devword())
   end
-  if G.said == true then return end
-  if not on and n < 1 then return end
-  G.said = true
-  dp("augments armed " .. VERSION .. " unlock=" .. word(one) .. " all=" .. word(two)
-    .. " devcomplete=" .. devword())
+  if G.dirty then
+    G.dirty = false
+    local _, f = slot_of(rawget(_G, "ZMAUGMENT"), "initcurrentactiveresearch")
+    if type(f) == "function" then pcall(f, c) end
+  end
 end
 
--- wraps the refresh once a table holds it
-local function install()
-  local Z = rawget(_G, "ZMAUGMENT")
-  if type(Z) ~= "table" then return false end
-  if G.table == Z and G.wrap ~= nil then
-    local ok, cur = pcall(function() return Z[G.key] end)
-    if ok and cur == G.wrap then return true end
+-- the wrappers this part keeps one of
+local W = {}
+
+-- puts one wrapper on a member it owns
+local function arm(tag, tbl, key, make)
+  if type(tbl) ~= "table" or key == nil then return false end
+  local okc, cur = pcall(rawget, tbl, key)
+  if not okc or type(cur) ~= "function" then return false end
+  local st = W[tag]
+  if st ~= nil then
+    if cur == st.w then return true end
+    if cur ~= st.orig then return true end
+    st.orig = cur
+  else
+    st = { tbl = tbl, key = key, orig = cur }
+    W[tag] = st
   end
-  if key_hex(Z, K_STORE) == nil then return false end
-  local kr = key_hex(Z, K_REFRESH)
-  if kr == nil then return false end
-  local okb, below = pcall(function() return Z[kr] end)
-  if not okb or type(below) ~= "function" or below == G.wrap then return false end
-  local wrap = function(c, ...)
-    local r = below(c, ...)
+  local w = make(st.orig)
+  if type(w) ~= "function" then return false end
+  st.w = w
+  if not pcall(function() tbl[key] = w end) then return false end
+  local okn, now = pcall(rawget, tbl, key)
+  return okn and now == w
+end
+
+-- the refresh a menu runs
+local function onrefresh(orig)
+  return function(c, ...)
+    local r = orig(c, ...)
     pcall(pass, c)
     return r
   end
-  if not pcall(function() Z[kr] = wrap end) then return false end
-  G.table, G.key, G.wrap = Z, kr, wrap
-  return true
+end
+
+-- the publisher over the nine slots
+local function onslots(orig)
+  return function(c, item, ...)
+    local r = orig(c, item, ...)
+    pcall(slotted, c, item)
+    return r
+  end
+end
+
+-- the send a press goes through
+local function onpress(orig)
+  return function(c, ev, n, ...)
+    local r = orig(c, ev, n, ...)
+    pcall(caught, ev, ...)
+    return r
+  end
+end
+
+-- the progress read the menu asks
+local function onread(orig)
+  return function(c, id, ...)
+    local r = orig(c, id, ...)
+    local ok, out = pcall(answered, r, id)
+    if ok then return out end
+    return r
+  end
+end
+
+-- the keys this vm keeps its members under
+local K = {}
+
+-- a key filled once a table holds it
+local function kfill(tbl, hex, name)
+  local v = K[name]
+  if v ~= nil then return v end
+  v = key_hex(tbl, hex)
+  if v ~= nil then K[name] = v end
+  return v
+end
+
+-- puts the wrappers this vm can reach in place
+local function install()
+  local Z = rawget(_G, "ZMAUGMENT")
+  local ok, kf = false, nil
+  if kfill(Z, K_STORE, "store") ~= nil then
+    kf = kfill(Z, K_REFRESH, "refresh")
+    if kf ~= nil then ok = arm("refresh", Z, kf, onrefresh) end
+    if kfill(Z, K_SLOTS, "slots") ~= nil then arm("slots", Z, K.slots, onslots) end
+  end
+  local C = rawget(_G, "Challenges")
+  if kfill(C, K_SEND, "send") ~= nil then arm("send", C, K.send, onpress) end
+  local OC = rawget(_G, "OnlineChallenges")
+  if kfill(OC, K_PROG, "prog") ~= nil then arm("prog", OC, K.prog, onread) end
+  return ok
 end
 
 local timerEl = nil
@@ -198,14 +629,14 @@ local timerEl = nil
 -- a waiting element on the ui root
 local function make_el()
   local lui = rawget(_G, "LUI")
-  local _, getroot = fn_by(lui, "GetRoot")
-  if getroot == nil then return nil end
+  local _, getroot = slot_of(lui, "GetRoot")
+  if type(getroot) ~= "function" then return nil end
   local okr, rootEl = pcall(getroot)
   if not okr or rootEl == nil then return nil end
   local el = nil
-  local _, uie = tbl_by(lui, "UIElement")
+  local _, uie = slot_of(lui, "UIElement")
   local mk = nil
-  if uie ~= nil then mk = select(2, fn_by(uie, "new")) end
+  if uie ~= nil then mk = fn_of(uie, "new") end
   if mk ~= nil then
     local okn, v = pcall(mk)
     if okn then el = v end
@@ -243,10 +674,11 @@ end
 tick = function()
   G.ticks = G.ticks + 1
   pcall(install)
+  if G.dirty or G.ticks % PASS_TICKS == 1 then pcall(pass, G.c) end
   if not again() then pcall(start) end
 end
 
-S.probes.augments = function() return G.wrap ~= nil end
+S.probes.augments = function() return W.refresh ~= nil and W.refresh.w ~= nil end
 
 pcall(install)
 pcall(start)
