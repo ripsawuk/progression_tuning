@@ -276,7 +276,7 @@ def main():
     check("version.dll carries the kill switch's own file name", "rewards_off.txt" in text)
     check("version.dll carries no zm_ch_s chunk name", "zm_ch_s" not in text)
     check("version.dll carries no zm_ch_state name", "zm_ch_state" not in text)
-    check("the banner is this build's", "version.dll build 37" in text)
+    check("the banner is this build's", "version.dll build 38" in text)
     check("the banner names the reward set", "zm_g12_* the challenge reward set" in text)
 
     # ---- 4. the source the DLL was built from --------------------------------------------------------

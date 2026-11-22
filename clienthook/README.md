@@ -41,16 +41,22 @@ is the row's rise read back from `row+0x560`, never the amount held, and every l
 250 ms thread so nothing opens a file on the client's drain thread. One look a second, only while the feed's beat is
 inside its two-second window, only for the active pick, and only while that row is not complete. A completion is
 logged, and it posts one advance request for that row: the pick's own 250 ms tick then moves `a=` to the next row in
-the queue whose own status is not complete, writes `players\pt_armory.txt`, pushes the merged line into
+the queue whose own status is not complete, writes `players\armory.txt`, pushes the merged line into
 `pt_armory_ch`, and says `armory: advance <from> -> <to>` - or, with nothing left to earn, `a=0` and
 `armory: queue done`. The pay itself still opens no file. A fault in that one call restores both globals and latches
 the pay off for the process. The kill switch is `%TEMP%\progression-tuning\armory_pay_off.txt`; the advance has its
 own, `%TEMP%\progression-tuning\armory_advance_off.txt`, which leaves the pay running and the pick where it is.
 
+**It pauses while Unlock Armory is on.** The pick line carries a third field, `u=<0|1>` - the Debug Options row the
+mod writes when it is flipped. While `u=1` the pay pays nothing and posts no advance; the first look after the flag
+clears pays again. The hook says `armory: pay paused (unlock armory on)` and `armory: pay resumed` once each.
+
 **It keeps the armory pick alive.** The Armory's pick has the same problem: the press happens in the front end and
-the row has to outlive the process. The hook registers `pt_armory_ch` at boot from `cod25\players\pt_armory.txt` -
-`a=<row>` and the advance queue `q=<row,row,...>` in the game's own order - adopts every press the mod writes to
-that dvar, keeps the file in step, and moves the pick on when the row it names is paid to completion.
+the row has to outlive the process. The hook registers `pt_armory_ch` at boot from `cod25\players\armory.txt` -
+`a=<row>`, the advance queue `q=<row,row,...>` and the Unlock Armory flag `u=<0|1>`, in that order - adopts every
+press the mod writes to that dvar, keeps the file in step, and moves the pick on when the row it names is paid to
+completion. Build 38 renamed that file: `players\pt_armory.txt` (builds 32-37) is read once as the seed when
+`armory.txt` is absent, says `pick: file migrated from pt_armory.txt`, and is then left where it is.
 
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the

@@ -19,7 +19,8 @@ void ch_logf(const char *fmt, ...);          // proxy_main.c
 void ch_self_dir(wchar_t *out, DWORD cch);   // proxy_main.c
 
 #define PK_SUBDIR L"players"
-#define PK_FILE L"pt_armory.txt"
+#define PK_FILE L"armory.txt"
+#define PK_OLD L"pt_armory.txt"   // the name before build 38 read once as a seed
 #define PK_TICK_MS 1000   // read the dvar at most this often
 #define PK_LOG_MS 30000   // one saved line per this window after the first
 #define PK_REC_MAX 20000  // a larger array is not the game challenge table
@@ -38,6 +39,7 @@ static char PK_LINE[PICK_MAX + 1];    // the string the dvar points at today
 static char PK_DISK[PICK_MAX + 1];    // what the file holds as far as this process knows
 static volatile LONG PK_ADVANCE;      // a completed row id posted by the pay 0 = none
 static volatile LONG PK_A;            // the active row
+static volatile LONG PK_U;            // the unlock armory flag 1 = on
 static int PK_Q[PICK_Q_MAX];
 static int PK_QN;
 static int PK_SAID_SAVE;
@@ -65,8 +67,8 @@ int pick_valid(const char *s, size_t n)
     return 1;
 }
 
-// <dll dir>players\pt_armory.txt the folder is the client own and is never made here
-static int pk_path(wchar_t *out, DWORD cch)
+// <dll dir>players\<file> the folder is never made here
+static int pk_path_named(wchar_t *out, DWORD cch, const wchar_t *file)
 {
     wchar_t base[MAX_PATH];
     ch_self_dir(base, MAX_PATH);
@@ -74,7 +76,12 @@ static int pk_path(wchar_t *out, DWORD cch)
     {
         return 0;
     }
-    return _snwprintf_s(out, cch, _TRUNCATE, L"%s" PK_SUBDIR L"\\" PK_FILE, base) >= 0;
+    return _snwprintf_s(out, cch, _TRUNCATE, L"%s" PK_SUBDIR L"\\%s", base, file) >= 0;
+}
+
+static int pk_path(wchar_t *out, DWORD cch)
+{
+    return pk_path_named(out, cch, PK_FILE);
 }
 
 // 1 when the client players folder is there a save into a missing folder is a skip
@@ -95,14 +102,15 @@ static int pk_folder(void)
     return (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) != 0) ? 1 : 0;
 }
 
-int pick_parse(const char *s, size_t n, int *a, int *q, int q_cap, int *q_n)
+int pick_parse(const char *s, size_t n, int *a, int *q, int q_cap, int *q_n, int *u)
 {
-    if (s == NULL || a == NULL || q_n == NULL || n < 3 || !pick_valid(s, n))
+    if (s == NULL || a == NULL || q_n == NULL || u == NULL || n < 3 || !pick_valid(s, n))
     {
         return 0;
     }
     *a = 0;
     *q_n = -1;
+    *u = 0;
     if (s[0] != 'a' || s[1] != '=')
     {
         return 0;
@@ -129,7 +137,21 @@ int pick_parse(const char *s, size_t n, int *a, int *q, int q_cap, int *q_n)
     {
         return 1;
     }
-    if (n - i < 3 || s[i] != ';' || s[i + 1] != 'q' || s[i + 2] != '=')
+    if (n - i < 3 || s[i] != ';')
+    {
+        return 0;
+    }
+    // u may follow the row or the queue
+    if (s[i + 1] == 'u' && s[i + 2] == '=')
+    {
+        if (n - i != 4 || (s[i + 3] != '0' && s[i + 3] != '1'))
+        {
+            return 0;
+        }
+        *u = s[i + 3] - '0';
+        return 1;
+    }
+    if (s[i + 1] != 'q' || s[i + 2] != '=')
     {
         return 0;
     }
@@ -162,13 +184,28 @@ int pick_parse(const char *s, size_t n, int *a, int *q, int q_cap, int *q_n)
         {
             break;
         }
-        if (s[i] != ',')
+        if (s[i] == ',')
+        {
+            i++;
+            continue;
+        }
+        if (s[i] != ';')
         {
             return 0;
         }
-        i++;
+        break;
     }
     *q_n = cnt;
+    if (i == n)
+    {
+        return 1;
+    }
+    i++;
+    if (n - i != 3 || s[i] != 'u' || s[i + 1] != '=' || (s[i + 2] != '0' && s[i + 2] != '1'))
+    {
+        return 0;
+    }
+    *u = s[i + 2] - '0';
     return 1;
 }
 
@@ -206,7 +243,7 @@ static int pk_dec(char *out, int v)
     return n;
 }
 
-int pick_build(char *out, size_t cap, int a, const int *q, int q_n)
+int pick_build(char *out, size_t cap, int a, const int *q, int q_n, int u)
 {
     if (out == NULL || cap == 0 || a < 0 || q_n < 0 || (q_n > 0 && q == NULL))
     {
@@ -224,32 +261,31 @@ int pick_build(char *out, size_t cap, int a, const int *q, int q_n)
     {
         return -1;
     }
-    if (q_n <= 0)
+    if (q_n > 0)
     {
-        return 0;
-    }
-    if (pk_put(out, cap, &at, ";q=", 3) != 0)
-    {
-        return -1;
-    }
-    for (int i = 0; i < q_n; i++)
-    {
-        char piece[12];
-        int len = pk_dec(piece, q[i]);
-        if (len <= 0)
+        if (pk_put(out, cap, &at, ";q=", 3) != 0)
         {
             return -1;
         }
-        if (i > 0 && pk_put(out, cap, &at, ",", 1) != 0)
+        for (int i = 0; i < q_n; i++)
         {
-            return -1;
-        }
-        if (pk_put(out, cap, &at, piece, (size_t)len) != 0)
-        {
-            return -1;
+            char piece[12];
+            int len = pk_dec(piece, q[i]);
+            if (len <= 0)
+            {
+                return -1;
+            }
+            if (i > 0 && pk_put(out, cap, &at, ",", 1) != 0)
+            {
+                return -1;
+            }
+            if (pk_put(out, cap, &at, piece, (size_t)len) != 0)
+            {
+                return -1;
+            }
         }
     }
-    return 0;
+    return pk_put(out, cap, &at, (u != 0) ? ";u=1" : ";u=0", 4);
 }
 
 int pick_queue_native(const unsigned char *recs, int n, int *q, int cap)
@@ -513,7 +549,7 @@ static const char *pk_value(void)
 // the merged line into the dvar own slot the buffer is static on purpose
 static void pk_publish(void)
 {
-    if (pick_build(PK_LINE, sizeof(PK_LINE), (int)PK_A, PK_Q, PK_QN) != 0)
+    if (pick_build(PK_LINE, sizeof(PK_LINE), (int)PK_A, PK_Q, PK_QN, (int)PK_U) != 0)
     {
         return;
     }
@@ -635,6 +671,7 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
     static char line[PICK_MAX + 1];
     const char *why = "";
     int got = 0;
+    int migrated = 0;
     if (!pk_folder())
     {
         got = -1;
@@ -643,6 +680,12 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
     else if (pk_path(path, MAX_PATH))
     {
         got = pick_read(path, line, sizeof(line), &why);
+        // the older file seeds this one once and stays
+        if (got == 0 && pk_path_named(path, MAX_PATH, PK_OLD))
+        {
+            got = pick_read(path, line, sizeof(line), &why);
+            migrated = (got == 1);
+        }
     }
     else
     {
@@ -666,6 +709,10 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
         ch_logf("pick: refused - the value slot is not writable");
         return;
     }
+    if (migrated)
+    {
+        ch_logf("pick: file migrated from pt_armory.txt");
+    }
     if (got == 1)
     {
         ch_logf("pick: file %s", line);
@@ -680,13 +727,16 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
     }
     int a = 0;
     int qn = -1;
+    int u = 0;
     int q[PICK_Q_MAX];
-    if (pick_parse(line, strlen(line), &a, q, PICK_Q_MAX, &qn) == 0)
+    if (pick_parse(line, strlen(line), &a, q, PICK_Q_MAX, &qn, &u) == 0)
     {
         a = 0;
         qn = -1;
+        u = 0;
     }
     PK_A = a;
+    PK_U = u;
     PK_QN = (qn > 0) ? qn : 0;
     if (qn > 0)
     {
@@ -727,8 +777,9 @@ void pick_tick(void)
     size_t n = strnlen(v, PICK_MAX + 1);
     int a = 0;
     int qn = -1;
+    int u = 0;
     int q[PICK_Q_MAX];
-    if (!pick_valid(v, n) || pick_parse(v, n, &a, q, PICK_Q_MAX, &qn) == 0)
+    if (!pick_valid(v, n) || pick_parse(v, n, &a, q, PICK_Q_MAX, &qn, &u) == 0)
     {
         if (!PK_SAID_BAD)
         {
@@ -741,6 +792,11 @@ void pick_tick(void)
     {
         PK_A = a;
         ch_logf("armory: pick a=%d", a);
+    }
+    if (u != (int)PK_U)
+    {
+        PK_U = u;
+        ch_logf("armory: pick u=%d", u);
     }
     if (qn >= 0)
     {
@@ -757,7 +813,7 @@ void pick_tick(void)
         pk_native();
     }
     char line[PICK_MAX + 1];
-    if (pick_build(line, sizeof(line), (int)PK_A, PK_Q, PK_QN) == 0 && strcmp(line, PK_DISK) != 0)
+    if (pick_build(line, sizeof(line), (int)PK_A, PK_Q, PK_QN, (int)PK_U) == 0 && strcmp(line, PK_DISK) != 0)
     {
         pk_save(line, now, 0);
     }
@@ -777,8 +833,9 @@ void pick_stop(void)
     size_t n = strnlen(v, PICK_MAX + 1);
     int a = 0;
     int qn = -1;
+    int u = 0;
     int q[PICK_Q_MAX];
-    if (!pick_valid(v, n) || pick_parse(v, n, &a, q, PICK_Q_MAX, &qn) == 0)
+    if (!pick_valid(v, n) || pick_parse(v, n, &a, q, PICK_Q_MAX, &qn, &u) == 0)
     {
         return;
     }
@@ -788,7 +845,7 @@ void pick_stop(void)
         memcpy(q, PK_Q, (size_t)qn * sizeof(int));
     }
     char line[PICK_MAX + 1];
-    if (pick_build(line, sizeof(line), a, q, qn) != 0 || strcmp(line, PK_DISK) == 0)
+    if (pick_build(line, sizeof(line), a, q, qn, u) != 0 || strcmp(line, PK_DISK) == 0)
     {
         return;
     }
@@ -803,6 +860,11 @@ int pick_armed(void)
 int pick_active(void)
 {
     return (int)PK_A;
+}
+
+int pick_unlocked(void)
+{
+    return (int)PK_U;
 }
 
 int pick_queue(int *out, int cap)

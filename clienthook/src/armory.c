@@ -337,6 +337,23 @@ int arm_pay_look(arm_pay_state *ps, const arm_pay_in *in, arm_state *st, unsigne
     {
         return 0;
     }
+    // unlock armory on first and cheapest nothing pays
+    if (in->unlocked != 0)
+    {
+        if (!ps->paused)
+        {
+            ps->paused = 1;
+            out->why = ARM_PAY_PAUSE;
+            return 1;
+        }
+        return 0;
+    }
+    if (ps->paused)
+    {
+        ps->paused = 0;
+        out->why = ARM_PAY_RESUME;
+        return 1;
+    }
     if (in->off || ps->latched)
     {
         return 0;
@@ -523,6 +540,14 @@ void armory_pay_log(void)
         {
             ch_logf("armory: pay note - a second thread entered the window");
         }
+        else if (kind == ARM_PAY_PAUSE)
+        {
+            ch_logf("armory: pay paused (unlock armory on)");
+        }
+        else if (kind == ARM_PAY_RESUME)
+        {
+            ch_logf("armory: pay resumed");
+        }
     }
 }
 
@@ -652,6 +677,7 @@ static void arm_pay_once(np_fn orig, int *kill, int *crit)
     }
     arm_pay_in in;
     in.active = pick_active();
+    in.unlocked = pick_unlocked();
     in.off = ARM_PAY_OFF;
     in.advance_off = ARM_ADV_OFF;
     in.recs = recs;

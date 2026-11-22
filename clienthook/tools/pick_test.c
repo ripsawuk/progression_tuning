@@ -3,7 +3,7 @@
 // never touched.
 //
 //   pick_test.exe self                       the text, the parse, the build, the read, the write, the queue
-//   pick_test.exe arm <dir> valid|queue|none|bad|nofolder   the arm, the ticks, the flush
+//   pick_test.exe arm <dir> valid|queue|none|bad|migrate|nofolder   the arm, the ticks, the flush
 //   pick_test.exe arm <dir> advance          the pay's post, the swap, the save and the empty queue
 //
 // Exit 0 when every check passes; the last line is "pick: OK - <n> checks", like the other drivers here.
@@ -203,6 +203,7 @@ static int self(void)
     int q[PICK_Q_MAX];
     int a = -1;
     int qn = -7;
+    int u = -1;
     const char *why = NULL;
     int rc = 0;
 
@@ -217,8 +218,8 @@ static int self(void)
         dir[n] = L'\\';
         dir[n + 1] = L'\0';
     }
-    wide_path(file, MAX_PATH, dir, L"pt_armory.txt");
-    wide_path(tmp, MAX_PATH, dir, L"pt_armory.txt.tmp");
+    wide_path(file, MAX_PATH, dir, L"armory.txt");
+    wide_path(tmp, MAX_PATH, dir, L"armory.txt.tmp");
     DeleteFileW(file);
 
     // ---- 1. the line's own form ---------------------------------------------------------------------
@@ -238,39 +239,49 @@ static int self(void)
     // ---- 2. the parse -------------------------------------------------------------------------------
     a = -1;
     qn = -7;
-    ok(pick_parse("a=0", 3, &a, q, PICK_Q_MAX, &qn) == 1 && a == 0 && qn == -1,
-       "parse: a=0 is no row and no queue");
+    u = -1;
+    ok(pick_parse("a=0", 3, &a, q, PICK_Q_MAX, &qn, &u) == 1 && a == 0 && qn == -1 && u == 0,
+       "parse: a=0 is no row no queue and the unlock flag off");
     a = -1;
     qn = -7;
-    ok(pick_parse("a=75680", 7, &a, q, PICK_Q_MAX, &qn) == 1 && a == 75680 && qn == -1,
+    ok(pick_parse("a=75680", 7, &a, q, PICK_Q_MAX, &qn, &u) == 1 && a == 75680 && qn == -1,
        "parse: one row and no queue");
     a = -1;
     qn = -7;
-    ok(pick_parse("a=75680;q=69316,69318", strlen("a=75680;q=69316,69318"), &a, q, PICK_Q_MAX, &qn) == 1 && a == 75680 && qn == 2
+    ok(pick_parse("a=75680;q=69316,69318", strlen("a=75680;q=69316,69318"), &a, q, PICK_Q_MAX, &qn, &u) == 1 && a == 75680 && qn == 2
            && q[0] == 69316 && q[1] == 69318,
        "parse: the queue comes back in the line's own order");
+    a = -1;
+    ok(pick_parse("a=75680;q=69316,69318;u=1", strlen("a=75680;q=69316,69318;u=1"), &a, q, PICK_Q_MAX, &qn, &u) == 1
+           && qn == 2 && u == 1,
+       "parse: the unlock flag is kept after the queue");
+    ok(pick_parse("a=5;u=1", 7, &a, q, PICK_Q_MAX, &qn, &u) == 1 && a == 5 && qn == -1 && u == 1,
+       "parse: the unlock flag is kept with no queue");
+    ok(pick_parse("a=5;u=0", 7, &a, q, PICK_Q_MAX, &qn, &u) == 1 && u == 0,
+       "parse: an explicit u=0 is the same as none");
     {
         size_t n = make_queue(src, sizeof(src), 76);
         a = -1;
         qn = -7;
-        ok(pick_parse(src, n, &a, q, PICK_Q_MAX, &qn) == 1 && qn == 76,
+        ok(pick_parse(src, n, &a, q, PICK_Q_MAX, &qn, &u) == 1 && qn == 76,
            "parse: the 76 id worst case fits");
     }
     {
         size_t n = make_queue(src, sizeof(src), PICK_Q_MAX + 1);
         a = -1;
         qn = -7;
-        ok(pick_parse(src, n, &a, q, PICK_Q_MAX, &qn) == 0, "parse: a queue longer than the buffer is refused whole");
+        ok(pick_parse(src, n, &a, q, PICK_Q_MAX, &qn, &u) == 0, "parse: a queue longer than the buffer is refused whole");
     }
     {
         static const char *const bad[] = {"a=", "a", "b=1", "a=1;q=", "a=1;q=1,", "a=1;q=,1", "a=1;q=1;", "a=1;x=2",
-                                          "a=1;q=1,,2", "a=2147483648"};
+                                          "a=1;q=1,,2", "a=2147483648", "a=1;u=2", "a=1;u=", "a=1;u=01",
+                                          "a=1;q=1;u=2", "a=1;u=1;q=2", "a=1;q=1;u=1;"};
         int all = 0;
         for (int i = 0; i < (int)(sizeof(bad) / sizeof(bad[0])); i++)
         {
             a = -1;
             qn = -7;
-            if (pick_parse(bad[i], strlen(bad[i]), &a, q, PICK_Q_MAX, &qn) == 0)
+            if (pick_parse(bad[i], strlen(bad[i]), &a, q, PICK_Q_MAX, &qn, &u) == 0)
             {
                 all++;
             }
@@ -279,13 +290,18 @@ static int self(void)
     }
 
     // ---- 3. the build -------------------------------------------------------------------------------
-    ok(pick_build(out, sizeof(out), 0, NULL, 0) == 0 && strcmp(out, "a=0") == 0, "build: nothing is a=0");
-    ok(pick_build(out, sizeof(out), 75680, NULL, 0) == 0 && strcmp(out, "a=75680") == 0,
+    ok(pick_build(out, sizeof(out), 0, NULL, 0, 0) == 0 && strcmp(out, "a=0;u=0") == 0,
+       "build: nothing is a=0 with the unlock flag off");
+    ok(pick_build(out, sizeof(out), 75680, NULL, 0, 1) == 0 && strcmp(out, "a=75680;u=1") == 0,
+       "build: the unlock flag follows the row when there is no queue");
+    ok(pick_build(out, sizeof(out), 75680, NULL, 0, 0) == 0 && strcmp(out, "a=75680;u=0") == 0,
        "build: one row with no queue");
     {
         static const int two[] = {69316, 69318};
-        ok(pick_build(out, sizeof(out), 75680, two, 2) == 0 && strcmp(out, "a=75680;q=69316,69318") == 0,
+        ok(pick_build(out, sizeof(out), 75680, two, 2, 0) == 0 && strcmp(out, "a=75680;q=69316,69318;u=0") == 0,
            "build: the queue is comma separated after a semicolon");
+        ok(pick_build(out, sizeof(out), 75680, two, 2, 1) == 0 && strcmp(out, "a=75680;q=69316,69318;u=1") == 0,
+           "build: the unlock flag is last after the queue");
     }
     {
         int many[76];
@@ -293,12 +309,19 @@ static int self(void)
         {
             many[i] = 100000 + i;
         }
-        ok(pick_build(out, sizeof(out), 75680, many, 76) == 0 && strlen(out) < PICK_MAX
+        ok(pick_build(out, sizeof(out), 75680, many, 76, 1) == 0 && strlen(out) < PICK_MAX
                && pick_valid(out, strlen(out)) == 1,
            "build: the 76 id queue fits inside 1024");
-        ok(pick_build(out, 40, 75680, many, 76) == -1, "build: a line that would not fit is refused");
+        ok(pick_build(out, 40, 75680, many, 76, 0) == -1, "build: a line that would not fit is refused");
     }
-    ok(pick_build(out, sizeof(out), -1, NULL, 0) == -1, "build: a negative row is refused");
+    ok(pick_build(out, sizeof(out), -1, NULL, 0, 0) == -1, "build: a negative row is refused");
+    // whatever it writes, its own reader takes back
+    {
+        static const int two[] = {69316, 69318};
+        ok(pick_build(out, sizeof(out), 75680, two, 2, 1) == 0
+               && pick_parse(out, strlen(out), &a, q, PICK_Q_MAX, &qn, &u) == 1 && a == 75680 && qn == 2 && u == 1,
+           "build: the built line reads back as itself");
+    }
 
     // ---- 4. the read --------------------------------------------------------------------------------
     strcpy_s(src, sizeof(src), "no such file");
@@ -445,12 +468,14 @@ static int arm_mode(const wchar_t *dir, const char *mode)
 {
     wchar_t file[MAX_PATH];
     wchar_t sub[MAX_PATH];
+    wchar_t old[MAX_PATH];
     char back[PICK_MAX + 8];
     char want[PICK_MAX + 64];
     int q[PICK_Q_MAX];
     const char *file_line = NULL;
     const char *merged = NULL;
     const int queued = (strcmp(mode, "queue") == 0);
+    const int unlocked = (strcmp(mode, "migrate") == 0);
 
     // ch_self_dir hands back a directory with its separator, which is what pick.c expects
     {
@@ -464,8 +489,9 @@ static int arm_mode(const wchar_t *dir, const char *mode)
             _snwprintf_s(SELF_DIR, MAX_PATH, _TRUNCATE, L"%s\\", dir);
         }
     }
-    wide_path(file, MAX_PATH, SELF_DIR, L"players\\pt_armory.txt");
+    wide_path(file, MAX_PATH, SELF_DIR, L"players\\armory.txt");
     wide_path(sub, MAX_PATH, SELF_DIR, L"players");
+    wide_path(old, MAX_PATH, SELF_DIR, L"players\\pt_armory.txt");
 
     // "nofolder" is the one mode that leaves the client's own folder out: the unit must skip, not make it
     if (strcmp(mode, "nofolder") != 0)
@@ -474,17 +500,28 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     }
     if (strcmp(mode, "valid") == 0)
     {
+        // the older file is there too, and the one the unit reads is the one it is named for
+        write_ascii(old, "a=111");
         write_ascii(file, "a=75680");
         file_line = "a=75680";
     }
     else if (queued)
     {
+        write_ascii(old, "a=111");
         write_ascii(file, "a=75680;q=69316,69318");
         file_line = "a=75680;q=69316,69318";
     }
     else if (strcmp(mode, "bad") == 0)
     {
+        write_ascii(old, "a=111");
         write_ascii(file, "a=75680;Q=1");
+    }
+    else if (strcmp(mode, "migrate") == 0)
+    {
+        // only the older file exists: it seeds this one and stays where it is
+        DeleteFileW(file);
+        write_ascii(old, "a=75680;u=1");
+        file_line = "a=75680;u=1";
     }
 
     // ---- 9. the arm ---------------------------------------------------------------------------------
@@ -493,7 +530,17 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     pick_arm(stub_reg, NULL, PK_SLOT);
     ok(REG_CALLS == 1, "arm: the register is asked exactly once");
     ok(pick_armed() == 1, "arm: the channel is armed once the call returned");
-    if (strcmp(mode, "bad") == 0)
+    if (strcmp(mode, "migrate") == 0)
+    {
+        _snprintf_s(want, sizeof(want), _TRUNCATE, "pick: file %s", file_line);
+        ok(LOGS == 3 && strcmp(LOGS_ALL[0], "pick: file migrated from pt_armory.txt") == 0
+               && strcmp(LOGS_ALL[1], want) == 0,
+           "arm: the older file seeds this one and is said first");
+        ok(read_ascii(old, back, sizeof(back)) > 0 && strcmp(back, file_line) == 0,
+           "arm: the older file is left as the installer had it");
+        ok(pick_unlocked() == 1, "arm: the unlock flag the older file carried is adopted");
+    }
+    else if (strcmp(mode, "bad") == 0)
     {
         ok(LOGS == 2 && strncmp(LOGS_ALL[0], "pick: file rejected: ", 21) == 0,
            "arm: a rejected file is said, with its reason");
@@ -511,6 +558,11 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     else
     {
         ok(LOGS == 2 && strcmp(LOGS_ALL[0], "pick: file none") == 0, "arm: no file is said as none");
+    }
+    if (strcmp(mode, "valid") == 0 || queued)
+    {
+        ok(pick_active() == 75680 && pick_unlocked() == 0,
+           "arm: the older file is not read while this one is there");
     }
     ok(PKD.value != NULL && strcmp(PKD.value, file_line != NULL ? file_line : PICK_DEFAULT) == 0,
        "arm: the value slot holds the chosen line");
@@ -544,7 +596,7 @@ static int arm_mode(const wchar_t *dir, const char *mode)
         static char last[] = "a=9";
         PKD.value = first;
         pick_tick();
-        ok(strcmp(LAST_LOG, "pick: save failed - a=5") == 0,
+        ok(strcmp(LAST_LOG, "pick: save failed - a=5;u=0") == 0,
            "tick: a save with no players folder is skipped, and said");
         ok(GetFileAttributesW(file) == INVALID_FILE_ATTRIBUTES, "tick: and no file appears");
         ok(GetFileAttributesW(sub) == INVALID_FILE_ATTRIBUTES, "tick: and no folder appears");
@@ -552,7 +604,7 @@ static int arm_mode(const wchar_t *dir, const char *mode)
             int said = LOGS;
             PKD.value = last;
             pick_stop();
-            ok(LOGS == said + 1 && strcmp(LAST_LOG, "pick: save failed - a=9") == 0,
+            ok(LOGS == said + 1 && strcmp(LAST_LOG, "pick: save failed - a=9;u=0") == 0,
                "stop: the detach save is said, and skipped the same way");
         }
         printf("pick: %s - %d checks\n", FAILS == 0 ? "OK" : "FAILED", PASSES);
@@ -561,26 +613,34 @@ static int arm_mode(const wchar_t *dir, const char *mode)
 
     {
         static char press[] = "a=69318";
+        static char press_on[] = "a=69318;u=1";
         int said = LOGS;
-        PKD.value = press;
+        PKD.value = unlocked ? press_on : press;
         pick_tick();
         ok(pick_active() == 69318, "tick: the row the press named becomes the active one");
         ok(LOGS == said + 2 && strcmp(LOGS_ALL[said], "armory: pick a=69318") == 0,
            "tick: the press is one armory line and then the save");
-        merged = queued ? "a=69318;q=69316,69318" : "a=69318";
+        merged = queued ? "a=69318;q=69316,69318;u=0" : (unlocked ? "a=69318;u=1" : "a=69318;u=0");
         ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, merged) == 0,
            "tick: the file holds the press and keeps the queue it already had");
+        if (unlocked)
+        {
+            ok(GetFileAttributesW(old) != INVALID_FILE_ATTRIBUTES
+                   && GetFileAttributesW(file) != INVALID_FILE_ATTRIBUTES,
+               "tick: the save writes this file and leaves the older one in place");
+        }
         {
             int lines = LOGS;
             static char second[] = "a=69320";
-            PKD.value = second;
+            static char second_on[] = "a=69320;u=1";
+            PKD.value = unlocked ? second_on : second;
             pick_tick();
             ok(LOGS == lines && pick_active() == 69318 && read_ascii(file, back, sizeof(back)) > 0
                    && strcmp(back, merged) == 0,
                "tick: a second call inside the one-second window reads nothing");
             Sleep(1100);
             pick_tick();
-            merged = queued ? "a=69320;q=69316,69318" : "a=69320";
+            merged = queued ? "a=69320;q=69316,69318;u=0" : (unlocked ? "a=69320;u=1" : "a=69320;u=0");
             ok(pick_active() == 69320 && read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, merged) == 0,
                "tick: one second later the new row is adopted and written");
         }
@@ -590,6 +650,7 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     {
         static char junk[] = "a=4;Q=6";
         static char good[] = "a=7";
+        static char good_on[] = "a=7;u=1";
         char stop_line[PICK_MAX + 64];
         char stop_file[PICK_MAX + 8];
         int said = LOGS;
@@ -603,11 +664,12 @@ static int arm_mode(const wchar_t *dir, const char *mode)
         ok(LOGS == said + 1, "tick: and the refusal is not said again");
         ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, merged) == 0,
            "tick: the file is untouched by it");
-        PKD.value = good;
+        PKD.value = unlocked ? good_on : good;
         pick_stop();
-        _snprintf_s(stop_line, sizeof(stop_line), _TRUNCATE, "pick: saved a=7%s",
-                    queued ? ";q=69316,69318" : "");
-        _snprintf_s(stop_file, sizeof(stop_file), _TRUNCATE, "a=7%s", queued ? ";q=69316,69318" : "");
+        _snprintf_s(stop_line, sizeof(stop_line), _TRUNCATE, "pick: saved a=7%s;u=%d",
+                    queued ? ";q=69316,69318" : "", unlocked ? 1 : 0);
+        _snprintf_s(stop_file, sizeof(stop_file), _TRUNCATE, "a=7%s;u=%d",
+                    queued ? ";q=69316,69318" : "", unlocked ? 1 : 0);
         ok(line_is(stop_line), "stop: the detach save is said even inside the window");
         ok(read_ascii(file, back, sizeof(back)) == (int)strlen(stop_file) && strcmp(back, stop_file) == 0,
            "stop: and the file holds it, with the queue it already had");
@@ -642,7 +704,7 @@ static int advance_mode(const wchar_t *dir)
 
     set_self_dir(dir);
     make_dir(SELF_DIR, L"players");
-    wide_path(file, MAX_PATH, SELF_DIR, L"players\\pt_armory.txt");
+    wide_path(file, MAX_PATH, SELF_DIR, L"players\\armory.txt");
     write_ascii(file, "a=75680;q=69316,69318");
 
     // ---- 13. the arm takes the file's row and its queue ----------------------------------------------
@@ -657,9 +719,9 @@ static int advance_mode(const wchar_t *dir)
     pick_tick();
     ok(pick_active() == 69316, "advance: the tick moves the pick to the next id in the queue");
     ok(line_is("armory: advance 75680 -> 69316"), "advance: one line names the row it left and the row it took");
-    ok(PKD.value != NULL && strcmp(PKD.value, "a=69316;q=69316,69318") == 0,
+    ok(PKD.value != NULL && strcmp(PKD.value, "a=69316;q=69316,69318;u=0") == 0,
        "advance: the merged line is pushed into the dvar");
-    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=69316;q=69316,69318") == 0,
+    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=69316;q=69316,69318;u=0") == 0,
        "advance: and the file holds it");
     ok(LOGS == said + 2, "advance: one post is one line and one save");
 
@@ -686,9 +748,9 @@ static int advance_mode(const wchar_t *dir)
     pick_tick();
     ok(pick_active() == 0, "advance: an empty queue leaves no row active");
     ok(line_is("armory: queue done"), "advance: and says the queue is done");
-    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=0;q=69318") == 0,
+    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=0;q=69318;u=0") == 0,
        "advance: the file holds the empty pick with the queue it had");
-    ok(PKD.value != NULL && strcmp(PKD.value, "a=0;q=69318") == 0, "advance: and the dvar carries the same line");
+    ok(PKD.value != NULL && strcmp(PKD.value, "a=0;q=69318;u=0") == 0, "advance: and the dvar carries the same line");
     ok(LOGS == said + 2, "advance: the empty case is one line and one save too");
 
     said = LOGS;
@@ -708,7 +770,7 @@ static int advance_mode(const wchar_t *dir)
         Sleep(1100);
         pick_tick();
         ok(pick_active() == 69318 && read_ascii(file, back, sizeof(back)) > 0
-               && strcmp(back, "a=69318;q=69318") == 0,
+               && strcmp(back, "a=69318;q=69318;u=0") == 0,
            "advance: a press after the empty queue wins on the next tick");
     }
 
@@ -735,6 +797,6 @@ int main(int argc, char **argv)
         }
         return arm_mode(dir, argv[3]);
     }
-    printf("usage: pick_test.exe self | arm <dir> valid|queue|advance|none|bad|nofolder\n");
+    printf("usage: pick_test.exe self | arm <dir> valid|queue|advance|none|bad|migrate|nofolder\n");
     return 2;
 }
