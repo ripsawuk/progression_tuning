@@ -1008,8 +1008,8 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 274101
-SHIP_LUA_SHA = "4194D4621C3DC9E14FFEBF63B3617A297A0E689A162C7CFE654EB69C17D5FEE5"
+SHIP_LUA_LEN = 274804
+SHIP_LUA_SHA = "B9946256216BA4E93A409F1F845DF3E26A93AEE125F5AA8682F4B06344B5E027"
 LITERAL_SHA = "EF0E2CC050787619ACC87ABC0E21DAAA7817A181AF8609A70F763C4914190F7F"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
@@ -1803,7 +1803,7 @@ def static_checks():
 
     check("mod.json: name", mod["name"] == "Progression Tuning", mod.get("name"))
     check("mod.json: author", mod["author"] == "ripsawuk", mod.get("author"))
-    check("mod.json: version 1.3", mod["version"] == "1.3", mod.get("version"))
+    check("mod.json: version 1.4", mod["version"] == "1.4", mod.get("version"))
     check("mod.json: type names the ui and the script", mod["type"] == "ui,script", mod.get("type"))
     check("mod.json: requires is empty", mod["requires"] == [])
     check("mod.json: the keys are the installed mods' six, in order",
@@ -2064,8 +2064,8 @@ def static_checks():
     check("lua: the answer needs the bit AND the reward set AND the client's own item type",
           "glockedNow(n)" in SRC and "GTYPE_A" in SRC and "GTYPE_C" in SRC and "GTYPE_R" in SRC
           and "locked = bit == 1 and greward(n) and not gdefault(n) and not gcarried(n)" in SRC)
-    check("lua: a locked answer is refused when the id's own ref is carried, on all three rules",
-          "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 3)
+    check("lua: a locked answer is refused when the id's own ref is carried, on all four rules",
+          "local function gcarried(n)" in SRC and SRC.count("not gcarried(n)") == 4)
     check("lua: types come from the client's own constants and its own getter",
           '"gettypeforid"' in SRC and '"itemTypes"' in SRC and '"ATTACHMENT"' in SRC
           and '"CAMO"' in SRC and '"RETICLE"' in SRC and "GTYPE_A, GTYPE_C, GTYPE_R = na, nc, tonumber(r)" in SRC)
@@ -2420,10 +2420,10 @@ def g11_reader(lua51, ls):
 
     pc = int(rt.eval("PCALLS"))
     lc = int(rt.eval("LCALLS"))
-    rt.execute("SET_TYPE(2, 2)")
+    rt.execute("SET_TYPE(2, 15)")
     rt.eval("ASK_P(2)")
     rt.eval("ASK_L(2)")
-    check("g11: an id whose bit is set but whose type is a weapon reads unchanged (both doors)",
+    check("g11: an id whose bit is set but whose type is outside the six reads unchanged (both doors)",
           rt.eval("ASK_P(2)") is True and rt.eval("ASK_L(2)") is True)
     check("g11: and the previous function answers it, once per ask",
           int(rt.eval("PCALLS")) - pc == 2 and int(rt.eval("LCALLS")) - lc == 2,
@@ -2436,7 +2436,7 @@ def g11_reader(lua51, ls):
 
     rt.execute('SET_SCOPE("all")')
     pump(rt, 8)
-    check("g11: scope 'all' is retired - a weapon id with a bit still reads unchanged",
+    check("g11: scope 'all' is retired - an id outside the six with a bit still reads unchanged",
           rt.eval("ASK_P(2)") is True and rt.eval("ASK_L(2)") is True)
     check("g11: and the retirement says so once",
           count_line(lines_of(rt), "g11 scope all is retired") == 1,
@@ -2669,7 +2669,7 @@ def s1_door(lua51, ls):
     camo = [131708, 131545]
     camo_r = [131546]
     attach = [126608, 140701]
-    plain = [(150003, 2), (200000, 11)]
+    plain = [(150003, 15), (200000, 11)]
     nobit = [150010, 150011]
     lit = inscope + outside + camo + camo_r + attach + [i for i, _t in plain]
     rewards = inscope + outside + camo_r + attach
@@ -2678,7 +2678,7 @@ def s1_door(lua51, ls):
     rt = new_rt(lua51, frontend=True, src=False)
     lua_slabs(rt, slabs)
     lua_rslabs(rt, slabs_of(rewards))
-    rt.execute("SET_TYPE(150003, 2)")
+    rt.execute("SET_TYPE(150003, 15)")
     rt.execute("SET_TYPE(200000, 11)")
     for i in camo + camo_r:
         rt.execute("SET_TYPE(%d, 13)" % i)
@@ -2705,7 +2705,7 @@ def s1_door(lua51, ls):
           str([(i, rt.eval("ASK_L(%d)" % i)) for i in camo_r]))
     check("s1: an attachment with a bit still reads locked, as RC 1.0 answered",
           all(rt.eval("ASK_P(%d)" % i) is False and rt.eval("ASK_L(%d)" % i) is False for i in attach))
-    check("s1: a weapon id with a bit keeps the client's own answer",
+    check("s1: an id whose type is outside the six keeps the client's own answer",
           rt.eval("ASK_P(%d)" % plain[0][0]) is True and rt.eval("ASK_L(%d)" % plain[0][0]) is True,
           str(rt.eval("ASK_L(%d)" % plain[0][0])))
     check("s1: a calling card with a bit and no paying table reads locked on both doors",
@@ -2790,6 +2790,77 @@ def s1_door(lua51, ls):
     quiet.eval("ASK_L(150030)")
     check("s1: and the second ask for the same id is answered from the cached type",
           int(quiet.eval("TYPECALLS")) == tq, str(int(quiet.eval("TYPECALLS")) - tq))
+
+
+def mp_locks(lua51):
+    """B1: the six rank types answer from the published bit, and nothing else does."""
+    by_type = {2: 88934, 6: 102431, 5: 63560, 3: 84484, 45: 101493, 4: 97506}
+    nolvl = [84439, 99740, 84446, 95208, 97507, 98132, 129239, 132047]
+    kinds = {84439: 5, 99740: 5, 84446: 4, 95208: 4, 97507: 4, 98132: 4, 129239: 4, 132047: 4}
+    other = [150100, 150101]
+    carried = 150110
+    nobit = [150120, 150121]
+    lit = sorted(by_type.values()) + nolvl + other + [carried]
+
+    rt = new_rt(lua51, frontend=True, src=False)
+    lua_slabs(rt, slabs_of(lit))
+    lua_rslabs(rt, slabs_of([]))
+    rt.execute("SET_G11(41)")
+    rt.execute("SET_G12(0)")
+    rt.execute("LOOT.itemTypes.PERK = 6 LOOT.itemTypes.EQUIPMENT = 5 LOOT.itemTypes.SUPER = 3"
+               " LOOT.itemTypes.WILDCARD = 45 LOOT.itemTypes.STREAK = 4")
+    for t, i in sorted(by_type.items()):
+        rt.execute("SET_TYPE(%d, %d)" % (i, t))
+    for i, t in sorted(kinds.items()):
+        rt.execute("SET_TYPE(%d, %d)" % (i, t))
+    for i in other:
+        rt.execute("SET_TYPE(%d, 15)" % i)
+    rt.execute("SET_TYPE(%d, 5)" % carried)
+    rt.execute("SET_TYPE(%d, 4)" % nobit[0])
+    rt.execute("SET_TYPE(%d, 3)" % nobit[1])
+    rt.execute('PLAIN_BUNDLE(%d, "iw9_ar_mike4")' % carried)
+    for n in LOAD_ORDERS["harness"]:
+        if n != ARMORY:
+            rt.execute(LUA_TEXT[n])
+    pump(rt, 1)
+
+    got = [(i, rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)) for i in sorted(by_type.values())]
+    check("mp locks: each of the six rank types reads locked on both doors from the bit alone",
+          all(p is False and l is False for _i, p, l in got), str(got))
+    owed = [i for i in by_type.values() if rt.eval("ProgressionTuning.api.greward(%d)" % i) is not False]
+    check("mp locks: and no reward table pays any of them", owed == [], str(owed))
+
+    lv = [(i, rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)) for i in nolvl]
+    check("mp locks: the eight level-less ids stay open at bit=1 on both doors",
+          all(p is True and l is True for _i, p, l in lv), str(lv))
+
+    before = int(rt.eval("LCALLS"))
+    ot = [(i, rt.eval("ASK_P(%d)" % i), rt.eval("ASK_L(%d)" % i)) for i in other]
+    check("mp locks: a type outside the six with a bit and no reward keeps the client's answer",
+          all(p is True and l is True for _i, p, l in ot)
+          and int(rt.eval("LCALLS")) - before == len(other), str(ot))
+
+    check("mp locks: an id whose own data names a foreign gun stays open",
+          rt.eval("ASK_P(%d)" % carried) is True and rt.eval("ASK_L(%d)" % carried) is True,
+          "%s / %s" % (rt.eval("ASK_P(%d)" % carried), rt.eval("ASK_L(%d)" % carried)))
+    check("mp locks: the same two types with no bit read open on both doors",
+          all(rt.eval("ASK_P(%d)" % i) is True and rt.eval("ASK_L(%d)" % i) is True for i in nobit),
+          str([rt.eval("ASK_P(%d)" % i) for i in nobit]))
+
+    switches = {2: "zm_unlock_weapons", 6: "zm_unlock_perks", 5: "zm_unlock_equipment",
+                3: "zm_unlock_fieldupgrades", 45: "zm_unlock_wildcards", 4: "zm_unlock_scorestreaks"}
+    for t, name in sorted(switches.items()):
+        rt.execute('SET_DVAR("%s", "1")' % name)
+        pump(rt, 8)
+        mine = rt.eval("ASK_P(%d)" % by_type[t])
+        rest = [i for u, i in by_type.items() if u != t and rt.eval("ASK_P(%d)" % i) is not False]
+        check("mp locks: %s opens its own type alone" % name, mine is True and rest == [],
+              "%s / %s" % (mine, rest))
+        rt.execute('SET_DVAR("%s", "0")' % name)
+        pump(rt, 8)
+    check("mp locks: with every switch back off the six are locked again",
+          all(rt.eval("ASK_P(%d)" % i) is False for i in by_type.values()),
+          str([rt.eval("ASK_P(%d)" % i) for i in by_type.values()]))
 
 
 def g12_door(lua51, ls):
@@ -4978,8 +5049,8 @@ def g32_store(lua51):
     rt = card_vm(lua51, CARD_ROWS + CARD_TYPES + STORE_FIX + BUY_FIX
                  + "SET_BUY(%d, { lootid = %d }) SET_BUY(%d, { lootid = %d })" % (card, card, plat, plat),
                  ids, 88)
-    rt.execute("SET_TYPE(%d, 2)" % weapon)
-    rt.execute("SET_TYPE(%d, 6)" % perk)
+    rt.execute("SET_TYPE(%d, 15)" % weapon)
+    rt.execute("SET_TYPE(%d, 46)" % perk)
     rt.execute("SET_TYPE(%d, 11)" % earn)
     rt.execute("SET_TYPE(%d, 11)" % plat)
     before = int(rt.eval("LCALLS"))
@@ -4996,7 +5067,7 @@ def g32_store(lua51):
           ans is False and int(rt.eval("LCALLS")) - before == 0, str(ans))
     before = int(rt.eval("LCALLS"))
     got = (rt.eval("ASK_L(%d)" % weapon), rt.eval("ASK_L(%d)" % perk))
-    check("g32 store: a weapon and a perk are left to the client too",
+    check("g32 store: a gun screen and an ammo mod are left to the client too",
           got == (True, True) and int(rt.eval("LCALLS")) - before == 2, str(got))
     rt.execute("SET_PLATFORM(false)")
     before = int(rt.eval("LCALLS"))
@@ -10741,8 +10812,11 @@ def armory_lock(lua51):
             door.execute(LUA_TEXT[n])
     pump(door, 1)
     gap = [(i, door.eval("ASK_P(%d)" % i), door.eval("ASK_L(%d)" % i)) for i in LOCK_IDS]
-    check("armory lock: the door alone opens every one of them on the default table",
-          all(p is True and l is True for _i, p, l in gap), str(gap))
+    check("armory lock: the door alone opens the four non weapon ones on the default table",
+          all(p is True and l is True for _i, p, l in gap if _i != 142465), str(gap))
+    check("armory lock: and answers the rank bit for the weapon typed one",
+          [p for i, p, l in gap if i == 142465] == [False]
+          and [l for i, p, l in gap if i == 142465] == [False], str(gap[0]))
     vgap = [(i, door.eval("ASK_P(%d)" % i), door.eval("ASK_L(%d)" % i)) for i in VAR_ATTACH]
     check("armory lock: and opens the 1911's four attachment versions too",
           all(p is True and l is True for _i, p, l in vgap), str(vgap[:4]))
@@ -11827,6 +11901,7 @@ def main():
             g11_absent(lua51)
             g11_order_and_cap(lua51, ls)
             s1_door(lua51, ls)
+            mp_locks(lua51)
             g12_door(lua51, ls)
             s1_reticle(lua51, ls)
             s1_fallback(lua51, ls)

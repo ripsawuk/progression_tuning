@@ -58,6 +58,9 @@ local GTYPE_A, GTYPE_C, GTYPE_R = nil, nil, nil
 local GTYPE_H, GTYPE_E = nil, nil
 local GTYPE_PC, GTYPE_COS, GTYPE_TOG = nil, nil, nil
 local GTYPE_SKIN = nil
+local GTYPE_LV = nil
+-- the types a rank bit gates
+local GLVNAME = { "WEAPON", "PERK", "EQUIPMENT", "SUPER", "WILDCARD", "STREAK" }
 local GTOGV, GTOGT = nil, nil
 local GCAMO_NONE_N = 0
 -- the store types by the game own names
@@ -98,7 +101,13 @@ local function gtypepair()
     local t = tonumber(v)
     if t ~= nil then tog[t] = GTOGN[i][2] end
   end
-  GTYPE_COS, GTYPE_TOG = cos, tog
+  local lv = {}
+  for i = 1, #GLVNAME do
+    local _, v = member(it, GLVNAME[i])
+    local t = tonumber(v)
+    if t ~= nil then lv[t] = true end
+  end
+  GTYPE_COS, GTYPE_TOG, GTYPE_LV = cos, tog, lv
   local _, a = member(it, "ATTACHMENT")
   local _, c = member(it, "CAMO")
   local _, r = member(it, "RETICLE")
@@ -179,6 +188,11 @@ local GTASK_IDS = {
 }
 local GTASK = {}
 for i = 1, #GTASK_IDS do GTASK[GTASK_IDS[i]] = true end
+
+-- list bits with no level stay open
+local GNOLEVEL_IDS = { 84439, 99740, 84446, 95208, 97507, 98132, 129239, 132047 }
+local GNOLEVEL = {}
+for i = 1, #GNOLEVEL_IDS do GNOLEVEL[GNOLEVEL_IDS[i]] = true end
 
 -- every unlock switch read once a tick
 local function gtoggles()
@@ -1318,6 +1332,12 @@ local function glocked(id)
   if gtoggle(t) then
     m[n] = { locked = false }
     return false
+  end
+  -- a rank bit is the whole answer
+  if GTYPE_LV ~= nil and GTYPE_LV[t] == true and GNOLEVEL[n] ~= true then
+    local rl = bit == 1 and not gcarried(n)
+    m[n] = { locked = rl }
+    return rl
   end
   local locked
   if GTYPE_SKIN ~= nil and t == GTYPE_SKIN and GTASK[n] == true then
