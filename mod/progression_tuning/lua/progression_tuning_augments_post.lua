@@ -25,7 +25,7 @@ local ACT_A, ACT_B = 53979, 47576
 local START_EVENT, START_KEY = 846, 74
 local SLOTS = 9
 
-local VERSION = "v4"
+local VERSION = "v5"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -40,7 +40,7 @@ S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
   active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
-  restored = false }
+  restored = false, lkOn = false, lkMiss = false }
 S.aug = G
 
 -- says a thing once
@@ -240,6 +240,15 @@ local function ref_of(map, k)
   return ref
 end
 
+-- the rungs one amount ladder carries
+local function rung_of(ch)
+  local amount = hfield(ch, "amount")
+  if type(amount) ~= "string" then return 0 end
+  local n = 0
+  for _ in string.gmatch(amount, "[^|]+") do n = n + 1 end
+  return n
+end
+
 -- the ladder steps one row reaches
 local function steps(c, ch)
   local amount = hfield(ch, "amount")
@@ -296,9 +305,9 @@ local function kindword(cache)
 end
 
 -- the ticks and the owned count
-local function ticks(c, store, cache, map)
+local function ticks(c, store, cache, map, quiet)
   local owned, seen, rows = 0, {}, 0
-  local tiers, items = {}, {}
+  local tiers, items, done = {}, {}, {}
   for k, ch in pairs(cache) do
     if type(ch) == "table" and seen[ch] == nil then
       seen[ch] = true
@@ -306,14 +315,16 @@ local function ticks(c, store, cache, map)
       local list = field(store, ref)
       if type(list) == "table" then
         rows = rows + 1
+        local rungs = rung_of(ch)
         local t = steps(c, ch)
+        done[ref] = rungs > 0 and t >= rungs
         if t > #list then t = #list end
         tiers[ref] = t
         for i = 1, #list do
           local e = list[i]
           if type(e) == "table" then
             local want = i <= t
-            if hfield(e, "IsUnlocked") ~= want then put(e, "IsUnlocked", want) end
+            if quiet ~= true and hfield(e, "IsUnlocked") ~= want then put(e, "IsUnlocked", want) end
             if want then owned = owned + 1 end
             local loot = tonumber(hfield(e, "lootid"))
             if loot ~= nil then items[math.floor(loot)] = { ref = ref, i = i } end
@@ -322,11 +333,52 @@ local function ticks(c, store, cache, map)
       end
     end
   end
-  return owned, tiers, rows, items
+  return owned, tiers, rows, items, done
 end
 
 -- the row the ladder thresholds sit on
 local rowzero
+
+-- the vm this part runs in
+local front
+
+-- writes the research flag the game reads
+local function flag(store, done)
+  for ref, ok in pairs(done) do
+    local list = field(store, ref)
+    if type(list) == "table" then put(list, "isResearchComplete", ok == true) end
+  end
+end
+
+-- clears one item second minor through the game
+local function clearone(c, Z, ref, list)
+  local get = fn_of(Z, "getcustomizationplayerdata")
+  local refr = fn_of(Z, "refreshequippedaugmentdata")
+  local slot = hfield(hfield(Z, "slot"), "bonus_minor")
+  local et = hfield(list[1], "equipmenttype")
+  if get == nil or refr == nil or type(slot) ~= "number" or type(et) ~= "number" then return false end
+  local okg, pd = pcall(get, c, et, ref)
+  if not okg or type(pd) ~= "table" then return false end
+  local bm = hfield(pd, "bonusMinorAugment")
+  local bget, bset = hfield(bm, "get"), hfield(bm, "set")
+  if type(bget) ~= "function" or type(bset) ~= "function" then return false end
+  local okv, v = pcall(bget, bm)
+  if not okv or tonumber(v) == nil or tonumber(v) == 0 then return false end
+  if not pcall(bset, bm, 0) then return false end
+  pcall(refr, c, slot, 0)
+  dp("augments bonus minor cleared ref=" .. ref)
+  return true
+end
+
+-- clears every unfinished item second minor
+local function clearall(c, Z, store, done)
+  for ref, ok in pairs(done) do
+    if ok ~= true then
+      local list = field(store, ref)
+      if type(list) == "table" then pcall(clearone, c, Z, ref, list) end
+    end
+  end
+end
 
 -- the count the native ladder pass reads
 local function feed(c, count)
@@ -419,13 +471,17 @@ local function whole(c)
   local ok = pcall(function() n = retier(c, cache) end)
   spy_off(k, o)
   if not ok then n = 0 end
-  local owned, tiers, rows, items = 0, {}, 0, {}
+  local owned, tiers, rows, items, done = 0, {}, 0, {}, {}
   pcall(function()
     alias(cache)
-    owned, tiers, rows, items = ticks(c, store, cache, map_of(Z))
+    owned, tiers, rows, items, done = ticks(c, store, cache, map_of(Z))
   end)
   G.tier, G.rows, G.owned, G.ix = tiers, rows, owned, items
-  if rows > 0 then feed(c, owned) end
+  if rows > 0 then
+    pcall(flag, store, done)
+    if front() ~= false then pcall(clearall, c, Z, store, done) end
+    feed(c, owned)
+  end
   if G.last ~= nil and G.tier[G.last] ~= nil then slots(c, G.tier[G.last]) end
   if G.ownSaid ~= true and rows > 0 then
     G.ownSaid = true
@@ -435,6 +491,19 @@ local function whole(c)
 end
 
 local pass
+
+-- the augment ids the toggle path answers
+local function idmap(c)
+  local Z = rawget(_G, "ZMAUGMENT")
+  if type(Z) ~= "table" then return nil end
+  local ks = key_hex(Z, K_STORE)
+  if ks == nil then return nil end
+  local store, cache = field(Z, ks), cache_of(Z)
+  if type(store) ~= "table" or type(cache) ~= "table" then return nil end
+  local _, _, rows, items = ticks(c, store, cache, map_of(Z), true)
+  if rows == 0 then return nil end
+  return items
+end
 
 -- the start event and the key it carries
 local function startid()
@@ -485,7 +554,7 @@ local function resolve(id)
 end
 
 -- menu or match
-local function front()
+front = function()
   local f = fn_of(rawget(_G, "Engine"), "InFrontend")
   if f == nil then return nil end
   local ok, v = pcall(f)
@@ -715,7 +784,12 @@ pass = function(c)
   local on = (one == "1") or (two == "1")
   G.on = on
   local n = 0
-  if not on then n = whole(c) end
+  if not on then
+    n = whole(c)
+  else
+    local okm, m = pcall(idmap, c)
+    if okm and type(m) == "table" then G.ix = m end
+  end
   if G.said ~= true and (on or n > 0) then
     G.said = true
     dp("augments armed " .. VERSION .. " unlock=" .. word(one) .. " all=" .. word(two)
@@ -835,6 +909,10 @@ local function lk_give(orig)
     local ok, locked = pcall(locked_item, id)
     if ok and locked == false then return true end
     if ok and locked == true then return false end
+    if hon() == true then
+      local n = tonumber(id)
+      if n ~= nil and type(G.ix) == "table" and G.ix[math.floor(n)] ~= nil then return true end
+    end
     return thru(orig, id)
   end
 end
@@ -853,6 +931,22 @@ local function lk_arm()
   locks.answer, locks.open = wa, wo
   LK.tbl, LK.a, LK.o = locks, wa, wo
   return true
+end
+
+-- says whether the lock door took the extension
+local function lk_say()
+  local locks = S.locks
+  if type(locks) == "table" and LK.tbl == locks and LK.a ~= nil and LK.o ~= nil then
+    if G.lkOn ~= true then
+      G.lkOn = true
+      dp("augments locks armed")
+    end
+    return
+  end
+  if G.lkMiss ~= true and type(S.parts) == "table" and S.parts.prison == true then
+    G.lkMiss = true
+    dp("augments locks missing")
+  end
 end
 
 -- the keys this vm keeps its members under
@@ -934,6 +1028,7 @@ end
 tick = function()
   G.ticks = G.ticks + 1
   pcall(install)
+  pcall(lk_say)
   if G.dirty or G.ticks % PASS_TICKS == 1 then pcall(pass, G.c) end
   if not again() then pcall(start) end
 end

@@ -50,7 +50,15 @@ The cases:
   21. the switches and the vm: a switch on raises nothing, the menu vm raises nothing, a press in
       the match vm never writes the channel;
   22. the late popup: the card falls back to the row id while the active item is absent, then
-      names the published loot id once it is there.
+      names the published loot id once it is there;
+  23. the slot flag: `isResearchComplete` follows the ladder rungs under the key it lives in,
+      false below the top rung and true at it, even under a force after the native tier pass;
+  24. the stored second minor: cleared through the game's own player data only while the item
+      is unfinished and no switch is on, in the menu only, never the major or the first minor;
+  25. the switch and the door: every augment loot id answers open while a switch is on, an id
+      that is not an augment passes through, and the id map is built without the unlock writes;
+  26. the lock arm line: one word when the door takes the extension, one when it cannot, once
+      each, and nothing while the part that owns the table has not loaded.
 """
 import os
 import re
@@ -127,7 +135,7 @@ GETSTR = Dvar[xhash("GetDvarString")]
 
 local function row(loot)
   return { [HK("lootid")] = loot, [HK("IsUnlocked")] = true, [HK("progress")] = 0,
-           [HK("displayname")] = "aug" .. loot }
+           [HK("displayname")] = "aug" .. loot, [HK("equipmenttype")] = 0 }
 end
 local function rows(base)
   return { row(base), row(base + 1), row(base + 2), isResearchComplete = true, totalProgress = 100,
@@ -174,6 +182,58 @@ Z[REFRESH_K] = function(c)
       e.isUnlocked, e.isResearchComplete, e.totalProgress, e.currentTier = true, true, 100, #e
     end
   end
+end
+
+Z[HK("slot")] = { minor = 1, bonus_minor = 2, none = 4294967295, major = 0 }
+PD = {}
+SEQ = {}
+REFRESHED = {}
+local AM = {
+  [HK("get")] = function(self) return self.v end,
+  [HK("set")] = function(self, x) self.v = x; SEQ[#SEQ + 1] = "set:" .. tostring(x) end,
+}
+function PD_ITEM(ref, major, minor, bonus)
+  PD[ref] = {
+    [HK("majorAugment")] = setmetatable({ v = major }, { __index = AM }),
+    [HK("minorAugment")] = setmetatable({ v = minor }, { __index = AM }),
+    [HK("bonusMinorAugment")] = setmetatable({ v = bonus }, { __index = AM }),
+  }
+end
+PD_ITEM("sat_aug_one", 0, 0, 0)
+PD_ITEM("sat_aug_two", 0, 0, 0)
+function BONUS(ref, v) PD[ref][HK("bonusMinorAugment")].v = v end
+function BONUSV(ref) return tostring(PD[ref][HK("bonusMinorAugment")].v) end
+function MAJORV(ref) return tostring(PD[ref][HK("majorAugment")].v) end
+function MINORV(ref) return tostring(PD[ref][HK("minorAugment")].v) end
+function SEQV() return table.concat(SEQ, ",") end
+function SEQCLR() SEQ = {}; REFRESHED = {} end
+function REFN() return #REFRESHED end
+function REFAT(i) return REFRESHED[i] or "" end
+Z[HK("getcustomizationplayerdata")] = function(c, et, ref)
+  if et == 0 then return PD[ref] end
+  return nil
+end
+Z[HK("refreshequippedaugmentdata")] = function(c, slot, v)
+  REFRESHED[#REFRESHED + 1] = tostring(slot) .. ":" .. tostring(v)
+  SEQ[#SEQ + 1] = "refresh"
+end
+function K2()
+  local orig = Z[HK("cacheaugmenttierdata")]
+  Z[HK("cacheaugmenttierdata")] = function(c, ch, loot)
+    orig(c, ch, loot)
+    local ref = Z[HK("lootid_to_ref")][loot]
+    if ref ~= nil and Z[STORE_K][ref] ~= nil then Z[STORE_K][ref].isResearchComplete = true end
+  end
+end
+function HKEY(ref, name)
+  local e = Z[STORE_K][ref]
+  return tostring(e and e[xhash(name)])
+end
+function LOCKF(ref, i, v) Z[STORE_K][ref][i][HK("IsUnlocked")] = v end
+function IX(id)
+  local at = ProgressionTuning.aug.ix and ProgressionTuning.aug.ix[id]
+  if at == nil then return "none" end
+  return tostring(at.ref) .. ":" .. tostring(at.i)
 end
 
 BUNDLE_N = 3
@@ -507,7 +567,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line and nothing else", len(l) == 2,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v4 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v5 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -833,8 +893,12 @@ def case_lock(lua51):
           "803=%s 903=%s" % (val(r, "ANS(803)"), val(r, "ANS(903)")))
     r.execute("SET_DVAR('zm_unlock_augments', '1')")
     r.execute("REFRESH(0)")
-    check("lock: the switch steps the rule aside", r.eval("ANS(903)") is False
-          and r.eval("OPN(903)") is False, val(r, "ANS(903)"))
+    check("lock: the switch steps the locked rule aside", r.eval("ANS(903)") is False
+          and r.eval("ANS(801)") is False, val(r, "ANS(903)"))
+    check("lock: the switch answers the open side for every augment id",
+          r.eval("OPN(903)") is True and r.eval("OPN(801)") is True, val(r, "OPN(903)"))
+    check("lock: an id that is not an augment passes through with the switch on",
+          r.eval("OPN(999)") is False and r.eval("OPN(556)") is True, val(r, "OPN(999)"))
     r.execute("SET_DVAR('zm_unlock_augments', '0')")
     r.execute("REFRESH(0)")
     check("lock: the rule applies again once the switch is off", r.eval("ANS(903)") is True,
@@ -899,6 +963,151 @@ def case_lock_late(lua51):
     pump(r, 1)
     check("late lock: a new table is extended again", r.eval("ANS(801)") is True
           and val(r, "FACE('answer') == SEC_A") == "False", val(r, "FACE('answer') == SEC_A"))
+
+
+# --- 23: the research flag the game reads -----------------------------------------------------
+def case_slot(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    check("slot: no progress leaves the flag false",
+          val(r, "FIELD('sat_aug_one','isResearchComplete')") == "false",
+          val(r, "FIELD('sat_aug_one','isResearchComplete')"))
+    r.execute("SET_PROG(40001, 140000)")
+    r.execute("REFRESH(0)")
+    check("slot: below the top rung the flag is false",
+          val(r, "FIELD('sat_aug_one','isResearchComplete')") == "false",
+          val(r, "FIELD('sat_aug_one','isResearchComplete')"))
+    check("slot: the flag stays on the key it already lives in",
+          val(r, "HKEY('sat_aug_one','isResearchComplete')") == "nil",
+          val(r, "HKEY('sat_aug_one','isResearchComplete')"))
+    r.execute("SET_PROG(40001, 275000)")
+    r.execute("REFRESH(0)")
+    check("slot: the top rung makes the flag true",
+          val(r, "FIELD('sat_aug_one','isResearchComplete')") == "true",
+          val(r, "FIELD('sat_aug_one','isResearchComplete')"))
+    check("slot: the other item keeps its own ladder",
+          val(r, "FIELD('sat_aug_two','isResearchComplete')") == "false",
+          val(r, "FIELD('sat_aug_two','isResearchComplete')"))
+    r2 = rt(ZMFIX + "\nMAKEZM()\nK2()")
+    off(r2)
+    r2.execute("SET_PROG(40001, 140000)")
+    r2.execute("REFRESH(0)")
+    check("slot: a force after the native pass does not win below the top",
+          val(r2, "FIELD('sat_aug_one','isResearchComplete')") == "false",
+          val(r2, "FIELD('sat_aug_one','isResearchComplete')"))
+    r2.execute("SET_PROG(40001, 275000)")
+    r2.execute("REFRESH(0)")
+    check("slot: a force after the native pass does not block the top",
+          val(r2, "FIELD('sat_aug_one','isResearchComplete')") == "true",
+          val(r2, "FIELD('sat_aug_one','isResearchComplete')"))
+
+
+# --- 24: the stored second minor --------------------------------------------------------------
+def case_bonus(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("PD_ITEM('sat_aug_one', 5555, 6666, 1234); SEQCLR()")
+    r.execute("REFRESH(0)")
+    check("bonus: an unfinished item's second minor is cleared",
+          val(r, "BONUSV('sat_aug_one')") in ("0", "0.0"), val(r, "BONUSV('sat_aug_one')"))
+    check("bonus: the major and the first minor are never touched",
+          val(r, "MAJORV('sat_aug_one')") == "5555" and val(r, "MINORV('sat_aug_one')") == "6666",
+          val(r, "MAJORV('sat_aug_one')") + " / " + val(r, "MINORV('sat_aug_one')"))
+    check("bonus: the game's own refresh runs with the bonus slot and zero",
+          val(r, "REFAT(1)") == "2:0", val(r, "REFAT(1)"))
+    check("bonus: the set lands before the refresh", val(r, "SEQV()") == "set:0,refresh", val(r, "SEQV()"))
+    check("bonus: one line names the ref",
+          count_line(lines_of(r), "progression_tuning: augments bonus minor cleared ref=sat_aug_one") == 1,
+          " | ".join([ln for ln in lines_of(r) if "bonus minor" in ln][:2]))
+    r.execute("SEQCLR(); REFRESH(0)")
+    check("bonus: a cleared value is not cleared again",
+          val(r, "REFN()") == "0"
+          and count_line(lines_of(r), "augments bonus minor cleared") == 1, val(r, "REFN()"))
+    r.execute("SET_PROG(40001, 275000); PD_ITEM('sat_aug_one', 0, 0, 7777); SEQCLR()")
+    r.execute("REFRESH(0)")
+    check("bonus: a finished item keeps its second minor",
+          val(r, "BONUSV('sat_aug_one')") == "7777" and val(r, "REFN()") == "0",
+          val(r, "BONUSV('sat_aug_one')") + " / " + val(r, "REFN()"))
+    r2 = rt(ZMFIX + "\nMAKEZM()")
+    r2.execute("SET_DVAR('zm_unlock_all', '0'); SET_DVAR('zm_unlock_augments', '1')")
+    r2.execute("PD_ITEM('sat_aug_one', 0, 0, 1234); SEQCLR()")
+    r2.execute("REFRESH(0)")
+    check("bonus: a switch on leaves the stored value alone",
+          val(r2, "BONUSV('sat_aug_one')") == "1234" and val(r2, "REFN()") == "0"
+          and count_line(lines_of(r2), "bonus minor cleared") == 0, val(r2, "BONUSV('sat_aug_one')"))
+    r3 = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r3)
+    r3.execute("PD_ITEM('sat_aug_one', 0, 0, 1234); SEQCLR()")
+    r3.execute("REFRESH(0)")
+    check("bonus: the match vm never clears",
+          val(r3, "BONUSV('sat_aug_one')") == "1234"
+          and count_line(lines_of(r3), "bonus minor cleared") == 0, val(r3, "BONUSV('sat_aug_one')"))
+
+
+# --- 25: the switch answers every augment id through the door ---------------------------------
+def case_toggle_ids(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "PRISON()")
+    r.execute("SET_DVAR('zm_unlock_all', '0'); SET_DVAR('zm_unlock_augments', '1')")
+    r.execute("LOCKF('sat_aug_one', 1, false)")
+    r.execute("REFRESH(0)")
+    pump(r, 1)
+    check("toggle: every augment id of both items answers open",
+          all(r.eval("OPN(%d)" % i) is True for i in (801, 802, 803, 901, 902, 903)),
+          " ".join("%d=%s" % (i, val(r, "OPN(%d)" % i)) for i in (801, 901)))
+    check("toggle: the locked side passes through to the base rule",
+          r.eval("ANS(801)") is False and r.eval("ANS(555)") is True, val(r, "ANS(801)"))
+    check("toggle: an id that is not an augment passes through",
+          r.eval("OPN(999)") is False and r.eval("OPN(556)") is True and r.eval("OPN(7001)") is False,
+          val(r, "OPN(7001)"))
+    check("toggle: the id map names the ref and the slot",
+          val(r, "IX(801)") == "sat_aug_one:1" and val(r, "IX(903)") == "sat_aug_two:3",
+          val(r, "IX(801)") + " / " + val(r, "IX(903)"))
+    check("toggle: no unlock tick is written on the way",
+          val(r, "LOCKS('sat_aug_one')") == "011" and val(r, "COUNT_CALLS") == "0",
+          val(r, "LOCKS('sat_aug_one')") + " / " + val(r, "COUNT_CALLS"))
+    r2 = rt(ZMFIX + "\nMAKEZM()", "PRISON()")
+    r2.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '1')")
+    r2.execute("REFRESH(0)")
+    check("toggle: the other switch answers too", r2.eval("OPN(801)") is True, val(r2, "OPN(801)"))
+
+
+# --- 26: the lock arm line --------------------------------------------------------------------
+def case_lock_lines(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    pump(r, 3)
+    check("locks line: no owner loaded means no word",
+          count_line(lines_of(r), "augments locks") == 0, " | ".join(lines_of(r)[:2]))
+    r.execute("PRISON()")
+    pump(r, 1)
+    check("locks line: one armed line once the table is extended",
+          count_line(lines_of(r), "progression_tuning: augments locks armed") == 1,
+          " | ".join([ln for ln in lines_of(r) if "augments locks" in ln][:2]))
+    pump(r, 8)
+    check("locks line: armed stays at one over nine ticks",
+          count_line(lines_of(r), "augments locks armed") == 1,
+          "%d" % count_line(lines_of(r), "augments locks armed"))
+    check("locks line: no missing word while it is armed",
+          count_line(lines_of(r), "augments locks missing") == 0,
+          "%d" % count_line(lines_of(r), "augments locks missing"))
+    r2 = rt(ZMFIX + "\nMAKEZM()")
+    off(r2)
+    r2.execute("ProgressionTuning.parts.prison = true")
+    r2.execute("ProgressionTuning.locks = { answer = 1, open = 2 }")
+    pump(r2, 1)
+    check("locks line: an unusable table says missing once",
+          count_line(lines_of(r2), "progression_tuning: augments locks missing") == 1,
+          " | ".join([ln for ln in lines_of(r2) if "augments locks" in ln][:2]))
+    pump(r2, 5)
+    check("locks line: missing stays at one over six ticks",
+          count_line(lines_of(r2), "augments locks missing") == 1,
+          "%d" % count_line(lines_of(r2), "augments locks missing"))
+    r2.execute("PRISON()")
+    pump(r2, 1)
+    check("locks line: a good table after it says armed once",
+          count_line(lines_of(r2), "augments locks armed") == 1,
+          " | ".join([ln for ln in lines_of(r2) if "augments locks" in ln][:2]))
 
 
 # --- 18: the press writes the research channel ------------------------------------------------
@@ -1123,6 +1332,7 @@ def main():
     for case in (case_off, case_on, case_line, case_ticks, case_count, case_press, case_alias,
                  case_chain, case_plain, case_late, case_late_read, case_tick_pass, case_twice,
                  case_decoy, case_blind, case_research, case_lock, case_lock_chain, case_lock_late,
+                 case_slot, case_bonus, case_toggle_ids, case_lock_lines,
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
                  case_popup_on, case_popup_match, case_popup_late, case_missing):
         info("case: " + case.__name__)
