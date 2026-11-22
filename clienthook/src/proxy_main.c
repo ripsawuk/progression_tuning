@@ -457,7 +457,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID reserved)
         // one-line writer (this file) and nativepay's buffered writer. Interleaving per line is expected.
         // the banner is measured, not estimated: 484 chars, so the formatted line is 19 + 2 + 484 + 2 = 507
         // bytes, 5 short of the 512-byte buffer in log_line and its /GS cookie (docs\B28-BOUNDED-LOG.md 1).
-        log_line("proxy attached (version.dll build 38: one file - the system copy loads at run time, every "
+        log_line("proxy attached (version.dll build 39: one file - the system copy loads at run time, every "
                  "address from the game own code, the award call site pays field 45 on ev=95, "
                  "zm_g11_* the lock bitmap, zm_g12_* the challenge reward set, "
                  "master.c extends the level byte, an ops check branch forced on, state republished in match, "

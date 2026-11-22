@@ -20,9 +20,8 @@ void ch_self_dir(wchar_t *out, DWORD cch);   // proxy_main.c
 
 #define PK_SUBDIR L"players"
 #define PK_FILE L"armory.txt"
-#define PK_OLD L"pt_armory.txt"   // the name before build 38 read once as a seed
 #define PK_TICK_MS 1000   // read the dvar at most this often
-#define PK_LOG_MS 30000   // one saved line per this window after the first
+#define PK_LOG_MS 30000   // one repeat of a line per this window
 #define PK_REC_MAX 20000  // a larger array is not the game challenge table
 #define PK_REC_TRIG 0x480   // the row first u32 trigger
 #define PK_REC_TRIGS 0x490  // how many triggers the row carries
@@ -37,6 +36,7 @@ static int PK_ARMED;
 static int PK_OFF;
 static char PK_LINE[PICK_MAX + 1];    // the string the dvar points at today
 static char PK_DISK[PICK_MAX + 1];    // what the file holds as far as this process knows
+static char PK_SAID[PICK_MAX + 1];    // the last line a save was said for
 static volatile LONG PK_ADVANCE;      // a completed row id posted by the pay 0 = none
 static volatile LONG PK_A;            // the active row
 static volatile LONG PK_U;            // the unlock armory flag 1 = on
@@ -514,7 +514,13 @@ static void pk_save(const char *line, ULONGLONG now, int force)
     {
         rc = pick_write(path, line);
     }
-    if (pk_may_say(now) || force)
+    // a line not said yet is always said
+    int fresh = strcmp(line, PK_SAID) != 0;
+    if (fresh)
+    {
+        strcpy_s(PK_SAID, sizeof(PK_SAID), line);
+    }
+    if (fresh || force || pk_may_say(now))
     {
         if (rc == 0)
         {
@@ -671,7 +677,6 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
     static char line[PICK_MAX + 1];
     const char *why = "";
     int got = 0;
-    int migrated = 0;
     if (!pk_folder())
     {
         got = -1;
@@ -680,12 +685,6 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
     else if (pk_path(path, MAX_PATH))
     {
         got = pick_read(path, line, sizeof(line), &why);
-        // the older file seeds this one once and stays
-        if (got == 0 && pk_path_named(path, MAX_PATH, PK_OLD))
-        {
-            got = pick_read(path, line, sizeof(line), &why);
-            migrated = (got == 1);
-        }
     }
     else
     {
@@ -708,10 +707,6 @@ void pick_arm(G11_REG reg, const unsigned char salt[16], long slot)
         PK_OFF = 1;
         ch_logf("pick: refused - the value slot is not writable");
         return;
-    }
-    if (migrated)
-    {
-        ch_logf("pick: file migrated from pt_armory.txt");
     }
     if (got == 1)
     {

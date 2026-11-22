@@ -3,7 +3,8 @@
 // never touched.
 //
 //   pick_test.exe self                       the text, the parse, the build, the read, the write, the queue
-//   pick_test.exe arm <dir> valid|queue|none|bad|migrate|nofolder   the arm, the ticks, the flush
+//   pick_test.exe arm <dir> valid|queue|none|bad|oldonly|nofolder   the arm, the ticks, the flush
+//   pick_test.exe arm <dir> uflip            a u that flips twice inside the save window
 //   pick_test.exe arm <dir> advance          the pay's post, the swap, the save and the empty queue
 //
 // Exit 0 when every check passes; the last line is "pick: OK - <n> checks", like the other drivers here.
@@ -475,7 +476,6 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     const char *file_line = NULL;
     const char *merged = NULL;
     const int queued = (strcmp(mode, "queue") == 0);
-    const int unlocked = (strcmp(mode, "migrate") == 0);
 
     // ch_self_dir hands back a directory with its separator, which is what pick.c expects
     {
@@ -516,13 +516,6 @@ static int arm_mode(const wchar_t *dir, const char *mode)
         write_ascii(old, "a=111");
         write_ascii(file, "a=75680;Q=1");
     }
-    else if (strcmp(mode, "migrate") == 0)
-    {
-        // only the older file exists: it seeds this one and stays where it is
-        DeleteFileW(file);
-        write_ascii(old, "a=75680;u=1");
-        file_line = "a=75680;u=1";
-    }
 
     // ---- 9. the arm ---------------------------------------------------------------------------------
     ok(pick_armed() == 0, "arm: nothing is armed before the client's register is offered");
@@ -530,17 +523,7 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     pick_arm(stub_reg, NULL, PK_SLOT);
     ok(REG_CALLS == 1, "arm: the register is asked exactly once");
     ok(pick_armed() == 1, "arm: the channel is armed once the call returned");
-    if (strcmp(mode, "migrate") == 0)
-    {
-        _snprintf_s(want, sizeof(want), _TRUNCATE, "pick: file %s", file_line);
-        ok(LOGS == 3 && strcmp(LOGS_ALL[0], "pick: file migrated from pt_armory.txt") == 0
-               && strcmp(LOGS_ALL[1], want) == 0,
-           "arm: the older file seeds this one and is said first");
-        ok(read_ascii(old, back, sizeof(back)) > 0 && strcmp(back, file_line) == 0,
-           "arm: the older file is left as the installer had it");
-        ok(pick_unlocked() == 1, "arm: the unlock flag the older file carried is adopted");
-    }
-    else if (strcmp(mode, "bad") == 0)
+    if (strcmp(mode, "bad") == 0)
     {
         ok(LOGS == 2 && strncmp(LOGS_ALL[0], "pick: file rejected: ", 21) == 0,
            "arm: a rejected file is said, with its reason");
@@ -613,34 +596,26 @@ static int arm_mode(const wchar_t *dir, const char *mode)
 
     {
         static char press[] = "a=69318";
-        static char press_on[] = "a=69318;u=1";
         int said = LOGS;
-        PKD.value = unlocked ? press_on : press;
+        PKD.value = press;
         pick_tick();
         ok(pick_active() == 69318, "tick: the row the press named becomes the active one");
         ok(LOGS == said + 2 && strcmp(LOGS_ALL[said], "armory: pick a=69318") == 0,
            "tick: the press is one armory line and then the save");
-        merged = queued ? "a=69318;q=69316,69318;u=0" : (unlocked ? "a=69318;u=1" : "a=69318;u=0");
+        merged = queued ? "a=69318;q=69316,69318;u=0" : "a=69318;u=0";
         ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, merged) == 0,
            "tick: the file holds the press and keeps the queue it already had");
-        if (unlocked)
-        {
-            ok(GetFileAttributesW(old) != INVALID_FILE_ATTRIBUTES
-                   && GetFileAttributesW(file) != INVALID_FILE_ATTRIBUTES,
-               "tick: the save writes this file and leaves the older one in place");
-        }
         {
             int lines = LOGS;
             static char second[] = "a=69320";
-            static char second_on[] = "a=69320;u=1";
-            PKD.value = unlocked ? second_on : second;
+            PKD.value = second;
             pick_tick();
             ok(LOGS == lines && pick_active() == 69318 && read_ascii(file, back, sizeof(back)) > 0
                    && strcmp(back, merged) == 0,
                "tick: a second call inside the one-second window reads nothing");
             Sleep(1100);
             pick_tick();
-            merged = queued ? "a=69320;q=69316,69318;u=0" : (unlocked ? "a=69320;u=1" : "a=69320;u=0");
+            merged = queued ? "a=69320;q=69316,69318;u=0" : "a=69320;u=0";
             ok(pick_active() == 69320 && read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, merged) == 0,
                "tick: one second later the new row is adopted and written");
         }
@@ -650,7 +625,6 @@ static int arm_mode(const wchar_t *dir, const char *mode)
     {
         static char junk[] = "a=4;Q=6";
         static char good[] = "a=7";
-        static char good_on[] = "a=7;u=1";
         char stop_line[PICK_MAX + 64];
         char stop_file[PICK_MAX + 8];
         int said = LOGS;
@@ -664,12 +638,12 @@ static int arm_mode(const wchar_t *dir, const char *mode)
         ok(LOGS == said + 1, "tick: and the refusal is not said again");
         ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, merged) == 0,
            "tick: the file is untouched by it");
-        PKD.value = unlocked ? good_on : good;
+        PKD.value = good;
         pick_stop();
-        _snprintf_s(stop_line, sizeof(stop_line), _TRUNCATE, "pick: saved a=7%s;u=%d",
-                    queued ? ";q=69316,69318" : "", unlocked ? 1 : 0);
-        _snprintf_s(stop_file, sizeof(stop_file), _TRUNCATE, "a=7%s;u=%d",
-                    queued ? ";q=69316,69318" : "", unlocked ? 1 : 0);
+        _snprintf_s(stop_line, sizeof(stop_line), _TRUNCATE, "pick: saved a=7%s;u=0",
+                    queued ? ";q=69316,69318" : "");
+        _snprintf_s(stop_file, sizeof(stop_file), _TRUNCATE, "a=7%s;u=0",
+                    queued ? ";q=69316,69318" : "");
         ok(line_is(stop_line), "stop: the detach save is said even inside the window");
         ok(read_ascii(file, back, sizeof(back)) == (int)strlen(stop_file) && strcmp(back, stop_file) == 0,
            "stop: and the file holds it, with the queue it already had");
@@ -778,6 +752,93 @@ static int advance_mode(const wchar_t *dir)
     return FAILS == 0 ? 0 : 1;
 }
 
+// --- only the pre-build-38 name is there: no seed, and that file is never opened ----------------------
+
+static int old_only_mode(const wchar_t *dir)
+{
+    wchar_t file[MAX_PATH];
+    wchar_t old[MAX_PATH];
+    char back[PICK_MAX + 8];
+    char want[PICK_MAX + 64];
+    int q[PICK_Q_MAX];
+    HANDLE hold = INVALID_HANDLE_VALUE;
+
+    set_self_dir(dir);
+    make_dir(SELF_DIR, L"players");
+    wide_path(file, MAX_PATH, SELF_DIR, L"players\\armory.txt");
+    wide_path(old, MAX_PATH, SELF_DIR, L"players\\pt_armory.txt");
+    DeleteFileW(file);
+    write_ascii(old, "a=75680;u=1");
+
+    // held with no sharing at all: an open of it would fail, and this unit would say it was rejected
+    hold = CreateFileW(old, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    ok(hold != INVALID_HANDLE_VALUE, "oldonly: the older file is held with no share at all");
+    pick_arm(stub_reg, NULL, PK_SLOT);
+    ok(REG_CALLS == 1 && pick_armed() == 1, "oldonly: the channel arms on one register call");
+    ok(LOGS == 2 && strcmp(LOGS_ALL[0], "pick: file none") == 0,
+       "oldonly: with no armory.txt the line is none, never a rejected open of the older file");
+    _snprintf_s(want, sizeof(want), _TRUNCATE, "pick: registered %s = %s", PICK_NAME, PICK_DEFAULT);
+    ok(line_is(want), "oldonly: the empty pick is what it registers");
+    ok(PKD.value != NULL && strcmp(PKD.value, PICK_DEFAULT) == 0, "oldonly: the value slot holds a=0");
+    ok(pick_active() == 0 && pick_queue(q, PICK_Q_MAX) == 0 && pick_unlocked() == 0,
+       "oldonly: no row, no queue, and the unlock flag off");
+    ok(GetFileAttributesW(file) == INVALID_FILE_ATTRIBUTES, "oldonly: the arm writes no file of its own");
+    if (hold != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(hold);
+    }
+    ok(read_ascii(old, back, sizeof(back)) > 0 && strcmp(back, "a=75680;u=1") == 0,
+       "oldonly: the older file is untouched");
+    pick_tick();
+    ok(line_is("pick: saved a=0;u=0"), "oldonly: the first tick saves the empty pick");
+    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=0;u=0") == 0,
+       "oldonly: and it writes armory.txt");
+
+    printf("pick: %s - %d checks\n", FAILS == 0 ? "OK" : "FAILED", PASSES);
+    return FAILS == 0 ? 0 : 1;
+}
+
+// --- the saved line of an adopted u that lands inside the thirty second window ------------------------
+
+static int uflip_mode(const wchar_t *dir)
+{
+    wchar_t file[MAX_PATH];
+    char back[PICK_MAX + 8];
+    static char on[] = "a=75680;u=1";
+    static char off[] = "a=75680;u=0";
+    int said = 0;
+
+    set_self_dir(dir);
+    make_dir(SELF_DIR, L"players");
+    wide_path(file, MAX_PATH, SELF_DIR, L"players\\armory.txt");
+    write_ascii(file, "a=75680");
+
+    pick_arm(stub_reg, NULL, PK_SLOT);
+    ok(pick_armed() == 1, "uflip: the channel arms on a file that carries no unlock flag");
+    pick_tick();
+    ok(line_is("pick: saved a=75680;u=0"), "uflip: the first tick saves the flag as off");
+    Sleep(1100);
+    PKD.value = on;
+    pick_tick();
+    ok(line_is("pick: saved a=75680;u=1") && pick_unlocked() == 1, "uflip: on is adopted and saved");
+    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=75680;u=1") == 0, "uflip: the file holds on");
+    Sleep(1100);
+    PKD.value = off;
+    pick_tick();
+    ok(pick_unlocked() == 0, "uflip: off is adopted");
+    ok(line_is("pick: saved a=75680;u=0"), "uflip: off is saved and said inside the thirty second window");
+    ok(read_ascii(file, back, sizeof(back)) > 0 && strcmp(back, "a=75680;u=0") == 0, "uflip: the file holds off");
+    said = LOGS;
+    Sleep(1100);
+    pick_tick();
+    ok(LOGS == said, "uflip: a tick that adopts nothing says nothing");
+    pick_stop();
+    ok(LOGS == said, "uflip: the detach writes nothing when the file already holds that line");
+
+    printf("pick: %s - %d checks\n", FAILS == 0 ? "OK" : "FAILED", PASSES);
+    return FAILS == 0 ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "self") == 0)
@@ -795,8 +856,16 @@ int main(int argc, char **argv)
         {
             return advance_mode(dir);
         }
+        if (strcmp(argv[3], "oldonly") == 0)
+        {
+            return old_only_mode(dir);
+        }
+        if (strcmp(argv[3], "uflip") == 0)
+        {
+            return uflip_mode(dir);
+        }
         return arm_mode(dir, argv[3]);
     }
-    printf("usage: pick_test.exe self | arm <dir> valid|queue|advance|none|bad|migrate|nofolder\n");
+    printf("usage: pick_test.exe self | arm <dir> valid|queue|advance|none|bad|oldonly|uflip|nofolder\n");
     return 2;
 }

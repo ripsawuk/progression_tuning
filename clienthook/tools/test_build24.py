@@ -1,4 +1,4 @@
-"""Offline proof of clienthook build 38 - the forced publish, the native payment, the bounded log, the token
+"""Offline proof of clienthook build 39 - the forced publish, the native payment, the bounded log, the token
 channel, the armory pick channel, the armory xp feed and the pay. Read-only
 with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
 (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
@@ -8,7 +8,7 @@ with respect to the game: nothing is installed, nothing is launched, and nothing
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 38.
+general offline proof and the banner it checks is the current one, build 39.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -137,7 +137,6 @@ KEPT = [
     "armory: row %d complete",
     "%TEMP%\\progression-tuning\\armory_feed_off.txt",
     "%TEMP%\\progression-tuning\\armory_pay_off.txt",
-    "pick: file migrated from pt_armory.txt",
     "armory: pay paused (unlock armory on)",
     "armory: pay resumed",
 ]
@@ -267,7 +266,7 @@ def build_once():
 
 
 def main():
-    print("clienthook build 38 - the forced publish, the native payment, the bounded log, the token channel, "
+    print("clienthook build 39 - the forced publish, the native payment, the bounded log, the token channel, "
           "the armory pick, the xp feed, the pay and the unlock armory pause - " + ROOT)
     print("")
     if not CLIENT:
@@ -296,8 +295,8 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 38", "version.dll build 38" in text)
-    for gone in ("version.dll build 37", "version.dll build 36", "version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
+    check("the banner says build 39", "version.dll build 39" in text)
+    for gone in ("version.dll build 38", "version.dll build 37", "version.dll build 36", "version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
                 "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
@@ -581,9 +580,9 @@ def main():
     check("the cap is 1024, the queue's 543 worst case plus room", "#define PICK_MAX 1024" in pkh)
     check("the file is the dll's own directory plus players\\armory.txt",
           r'PK_SUBDIR L"players"' in pkh + pk and r'PK_FILE L"armory.txt"' in pkh + pk)
-    check("the file the pick had before build 38 is a seed it reads once and leaves",
-          r'PK_OLD L"pt_armory.txt"' in pkh + pk and '"pick: file migrated from pt_armory.txt"' in pk
-          and "DeleteFileW(path)" not in pk and "DeleteFileW(tmp)" in pk)
+    check("the pick reads one file and names no other: no seed name and no migration branch",
+          "pt_armory.txt" not in pk + pkh and "PK_OLD" not in pk + pkh
+          and "pick_read(path, line, sizeof(line), &why)" in pk and "DeleteFileW(tmp)" in pk)
     check("the pick never writes the client's operator save or the token file",
           "progression.txt" not in pk + pkh and "tokens.txt" not in pk + pkh)
     check("the client's players folder is read, never made", "CreateDirectoryW" not in pk)
@@ -611,8 +610,10 @@ def main():
           '"pick: file %s"' in pk and '"pick: registered %s = %s"' in pk and '"pick: saved %s"' in pk
           and '"armory: pick a=%d"' in pk and '"armory: advance %d -> %d"' in pk)
     check("a rejected file still registers the seed line", "strcpy_s(line, sizeof(line), PICK_DEFAULT);" in pk)
-    check("the saved line is rate-limited after the first",
-          "#define PK_LOG_MS 30000" in pk and "static int pk_may_say(ULONGLONG now)" in pk)
+    check("a saved line is windowed only when it repeats, so every adopted line is said",
+          "#define PK_LOG_MS 30000" in pk and "static int pk_may_say(ULONGLONG now)" in pk
+          and "static char PK_SAID[PICK_MAX + 1]" in pk and "int fresh = strcmp(line, PK_SAID) != 0;" in pk
+          and "if (fresh || force || pk_may_say(now))" in pk)
     check("the queue walk reads the client's own row fields, never a table of ours",
           "#define PK_REC_TRIG 0x480" in pk and "#define PK_REC_TRIGS 0x490" in pk
           and "#define PK_KIND_ARMORY 368" in pk and "#define PK_TRIG_FIRST 200001" in pk
@@ -634,7 +635,7 @@ def main():
           'L"%sprogression-tuning\\\\armory_off.txt"' in pk and "GetFileAttributesW(path)" in pk
           and "GetTempPathW(MAX_PATH, dir)" in pk)
     check("the banner names the new channels", "pt_armory_ch" in proxy and "pt_armory_xp" in proxy
-          and "armory pay rides the award wrapper" in proxy and "version.dll build 38" in proxy
+          and "armory pay rides the award wrapper" in proxy and "version.dll build 39" in proxy
           and "pt_armory_ch in players/armory.txt" in proxy)
     check("the pick line carries the unlock armory flag after a and the queue",
           "int pick_parse(const char *s, size_t n, int *a, int *q, int q_cap, int *q_n, int *u)" in pk
@@ -836,10 +837,14 @@ def main():
         d = os.path.join(pick_root, mode)
         os.makedirs(d, exist_ok=True)
         drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, mode], 19, "pick_test arm " + mode)
-    # the pick file build 38 renamed: the older one seeds the new one once and stays where it is
-    d = os.path.join(pick_root, "migrate")
+    # the pick file: it is the only one, and the name builds 32-37 used is never opened
+    d = os.path.join(pick_root, "oldonly")
     os.makedirs(d, exist_ok=True)
-    drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, "migrate"], 22, "pick_test arm migrate")
+    drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, "oldonly"], 10, "pick_test arm oldonly")
+    # a u that flips twice inside the save window: every adopted line is written and said
+    d = os.path.join(pick_root, "uflip")
+    os.makedirs(d, exist_ok=True)
+    drive(os.path.join(BUILD, "pick_test.exe"), ["arm", d, "uflip"], 9, "pick_test arm uflip")
     # the advance: the pay's post, the swap, the save, and the queue that ends
     d = os.path.join(pick_root, "advance")
     os.makedirs(d, exist_ok=True)
@@ -946,7 +951,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 38's banner", "version.dll build 38" in armed_log)
+    check("the log carries build 39's banner", "version.dll build 39" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):

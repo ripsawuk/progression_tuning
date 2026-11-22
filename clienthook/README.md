@@ -55,8 +55,9 @@ clears pays again. The hook says `armory: pay paused (unlock armory on)` and `ar
 the row has to outlive the process. The hook registers `pt_armory_ch` at boot from `cod25\players\armory.txt` -
 `a=<row>`, the advance queue `q=<row,row,...>` and the Unlock Armory flag `u=<0|1>`, in that order - adopts every
 press the mod writes to that dvar, keeps the file in step, and moves the pick on when the row it names is paid to
-completion. Build 38 renamed that file: `players\pt_armory.txt` (builds 32-37) is read once as the seed when
-`armory.txt` is absent, says `pick: file migrated from pt_armory.txt`, and is then left where it is.
+completion. That file is the only one it reads: with `armory.txt` absent the channel starts from `a=0`. Every line
+the hook writes is said as `pick: saved <line>`, once per distinct line, so each adopted change leaves a log line of
+its own.
 
 **It fixes the BO6-operators name clash.** With the older BO6 operators add-on in the folder the client decides an
 old plugin is loaded and leaves BO6 operators off. The hook neutralises that one decision at load, and logs the
