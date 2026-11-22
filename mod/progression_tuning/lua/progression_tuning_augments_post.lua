@@ -24,8 +24,10 @@ local CH = "pt_research_ch"
 local ACT_A, ACT_B = 53979, 47576
 local START_EVENT, START_KEY = 846, 74
 local SLOTS = 9
+-- a weight the fill guard computes to dark
+local DARK = 0.001
 
-local VERSION = "v6"
+local VERSION = "v7"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -249,24 +251,63 @@ local function rung_of(ch)
   return n
 end
 
+-- the progress the row and its carryover hold
+local function held(c, ch)
+  local get = fn_of(rawget(_G, "Challenge"), "getchallengeprogress")
+  if get == nil then return 0 end
+  local p = 0
+  local a = tonumber(hfield(ch, "achievementID"))
+  if a ~= nil then
+    local ok, v = pcall(get, c, a)
+    if ok then p = p + (tonumber(v) or 0) end
+  end
+  local b = tonumber(hfield(ch, "carryoverAchievementID"))
+  if b ~= nil then
+    local ok, v = pcall(get, c, b)
+    if ok then p = p + (tonumber(v) or 0) end
+  end
+  return p
+end
+
 -- the ladder steps one row reaches
 local function steps(c, ch)
   local amount = hfield(ch, "amount")
-  local id = tonumber(hfield(ch, "achievementID"))
-  if type(amount) ~= "string" or id == nil then return 0 end
-  local p = 0
-  local get = fn_of(rawget(_G, "Challenge"), "getchallengeprogress")
-  if get ~= nil then
-    local ok, v = pcall(get, c, id)
-    if ok then p = tonumber(v) or 0 end
-  end
+  if type(amount) ~= "string" then return 0, 0 end
+  local p = held(c, ch)
   local n = 0
   for tok in string.gmatch(amount, "[^|]+") do
     local step = tonumber(tok)
     if step == nil or p < step then break end
     n = n + 1
   end
-  return n
+  return n, p
+end
+
+-- the first rung of a ladder
+local function first_of(amount)
+  if type(amount) ~= "string" then return 0 end
+  return tonumber(string.match(amount, "^[^|]+")) or 0
+end
+
+-- the share of the next rung already earned
+local function share(amount, t, p)
+  if type(amount) ~= "string" then return DARK end
+  local i, prev, nxt = 0, 0, nil
+  for tok in string.gmatch(amount, "[^|]+") do
+    i = i + 1
+    local v = tonumber(tok)
+    if i <= t then
+      if v ~= nil then prev = v end
+    elseif i == t + 1 then
+      nxt = v
+      break
+    end
+  end
+  if nxt == nil or nxt <= prev then return DARK end
+  local f = (p - prev) / (nxt - prev)
+  if f < DARK then f = DARK end
+  if f > 1 then f = 1 end
+  return f
 end
 
 -- the game own tier pass over every row it cached
@@ -304,7 +345,7 @@ local function kindword(cache)
   return kind
 end
 
--- the ticks and the owned count
+-- the ticks the owned count and the node shares
 local function ticks(c, store, cache, map, quiet)
   local owned, seen, rows = 0, {}, 0
   local tiers, items, done = {}, {}, {}
@@ -315,16 +356,25 @@ local function ticks(c, store, cache, map, quiet)
       local list = field(store, ref)
       if type(list) == "table" then
         rows = rows + 1
+        local amount = hfield(ch, "amount")
         local rungs = rung_of(ch)
-        local t = steps(c, ch)
+        local t, p = steps(c, ch)
         done[ref] = rungs > 0 and t >= rungs
+        if quiet ~= true and G.lad == nil then
+          G.lad = { ref = ref, rungs = rungs, first = first_of(amount), p = p }
+        end
         if t > #list then t = #list end
         tiers[ref] = t
         for i = 1, #list do
           local e = list[i]
           if type(e) == "table" then
             local want = i <= t
-            if quiet ~= true and hfield(e, "IsUnlocked") ~= want then put(e, "IsUnlocked", want) end
+            if quiet ~= true then
+              if hfield(e, "IsUnlocked") ~= want then put(e, "IsUnlocked", want) end
+              local v = DARK
+              if want then v = 1 elseif i == t + 1 then v = share(amount, t, p) end
+              if hfield(e, "progress") ~= v then put(e, "progress", v) end
+            end
             if want then owned = owned + 1 end
             local loot = tonumber(hfield(e, "lootid"))
             if loot ~= nil then items[math.floor(loot)] = { ref = ref, i = i } end
@@ -481,6 +531,11 @@ local function whole(c)
     pcall(flag, store, done)
     if front() ~= false then pcall(clearall, c, Z, store, done) end
     feed(c, owned)
+    if G.ladSaid ~= true and G.lad ~= nil then
+      G.ladSaid = true
+      dp("augments ladder ref=" .. tostring(G.lad.ref) .. " rungs=" .. G.lad.rungs
+        .. " first=" .. G.lad.first .. " progress=" .. G.lad.p)
+    end
   end
   if G.last ~= nil and G.tier[G.last] ~= nil then slots(c, G.tier[G.last]) end
   if G.ownSaid ~= true and rows > 0 then
@@ -687,6 +742,19 @@ end
 -- the baseline one row is read against
 local BASE = {}
 
+-- the loot one rung of the active item names
+local function rung_loot(key, i)
+  local Z = rawget(_G, "ZMAUGMENT")
+  local ks = key_hex(Z, K_STORE)
+  if ks == nil then return nil end
+  local ref = ref_of(map_of(Z), key)
+  local list = field(field(Z, ks), ref)
+  if type(list) ~= "table" then return nil end
+  local e = list[i]
+  if type(e) ~= "table" then return nil end
+  return tonumber(hfield(e, "lootid"))
+end
+
 -- one tier crossing raises one card
 local function watch_tiers(c)
   if G.on ~= false then return end
@@ -706,8 +774,9 @@ local function watch_tiers(c)
     return
   end
   if n > b.base then
-    local loot = active_loot(c, key)
     for i = b.base + 1, n do
+      local loot = rung_loot(key, i)
+      if loot == nil then loot = active_loot(c, key) end
       local sent = false
       if loot ~= nil then sent = grant(loot) end
       dp("augments tier id=" .. sat .. " tier=" .. i .. " sent=" .. tostring(sent))

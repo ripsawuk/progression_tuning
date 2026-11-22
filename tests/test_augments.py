@@ -58,7 +58,15 @@ The cases:
   25. the switch and the door: every augment loot id answers open while a switch is on, an id
       that is not an augment passes through, and the id map is built without the unlock writes;
   26. the lock arm line: one word when the door takes the extension, one when it cannot, once
-      each, and nothing while the part that owns the table has not loaded.
+      each, and nothing while the part that owns the table has not loaded;
+  27. the door's locked side under a switch: the base answer stands with it off, every augment
+      id answers not locked with it on, and the flip never re-arms the door;
+  28. the nine rung twin: the cache's own merged ladder, the row plus its carryover as one
+      progress, node one opening at 20000 and not before, the six cer ids through the door,
+      the complete flag only at 525000, the second minor on the same rung, and the per node
+      share the path is drawn from;
+  29. the twin's card and its switch: one card per merged rung naming that rung's own node,
+      and no share, no card and no ladder line while a switch is on.
 """
 import os
 import re
@@ -433,6 +441,34 @@ CARDED = 0
 Z[HK("initcurrentactiveresearch")] = function(c) CARDED = CARDED + 1 end
 """
 
+# the twinned item: the cache's own merged nine rung ladder, six cer then three sat
+TWIN = r"""
+NINE = { 57733, 57731, 57732, 57728, 82093, 57734, 113421, 110782, 107401 }
+LADDER9 = "20000|45000|80000|125000|180000|250000|320000|390000|525000"
+function TWIN()
+  local HK = function(n) return xhash(n) end
+  local list = { isResearchComplete = true, totalProgress = 100, currentTier = 3 }
+  for i = 1, 9 do
+    list[i] = { [HK("lootid")] = NINE[i], [HK("IsUnlocked")] = true, [HK("progress")] = 0,
+                [HK("displayname")] = "aug" .. NINE[i], [HK("equipmenttype")] = 0 }
+  end
+  Z[STORE_K] = { staminup = list }
+  Z[HK("lootid_to_ref")] = { [55403] = "staminup" }
+  Z[HK("augmentresearchchallenges")] = {
+    [55403] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
+                [HK("amount")] = LADDER9, [HK("maxCarryover")] = 250000 },
+  }
+end
+function PAIR(a, b) PROG[tostring(AID)] = a; PROG[tostring(CID_A)] = b end
+function LK9(ref)
+  local e = ZMAUGMENT[STORE_K][ref]
+  local s = ""
+  for i = 1, 9 do s = s .. (e[i][xhash("IsUnlocked")] and "1" or "0") end
+  return s
+end
+function PROGAT(ref, i) return tostring(ZMAUGMENT[STORE_K][ref][i][xhash("progress")]) end
+"""
+
 # the same table keyed the plain way - never indexed by the part
 ZMPLAIN = r"""
 DEV_K = setmetatable({}, { __tostring = function() return "xhash: #x1d428ffe65b5694d6" end })
@@ -511,7 +547,8 @@ def case_off(lua51):
           "totalProgress=" + val(r, "FIELD('sat_aug_one','totalProgress')"))
     check("off: the current tier is the game's own 1, not the last", val(r, "FIELD('sat_aug_one','currentTier')") == "1",
           "currentTier=" + val(r, "FIELD('sat_aug_one','currentTier')"))
-    check("off: the tier progress stays the game's own 0", val(r, "TIER('sat_aug_one',1)") == "0",
+    check("off: the tier progress carries the dark weight at nothing earned",
+          val(r, "TIER('sat_aug_one',1)") == "0.001",
           "tier1=" + val(r, "TIER('sat_aug_one',1)"))
     check("off: the second row is re-run too", val(r, "FIELD('sat_aug_two','tierAt')") == "0",
           "tierAt=" + val(r, "FIELD('sat_aug_two','tierAt')"))
@@ -566,17 +603,23 @@ def case_line(lua51):
     off(r)
     r.execute("REFRESH(0)")
     l = lines_of(r)
-    check("line: one arm line, one owned line and nothing else", len(l) == 2,
+    check("line: one arm line, one owned line, one ladder line and nothing else", len(l) == 3,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v6 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v7 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
+    ladder = [ln for ln in l if "augments ladder" in ln]
+    check("line: one ladder line names the rungs and the first threshold",
+          len(ladder) == 1 and ladder[0].endswith(" rungs=3 first=70000 progress=0"),
+          " | ".join(ladder[:2]))
     r.execute("REFRESH(0); REFRESH(0); REFRESH(0)")
     check("line: said once over four refreshes", count_line(lines_of(r), "augments armed") == 1,
           "%d" % count_line(lines_of(r), "augments armed"))
     check("line: the owned line once as well", count_line(lines_of(r), "augments owned") == 1,
           "%d" % count_line(lines_of(r), "augments owned"))
+    check("line: the ladder line once as well", count_line(lines_of(r), "augments ladder") == 1,
+          "%d" % count_line(lines_of(r), "augments ladder"))
     r3 = rt(ZMFIX + "\nMAKEZM()")
     r3.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '0'); DEVON = true")
     r3.execute("REFRESH(0)")
@@ -959,7 +1002,7 @@ def case_lock_late(lua51):
           val(r, "ANS(801)"))
     r.execute("NOPRISON()")
     pump(r, 1)
-    check("late lock: a missing table is survived", len(lines_of(r)) <= 3, "%d lines" % len(lines_of(r)))
+    check("late lock: a missing table is survived", len(lines_of(r)) <= 4, "%d lines" % len(lines_of(r)))
     r.execute("PRISON()")
     pump(r, 1)
     check("late lock: a new table is extended again", r.eval("ANS(801)") is True
@@ -1226,8 +1269,8 @@ def case_popup(lua51):
           val(r, "LASTOF('ae_reward_granted').kind"))
     check("popup: the card carries one loot id",
           val(r, "#LASTOF('ae_reward_granted').items") == "1", val(r, "#LASTOF('ae_reward_granted').items"))
-    check("popup: the loot id is the one the active item publishes",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("107157", "107157.0"),
+    check("popup: the loot id is the crossed rung's own node",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("801", "801.0"),
           val(r, "LASTOF('ae_reward_granted').items[1]"))
     check("popup: one line names the row and the tier",
           count_line(lines_of(r), "progression_tuning: augments tier id=40001 tier=1 sent=true") == 1,
@@ -1312,15 +1355,155 @@ def case_popup_late(lua51):
     r.execute("REFRESH(0); REFRESH(0)")
     r.execute("SET_PROG(40001, 70000)")
     r.execute("REFRESH(0)")
-    check("late popup: the card falls back to the row id",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("7001", "7001.0"),
+    check("late popup: the card names the rung with no active item to read",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("801", "801.0"),
           val(r, "LASTOF('ae_reward_granted').items[1]"))
     r.execute("PUTACTIVE()")
     r.execute("SET_PROG(40001, 140000)")
     r.execute("REFRESH(0)")
-    check("late popup: the item is read once it is there",
+    check("late popup: the next rung names its own node",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("802", "802.0"),
+          val(r, "LASTOF('ae_reward_granted').items[1]"))
+    r.execute("Z[STORE_K]['sat_aug_one'][3][xhash('lootid')] = nil")
+    r.execute("SET_PROG(40001, 300000)")
+    r.execute("REFRESH(0)")
+    check("late popup: a node with no loot id falls back to the active item",
           val(r, "LASTOF('ae_reward_granted').items[1]") in ("107157", "107157.0"),
           val(r, "LASTOF('ae_reward_granted').items[1]"))
+
+
+# --- 28: the nine rung twin, the cache's own merged ladder ------------------------------------
+def case_twin(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()\n" + TWIN, "TWIN()")
+    off(r)
+    r.execute("PAIR(9000, 10999)")
+    r.execute("REFRESH(0)")
+    check("twin: below the first merged rung every node stays locked",
+          val(r, "LK9('staminup')") == "000000000", val(r, "LK9('staminup')"))
+    check("twin: the ladder line names the merged nine and the split progress",
+          count_line(lines_of(r),
+                     "progression_tuning: augments ladder ref=staminup rungs=9 first=20000 progress=19999") == 1,
+          " | ".join([ln for ln in lines_of(r) if "augments ladder" in ln][:2]))
+    r.execute("PAIR(10000, 10000)")
+    r.execute("REFRESH(0)")
+    check("twin: the row and its carryover are one progress, node one opens at 20000",
+          val(r, "LK9('staminup')") == "100000000", val(r, "LK9('staminup')"))
+    r.execute("SLRESET(); PUB(0, 'staminup')")
+    check("twin: the first slot reads unlocked and the rest locked", val(r, "SLALL()") == "100000000",
+          val(r, "SLALL()"))
+    r.execute("PAIR(0, 45000)")
+    r.execute("REFRESH(0)")
+    check("twin: the second rung opens the second node", val(r, "LK9('staminup')") == "110000000",
+          val(r, "LK9('staminup')"))
+    r.execute("PAIR(0, 524999)")
+    r.execute("REFRESH(0)")
+    check("twin: one short of the top leaves eight nodes and no complete flag",
+          val(r, "LK9('staminup')") == "111111110"
+          and val(r, "FIELD('staminup','isResearchComplete')") == "false",
+          val(r, "LK9('staminup')") + " / " + val(r, "FIELD('staminup','isResearchComplete')"))
+    r.execute("PAIR(0, 525000)")
+    r.execute("REFRESH(0)")
+    check("twin: the ninth rung opens the last node and completes the item",
+          val(r, "LK9('staminup')") == "111111111"
+          and val(r, "FIELD('staminup','isResearchComplete')") == "true",
+          val(r, "LK9('staminup')") + " / " + val(r, "FIELD('staminup','isResearchComplete')"))
+    r.execute("PD_ITEM('staminup', 0, 0, 1234); SEQCLR()")
+    r.execute("PAIR(0, 524999)")
+    r.execute("REFRESH(0)")
+    check("twin: an unfinished item loses its second minor below the top rung",
+          val(r, "BONUSV('staminup')") in ("0", "0.0"), val(r, "BONUSV('staminup')"))
+    r.execute("PD_ITEM('staminup', 0, 0, 7777); SEQCLR()")
+    r.execute("PAIR(0, 525000)")
+    r.execute("REFRESH(0)")
+    check("twin: a finished item keeps it at the ninth rung",
+          val(r, "BONUSV('staminup')") == "7777" and val(r, "REFN()") == "0",
+          val(r, "BONUSV('staminup')") + " / " + val(r, "REFN()"))
+    r.execute("PAIR(0, 12327)")
+    r.execute("REFRESH(0)")
+    check("twin: no rung reached leaves node one its own share",
+          abs(float(val(r, "PROGAT('staminup',1)")) - 12327.0 / 20000.0) < 1e-9,
+          "node1=" + val(r, "PROGAT('staminup',1)"))
+    check("twin: the nodes past the next rung carry the dark weight",
+          all(val(r, "PROGAT('staminup',%d)" % i) == "0.001" for i in range(2, 10)),
+          " ".join(val(r, "PROGAT('staminup',%d)" % i) for i in range(2, 10)))
+    r.execute("PAIR(0, 267500)")
+    r.execute("REFRESH(0)")
+    check("twin: six full nodes and the seventh at a quarter of its rung",
+          [val(r, "PROGAT('staminup',%d)" % i) for i in range(1, 7)] == ["1"] * 6
+          and abs(float(val(r, "PROGAT('staminup',7)")) - 0.25) < 1e-9,
+          " ".join(val(r, "PROGAT('staminup',%d)" % i) for i in range(1, 8)))
+    check("twin: the share lands under the key the field lives in",
+          r.eval("ZMAUGMENT[STORE_K]['staminup'][7].progress") is None
+          and val(r, "PROGAT('staminup',7)") == "0.25",
+          "hash=" + val(r, "PROGAT('staminup',7)") + " plain=" + str(r.eval("ZMAUGMENT[STORE_K]['staminup'][7].progress")))
+    r.execute("PRISON()")
+    r.execute("PAIR(0, 0)")
+    r.execute("REFRESH(0)")
+    pump(r, 1)
+    cer = (57733, 57731, 57732, 57728, 82093, 57734)
+    check("twin lock: the six cer ids answer locked at nothing",
+          all(r.eval("ANS(%d)" % i) is True for i in cer),
+          " ".join("%d=%s" % (i, val(r, "ANS(%d)" % i)) for i in cer[:3]))
+    check("twin lock: the three sat ids answer locked as well",
+          all(r.eval("ANS(%d)" % i) is True for i in (113421, 110782, 107401)),
+          " ".join("%d=%s" % (i, val(r, "ANS(%d)" % i)) for i in (113421, 107401)))
+    r.execute("PAIR(0, 20000)")
+    r.execute("REFRESH(0)")
+    check("twin lock: the first cer id opens with its rung and the rest stay locked",
+          r.eval("ANS(57733)") is False and r.eval("OPN(57733)") is True
+          and r.eval("ANS(57731)") is True,
+          "57733=%s 57731=%s" % (val(r, "ANS(57733)"), val(r, "ANS(57731)")))
+    r.execute("PAIR(0, 250000)")
+    r.execute("REFRESH(0)")
+    check("twin lock: the sixth cer id opens at 250000 and the sat ids wait",
+          r.eval("ANS(57734)") is False and r.eval("OPN(57734)") is True
+          and r.eval("ANS(113421)") is True,
+          "57734=%s 113421=%s" % (val(r, "ANS(57734)"), val(r, "ANS(113421)")))
+    r.execute("PAIR(0, 320000)")
+    r.execute("REFRESH(0)")
+    check("twin lock: the first sat id opens at its own rung",
+          r.eval("ANS(113421)") is False and r.eval("ANS(110782)") is True,
+          "113421=%s 110782=%s" % (val(r, "ANS(113421)"), val(r, "ANS(110782)")))
+
+
+# --- 29: the twin's card and its switch -------------------------------------------------------
+def case_twin_popup(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()\n" + TWIN, "TWIN()\nFRONTEND = false")
+    off(r)
+    r.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r.execute("PAIR(9000, 10999)")
+    r.execute("REFRESH(0); REFRESH(0)")
+    check("twin popup: nothing below the first merged rung",
+          val(r, "NAMED('ae_reward_granted')") == "0", val(r, "NAMED('ae_reward_granted')"))
+    r.execute("PAIR(10000, 10000)")
+    r.execute("REFRESH(0)")
+    check("twin popup: the first rung raises one card", val(r, "NAMED('ae_reward_granted')") == "1",
+          val(r, "NAMED('ae_reward_granted')"))
+    check("twin popup: the card names the first node's cer id",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("57733", "57733.0"),
+          val(r, "LASTOF('ae_reward_granted').items[1]"))
+    check("twin popup: one line names the row and the rung",
+          count_line(lines_of(r), "augments tier id=40001 tier=1 sent=true") == 1,
+          " | ".join([ln for ln in lines_of(r) if "augments tier" in ln][:2]))
+    r.execute("PAIR(0, 45000)")
+    r.execute("REFRESH(0)")
+    check("twin popup: the second rung names the second cer id",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("57731", "57731.0")
+          and val(r, "NAMED('ae_reward_granted')") == "2",
+          val(r, "LASTOF('ae_reward_granted').items[1]"))
+
+
+def case_twin_on(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()\n" + TWIN, "TWIN()")
+    r.execute("SET_DVAR('zm_unlock_all', '0'); SET_DVAR('zm_unlock_augments', '1')")
+    r.execute("PAIR(0, 20000)")
+    r.execute("REFRESH(0)")
+    check("twin on: no ladder line and no share of its own",
+          count_line(lines_of(r), "augments ladder") == 0
+          and r.eval("ProgressionTuning.aug.lad") is None,
+          " | ".join(lines_of(r)[:2]))
+    check("twin on: the forced nodes stand as the switch left them",
+          val(r, "LK9('staminup')") == "111111111", val(r, "LK9('staminup')"))
 
 
 def case_file():
@@ -1372,7 +1555,8 @@ def main():
                  case_decoy, case_blind, case_research, case_lock, case_lock_chain, case_lock_late,
                  case_slot, case_bonus, case_toggle_ids, case_lock_lines, case_lock_answer,
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
-                 case_popup_on, case_popup_match, case_popup_late, case_missing):
+                 case_popup_on, case_popup_match, case_popup_late, case_twin, case_twin_popup,
+                 case_twin_on, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)
