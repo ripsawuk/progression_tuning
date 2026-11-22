@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 280156
-SHIP_LUA_SHA = "6698C02C669806B37D7BFA22D0C7DE8B0E2003B2A99F8F2C2DC1D88848091DB4"
-LITERAL_SHA = "104DCBD07021AD3CC8B72BA144ABD5265B6C3D24B5BC17536B5342F8C9807B59"
+SHIP_LUA_LEN = 280325
+SHIP_LUA_SHA = "072759836E662CD4422EBCDBC6E5C9F98A08B0EE775472D10EB68DC1AD259632"
+LITERAL_SHA = "F32120190EF0AD385AB2EDA78DF93B29F1B1CE83CA9B621B55D2019230EC5CEC"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1164,6 +1164,8 @@ LITERAL_ADDED = [
     " live=",
     " lock=",
     "lock",
+    "lockedDescription",
+    "loot_mp/no_items_available",
     " lvl=",
     " lvl=1 reward=",
     " max=",
@@ -1202,7 +1204,7 @@ LITERAL_ADDED = [
     " types=attachment,camo,reticle",
     " vars=",
     " vm=",
-    "v16",
+    "v17",
     " why=",
     " wkhead=",
     " wlevel=",
@@ -9808,7 +9810,7 @@ def armory_gate(lua51):
     rt = new_rt(lua51, frontend=True, pre=ARMORY_FIX)
     l = lines_of(rt)
     check("armory: the schedule gate is wrapped and the one arm line names the count",
-          armory_line(l) == ["progression_tuning: armory armed v16 vm=menu gate=wrapped pick=wrapped "
+          armory_line(l) == ["progression_tuning: armory armed v17 vm=menu gate=wrapped pick=wrapped "
                              "answer=wrapped lock=%s own=wrapped vars=147+309 craft=n/a "
                              "hub=missing locked=missing card=missing rows=76 pick=0 q=0" % lock_word()],
           " | ".join(armory_line(l)))
@@ -9854,7 +9856,7 @@ def armory_gate(lua51):
     rt3 = new_rt(lua51, frontend=False, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69318')")
     l3 = lines_of(rt3)
     check("armory: a match vm arms on the same gate and answer and says which vm it is",
-          armory_line(l3) == ["progression_tuning: armory armed v16 vm=match gate=wrapped pick=wrapped "
+          armory_line(l3) == ["progression_tuning: armory armed v17 vm=match gate=wrapped pick=wrapped "
                               "answer=wrapped lock=%s own=wrapped vars=147+309 craft=wrapped "
                               "hub=missing locked=missing card=missing rows=76 pick=69318 q=0" % lock_word()],
           " | ".join(armory_line(l3)))
@@ -9869,7 +9871,7 @@ def armory_gate(lua51):
                                    "SET_DVAR('pt_armory_ch', 'a=69320')")
     rt3b.execute(LUA_TEXT[ARMORY])
     check("armory: a match vm with no press arms on the gate and the answer alone",
-          armory_line(lines_of(rt3b)) == ["progression_tuning: armory armed v16 vm=match gate=wrapped "
+          armory_line(lines_of(rt3b)) == ["progression_tuning: armory armed v17 vm=match gate=wrapped "
                                           "pick=missing answer=wrapped lock=missing own=wrapped "
                                           "vars=147+309 craft=wrapped hub=missing locked=missing "
                                           "card=missing rows=76 pick=69320 q=0"]
@@ -9893,7 +9895,7 @@ def armory_gate(lua51):
     l5 = lines_of(rt4)
     check("armory: the tick picks the gate up when the table turns up late",
           rt4.eval("ASK(69316, '1793811600')") is True
-          and armory_line(l5) == ["progression_tuning: armory armed v16 vm=menu gate=wrapped pick=wrapped "
+          and armory_line(l5) == ["progression_tuning: armory armed v17 vm=menu gate=wrapped pick=wrapped "
                                   "answer=wrapped lock=wrapped own=wrapped vars=147+309 craft=n/a "
                                   "hub=missing locked=missing card=missing rows=76 pick=0 q=0"],
           " | ".join(armory_line(l5)))
@@ -9906,7 +9908,7 @@ def armory_gate(lua51):
     pump(rt5, 480)
     l6 = lines_of(rt5)
     check("armory: an armory table with no gate gives up quietly after the tries run out",
-          armory_line(l6) == ["progression_tuning: armory armed v16 vm=menu gate=missing pick=missing "
+          armory_line(l6) == ["progression_tuning: armory armed v17 vm=menu gate=missing pick=missing "
                               "answer=wrapped lock=wrapped own=missing vars=147+309 craft=n/a "
                               "hub=missing locked=missing card=missing rows=76 pick=0 q=0"],
           " | ".join(armory_line(l6)))
@@ -9918,7 +9920,7 @@ def armory_gate(lua51):
     rt6.execute(LUA_TEXT[ARMORY])
     l7 = lines_of(rt6)
     check("armory: the part arms in a vm with no main part in it at all",
-          armory_line(l7) == ["progression_tuning: armory armed v16 vm=menu gate=wrapped pick=wrapped "
+          armory_line(l7) == ["progression_tuning: armory armed v17 vm=menu gate=wrapped pick=wrapped "
                               "answer=wrapped lock=missing own=wrapped vars=147+309 craft=n/a "
                               "hub=missing locked=missing card=missing rows=76 pick=0 q=0"]
           and rt6.eval("ASK(69316, '1793811600')") is True
@@ -10064,7 +10066,7 @@ def armory_pick(lua51):
     check("armory pick: a pick already in the channel is adopted at arm",
           pick_lines(lines_of(rs)) == ["progression_tuning: armory pick 69318"]
           and rs.eval("OC_LAST(52813)") == "69318"
-          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v16 vm=menu gate=wrapped "
+          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v17 vm=menu gate=wrapped "
                                             "pick=wrapped answer=wrapped lock=%s own=wrapped "
                                             "vars=147+309 craft=n/a "
                                             "hub=missing locked=missing "
@@ -10141,7 +10143,7 @@ def armory_queue(lua51):
     check("armory queue: nothing is written into a channel before the hook put a line in it",
           rq.eval("CH()") == "", str(rq.eval("CH()")))
     check("armory queue: the arm line names the pick it has and how many ids the queue holds",
-          armory_line(lines_of(rq)) == ["progression_tuning: armory armed v16 vm=menu gate=wrapped pick=wrapped "
+          armory_line(lines_of(rq)) == ["progression_tuning: armory armed v17 vm=menu gate=wrapped pick=wrapped "
                                         "answer=wrapped lock=%s own=wrapped vars=147+309 craft=n/a "
                                         "hub=missing locked=missing "
                                         "card=missing rows=76 pick=0 q=3" % lock_word()],
@@ -10160,7 +10162,7 @@ def armory_queue(lua51):
     rs = new_rt(lua51, frontend=True, pre=ARMORY_FIX + "\nSET_DVAR('pt_armory_ch', 'a=69320;q=69318,69316')")
     check("armory queue: a merged line in the channel seeds the row and the queue",
           rs.eval("CH()") == "a=69320;q=69318,69316"
-          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v16 vm=menu gate=wrapped pick=wrapped "
+          and armory_line(lines_of(rs)) == ["progression_tuning: armory armed v17 vm=menu gate=wrapped pick=wrapped "
                                             "answer=wrapped lock=%s own=wrapped vars=147+309 craft=n/a "
                                             "hub=missing locked=missing "
                                             "card=missing rows=76 pick=69320 q=2" % lock_word()],
@@ -11166,7 +11168,7 @@ def armory_craft(lua51):
     pump(rt, 1)
     line = armory_line(lines_of(rt))
     check("craft: a match vm wraps the table lock and the arm line says which vm and which side",
-          len(line) == 1 and line[0].startswith("progression_tuning: armory armed v16 vm=match ")
+          len(line) == 1 and line[0].startswith("progression_tuning: armory armed v17 vm=match ")
           and " vars=147+309 " in line[0] and " craft=wrapped " in line[0]
           and " own=wrapped " in line[0] and " obw=" not in line[0],
           " | ".join(line))
@@ -11626,11 +11628,13 @@ CUSTOMIZE_MENU = CUSTOMIZE_MENU or {}
 HUB_CALLS = 0
 HUB_RAISE = false
 HUB_ORIG = false
+HUB_NATIVE = "Unlocked at Level 24"
 HUB_DF = function() return HUB_ORIG end
 CUSTOMIZE_MENU.getbarracksbuttondatatable = function(c, row, ev)
   HUB_CALLS = HUB_CALLS + 1
   if HUB_RAISE then error("the barracks builder raised") end
-  return { label = row.label, menu = row.menu, disabledFunc = row.disabledFunc }
+  return { label = row.label, menu = row.menu, disabledFunc = row.disabledFunc,
+           lockedDescription = HUB_NATIVE }
 end
 function HUB_ROW(menu, df) return { label = menu, menu = menu, disabledFunc = df } end
 function HUB_ASK(menu, df)
@@ -11647,6 +11651,10 @@ end
 function HUB_LABEL(menu, df)
   local t = CUSTOMIZE_MENU.getbarracksbuttondatatable(0, HUB_ROW(menu, df))
   return tostring(t.label)
+end
+function HUB_DESC(menu, df)
+  local t = CUSTOMIZE_MENU.getbarracksbuttondatatable(0, HUB_ROW(menu, df))
+  return tostring(t.lockedDescription)
 end
 function HUB_N() return HUB_CALLS end
 function HUB_RAISE_ON(v) HUB_RAISE = v end
@@ -11704,6 +11712,12 @@ def armory_pad(lua51):
           and rt.eval("HUB_KEPT('%s', HUB_DF)" % other) is True,
           "%s kept=%s" % (rt.eval("HUB_ASK('%s', HUB_DF)" % other),
                           rt.eval("HUB_KEPT('%s', HUB_DF)" % other)))
+    check("pad: with u=1 the armory row carries the no items key, not the rank line",
+          rt.eval("HUB_DESC('%s', HUB_DF)" % hub) == "loot_mp/no_items_available",
+          str(rt.eval("HUB_DESC('%s', HUB_DF)" % hub)))
+    check("pad: and every other row keeps the description the builder gave it",
+          rt.eval("HUB_DESC('%s', HUB_DF)" % other) == "Unlocked at Level 24",
+          str(rt.eval("HUB_DESC('%s', HUB_DF)" % other)))
     rt.execute("HUB_ORIG_ON(true)")
     check("pad: a row whose own disabledFunc says yes still says yes",
           rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "true")
@@ -11727,6 +11741,9 @@ def armory_pad(lua51):
           rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "false"
           and rt.eval("HUB_KEPT('%s', HUB_DF)" % other) is True,
           str(rt.eval("HUB_ASK('%s', HUB_DF)" % hub)))
+    check("pad: with u=0 the armory row keeps the description the builder gave it",
+          rt.eval("HUB_DESC('%s', HUB_DF)" % hub) == "Unlocked at Level 24",
+          str(rt.eval("HUB_DESC('%s', HUB_DF)" % hub)))
     rt.execute("HUB_ORIG_ON(true)")
     check("pad: and a yes of its own is passed through untouched",
           rt.eval("HUB_ASK('%s', HUB_DF)" % hub) == "true")
@@ -11868,14 +11885,14 @@ def blueprint_list(lua51):
     check("blueprint list: the table splits into 309 weapon ids and 147 attachment ones, none shared",
           len(bp) == 309 and len(att) == 147 and not (set(bp) & set(att)),
           "%d / %d" % (len(bp), len(att)))
-    check("blueprint list: the armory part is v16 and the window has moved to the lock door",
-          'local VERSION = "v16"' in LUA_TEXT[ARMORY]
+    check("blueprint list: the armory part is v17 and the window has moved to the lock door",
+          'local VERSION = "v17"' in LUA_TEXT[ARMORY]
           and "LISTING" not in LUA_TEXT[ARMORY] and "BPID" not in LUA_TEXT[ARMORY]
           and "getmodifications" not in LUA_TEXT[ARMORY]
           and LUA_TEXT[PRISON].count('"getmodifications"') == 1
           and LUA_TEXT[ARMORY].count('"getitemnamebyid"') == 1
           and LUA_TEXT[ARMORY].count('"getweapondataforref"') == 1,
-          "v16 pins")
+          "v17 pins")
 
     rt = list_rt(lua51)
     rt.execute("GM_SET({151472, 153766, 142465, %d})" % VAR_FOREIGN)

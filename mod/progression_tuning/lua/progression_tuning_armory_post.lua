@@ -1,6 +1,6 @@
 local PART = "armory"
 
-local VERSION = "v16"
+local VERSION = "v17"
 local PREFIX = "progression_tuning: "
 -- the armory schedule gate a key with no name
 local SCHED = "0a6376439b2d40dc"
@@ -1085,10 +1085,13 @@ end
 
 -- the armory row name the barracks buttons list carries
 local HUB = "armorylandingscreen"
+-- the description the armory card carries with the flag on
+local HUB_DESC = "loot_mp/no_items_available"
 
 -- the armory row locked while the flag is on
 local function hub_mark(row)
   if type(row) ~= "table" or rawget(row, "menu") ~= HUB then return end
+  if uon() then rawset(row, "lockedDescription", HUB_DESC) end
   local orig = rawget(row, "disabledFunc")
   if OURS[orig] then return end
   local df = function()
