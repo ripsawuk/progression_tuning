@@ -1,4 +1,4 @@
-local VERSION = "v1.3"
+local VERSION = "v1.4"
 local PREFIX = "progression_tuning: "
 
 local TICK_MS = 250

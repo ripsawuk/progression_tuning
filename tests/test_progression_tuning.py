@@ -1016,8 +1016,8 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
 SHIP_LUA_LEN = 280859
-SHIP_LUA_SHA = "605A4E25FF87E77050034A73DD771ED4E5EAFB808A4D4963292CA2CE902E77B9"
-LITERAL_SHA = "9EA7DFA1521ECAED2452137F944B5A1FE74511BC382C85FC403DA115CF673C9D"
+SHIP_LUA_SHA = "92746CDC0C0E9620E6424A8B36437BE2AD3C6539006CC7B8AEFF578482757B22"
+LITERAL_SHA = "6CDF42A6C3BEAB6098FFFD4266621412F0632DB705EC3126CD3B9D9725FFA5CC"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -2402,7 +2402,7 @@ def g11_reader(lua51, ls):
     lines = lines_of(rt)
 
     check("g11: the menu context arms the reader",
-          has_line(lines, "armed v1.3 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
+          has_line(lines, "armed v1.4 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
           " | ".join(lines[:6]))
     check("g11: both ownership doors are wrapped",
           has_line(lines, "g11 isunlockedwithid wrapped (2 of 2: PROGRESSION, LOOT)"), " | ".join(lines[:8]))
