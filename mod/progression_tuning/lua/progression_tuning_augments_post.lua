@@ -25,7 +25,7 @@ local ACT_A, ACT_B = 53979, 47576
 local START_EVENT, START_KEY = 846, 74
 local SLOTS = 9
 
-local VERSION = "v5"
+local VERSION = "v6"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -894,11 +894,21 @@ local function thru(f, id)
   return v
 end
 
+-- an id the switch answers as not locked
+local function gopen(id)
+  if hon() ~= true then return false end
+  local n = tonumber(id)
+  if n == nil or type(G.ix) ~= "table" then return false end
+  return G.ix[math.floor(n)] ~= nil
+end
+
 -- the locked side of the door
 local function lk_ask(orig)
   return function(id)
     local ok, locked = pcall(locked_item, id)
     if ok and locked == true then return true end
+    local okg, yes = pcall(gopen, id)
+    if okg and yes then return false end
     return thru(orig, id)
   end
 end

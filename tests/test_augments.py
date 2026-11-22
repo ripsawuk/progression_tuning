@@ -339,9 +339,10 @@ local function enter()
   DEPTH = DEPTH + 1
   if DEPTH > DEPTHMAX then DEPTHMAX = DEPTH end
 end
+GLOCK = {}
 SEC_A = function(id)
   enter()
-  local v = id == 555
+  local v = id == 555 or GLOCK[id] == true
   DEPTH = DEPTH - 1
   return v
 end
@@ -567,7 +568,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line and nothing else", len(l) == 2,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v5 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v6 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -1110,6 +1111,43 @@ def case_lock_lines(lua51):
           " | ".join([ln for ln in lines_of(r2) if "augments locks" in ln][:2]))
 
 
+# --- 27: the switch answers the locked side of the door too -----------------------------------
+def case_lock_answer(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "PRISON()")
+    off(r)
+    r.execute("GLOCK[801] = true; SET_PROG(40001, 300000)")
+    r.execute("REFRESH(0)")
+    pump(r, 1)
+    face = val(r, "FACE('answer')")
+    check("answer: the base rule's locked answer stands with the switch off",
+          r.eval("ANS(801)") is True and r.eval("ANS(802)") is False,
+          "801=%s 802=%s" % (val(r, "ANS(801)"), val(r, "ANS(802)")))
+    check("answer: an id outside the augment list keeps the base answer",
+          r.eval("ANS(555)") is True and r.eval("ANS(999)") is False, val(r, "ANS(999)"))
+    r.execute("SET_DVAR('zm_unlock_augments', '1')")
+    r.execute("REFRESH(0)")
+    check("answer: the switch turns the base locked answer into not locked",
+          r.eval("ANS(801)") is False, val(r, "ANS(801)"))
+    check("answer: every augment id answers not locked with the switch on",
+          r.eval("ANS(802)") is False and r.eval("ANS(903)") is False,
+          "802=%s 903=%s" % (val(r, "ANS(802)"), val(r, "ANS(903)")))
+    check("answer: an id outside the augment list is untouched with the switch on",
+          r.eval("ANS(555)") is True and r.eval("ANS(999)") is False, val(r, "ANS(555)"))
+    check("answer: the open side answers every augment id too",
+          r.eval("OPN(801)") is True and r.eval("OPN(903)") is True, val(r, "OPN(801)"))
+    check("answer: the flip does not re-arm the door", val(r, "FACE('answer')") == face
+          and count_line(lines_of(r), "augments locks armed") == 1, val(r, "FACE('answer')"))
+    r.execute("SET_DVAR('zm_unlock_augments', '0')")
+    r.execute("REFRESH(0)")
+    check("answer: the base locked answer returns once the switch is off",
+          r.eval("ANS(801)") is True and r.eval("ANS(802)") is False,
+          "801=%s 802=%s" % (val(r, "ANS(801)"), val(r, "ANS(802)")))
+    r.execute("SET_DVAR('zm_unlock_all', '1')")
+    r.execute("REFRESH(0)")
+    check("answer: the other switch turns it as well", r.eval("ANS(801)") is False,
+          val(r, "ANS(801)"))
+
+
 # --- 18: the press writes the research channel ------------------------------------------------
 def case_channel(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
@@ -1332,7 +1370,7 @@ def main():
     for case in (case_off, case_on, case_line, case_ticks, case_count, case_press, case_alias,
                  case_chain, case_plain, case_late, case_late_read, case_tick_pass, case_twice,
                  case_decoy, case_blind, case_research, case_lock, case_lock_chain, case_lock_late,
-                 case_slot, case_bonus, case_toggle_ids, case_lock_lines,
+                 case_slot, case_bonus, case_toggle_ids, case_lock_lines, case_lock_answer,
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
                  case_popup_on, case_popup_match, case_popup_late, case_missing):
         info("case: " + case.__name__)
