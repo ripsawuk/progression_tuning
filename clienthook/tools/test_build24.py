@@ -1,14 +1,14 @@
-"""Offline proof of clienthook build 39 - the forced publish, the native payment, the bounded log, the token
-channel, the armory pick channel, the armory xp feed and the pay. Read-only
-with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder is written
-(the client file is read, and the one driver that patches a mapped image is given a COPY of it).
+"""Offline proof of clienthook build 40 - the forced publish, the native payment, the bounded log, the token
+channel, the armory pick channel, the augment research channel, the armory xp feed and the two pays.
+Read-only with respect to the game: nothing is installed, nothing is launched, and nothing under the game folder
+is written (the client file is read, and the one driver that patches a mapped image is given a COPY of it).
 
     clienthook\\build.cmd                 -> build\\version.dll
     clienthook\\tools\\build_tests.cmd     -> the drivers in build\\
     python -I clienthook\\tools\\test_build24.py
 
 NOTE ON THE NAME. This harness is called test_build24 because it was written for that build; it is the tree's
-general offline proof and the banner it checks is the current one, build 39.
+general offline proof and the banner it checks is the current one, build 40.
 
 WHAT BUILD 24 IS. Build 23c, plus the one feature v1.0 dropped that a mod cannot do without: the client's own
 serialise-and-publish (`client + 0x962E0`) called live, so the state a menu reads is taken during a match instead
@@ -26,7 +26,7 @@ of only at a mode boundary.
                            at 0x930D3 and its kill switch, ptsplash_paid, the g11 lock payload, master.c's five
                            call sites, the ev=109 boundary and the install gate.
 
-WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (eleven sources, where each
+WHAT IT CHECKS. artefact and pin; two clean builds byte-identical; the source tree (twelve sources, where each
 guard sits, the two triggers' placement); the image's strings - what it carries and what it does not; the personal-path
 and identifier scan the release package uses; the client's own bytes; and every offline driver, with its count.
 """
@@ -151,11 +151,11 @@ KEPT_SOURCE = [
     ("src\\nativepay.h", "typedef void (*np_reset_fn)(void);"),
 ]
 
-# The files this tree ships under src\, and the only ones any scan here reads: the eleven sources build.cmd names,
-# their nine headers, and the export definition. A file that is not on this list is not part of the build.
+# The files this tree ships under src\, and the only ones any scan here reads: the twelve sources build.cmd names,
+# their ten headers, and the export definition. A file that is not on this list is not part of the build.
 SHIPPED_SRC = ["armory.c", "frame.c", "g11.c", "master.c", "nativepay.c", "pick.c", "proxy_main.c", "publish.c",
-               "pubxp.c", "resolve.c", "tokens.c", "armory.h", "g11.h", "master.h", "nativepay.h", "pick.h",
-               "publish.h", "pubxp.h", "resolve.h", "tokens.h", "version_proxy.def"]
+               "pubxp.c", "research.c", "resolve.c", "tokens.c", "armory.h", "g11.h", "master.h", "nativepay.h",
+               "pick.h", "publish.h", "pubxp.h", "research.h", "resolve.h", "tokens.h", "version_proxy.def"]
 
 passes = []
 failures = []
@@ -266,8 +266,9 @@ def build_once():
 
 
 def main():
-    print("clienthook build 39 - the forced publish, the native payment, the bounded log, the token channel, "
-          "the armory pick, the xp feed, the pay and the unlock armory pause - " + ROOT)
+    print("clienthook build 40 - the forced publish, the native payment, the bounded log, the token channel, "
+          "the armory pick, the augment research channel, the xp feed, the two pays and the unlock armory "
+          "pause - " + ROOT)
     print("")
     if not CLIENT:
         print("NOTE  KRONOS_GAME_DIR is not set and no --game was given - the client file cannot be read, so the "
@@ -295,8 +296,8 @@ def main():
     text = raw.decode("latin-1")
     check("the size is not build 23c's (the new unit and its caller changed the image)", size != SIZE_23C,
           "%d B" % size)
-    check("the banner says build 39", "version.dll build 39" in text)
-    for gone in ("version.dll build 38", "version.dll build 37", "version.dll build 36", "version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
+    check("the banner says build 40", "version.dll build 40" in text)
+    for gone in ("version.dll build 39", "version.dll build 38", "version.dll build 37", "version.dll build 36", "version.dll build 35", "version.dll build 34", "version.dll build 33", "version.dll build 32", "version.dll build 31", "version.dll build 30", "version.dll build 25",
                 "version.dll build 23c", "version.dll build 23b", "version.dll build 23",
                 "version.dll build 21", "version.dll build 20", "version.dll build 17"):
         check("the image does not carry the old banner %r" % gone, gone not in text)
@@ -324,15 +325,15 @@ def main():
     build_cmd = read(os.path.join(ROOT, "build.cmd"))
     cl_text = "\n".join(l for l in build_cmd.replace("^", " ").split("\n") if l.strip().startswith("cl "))
     sources = sorted(set(re.findall(r"([a-z0-9_]+\.c)", cl_text)))
-    check("build.cmd compiles exactly the eleven sources",
+    check("build.cmd compiles exactly the twelve sources",
           sources == ["armory.c", "frame.c", "g11.c", "master.c", "nativepay.c", "pick.c", "proxy_main.c", "publish.c",
-                      "pubxp.c", "resolve.c", "tokens.c"], ", ".join(sources))
+                      "pubxp.c", "research.c", "resolve.c", "tokens.c"], ", ".join(sources))
     for gone in ("io_probe.c", "ladder.c", "ladder.h", "g10seed.c", "g10seed.h", "pay.c", "pay.h", "aexp.c",
                  "aexp.h"):
         check("src\\%s is gone from the tree" % gone, not os.path.isfile(os.path.join(SRC, gone)))
     for kept in ("frame.c", "proxy_main.c", "nativepay.c", "pubxp.c", "g11.c", "master.c",
-                 "publish.c", "tokens.c", "pick.c", "armory.c", "nativepay.h", "pubxp.h", "g11.h", "master.h",
-                 "publish.h", "tokens.h", "pick.h", "armory.h", "version_proxy.def"):
+                 "publish.c", "tokens.c", "pick.c", "research.c", "armory.c", "nativepay.h", "pubxp.h", "g11.h",
+                 "master.h", "publish.h", "tokens.h", "pick.h", "research.h", "armory.h", "version_proxy.def"):
         check("src\\%s is there" % kept, os.path.isfile(os.path.join(SRC, kept)))
 
     proxy = read(PROXY)
@@ -635,8 +636,9 @@ def main():
           'L"%sprogression-tuning\\\\armory_off.txt"' in pk and "GetFileAttributesW(path)" in pk
           and "GetTempPathW(MAX_PATH, dir)" in pk)
     check("the banner names the new channels", "pt_armory_ch" in proxy and "pt_armory_xp" in proxy
-          and "armory pay rides the award wrapper" in proxy and "version.dll build 39" in proxy
-          and "pt_armory_ch in players/armory.txt" in proxy)
+          and "both pays riding the award wrapper" in proxy and "version.dll build 40" in proxy
+          and "pt_armory_ch in players/armory.txt" in proxy
+          and "pt_research_ch in players/research.txt" in proxy)
     check("the pick line carries the unlock armory flag after a and the queue",
           "int pick_parse(const char *s, size_t n, int *a, int *q, int q_cap, int *q_n, int *u)" in pk
           and "int pick_build(char *out, size_t cap, int a, const int *q, int q_n, int u)" in pk
@@ -688,8 +690,15 @@ def main():
     check("the inner body is the old one, renamed and still the only place the site jumps into",
           "static unsigned long long np_call_inner(const unsigned int *ev)" in npc
           and "return (const void *)&nativepay_call;" in npc)
-    check("the frame sets the seam before the payment can start",
-          frame.index("nativepay_set_pay_hook(armory_pay);") < frame.index("CreateThread(NULL, 0, probe_thread"))
+    dispatch = frame[frame.index("static void pay_dispatch(np_fn orig, int *kill, int *crit)"):
+                     frame.index("void ch_frame_start(void)")]
+    check("the frame sets the seam before the payment can start, and the seam is the one dispatcher",
+          frame.index("nativepay_set_pay_hook(pay_dispatch);") < frame.index("CreateThread(NULL, 0, probe_thread")
+          and dispatch.count("__try") == 2 and dispatch.count("EXCEPTION_EXECUTE_HANDLER") == 2)
+    check("the dispatcher runs the armory pay, then the augment research pay, each on its own",
+          dispatch.count("armory_pay(orig, kill, crit);") == 1
+          and dispatch.count("research_pay(orig, kill, crit);") == 1
+          and dispatch.index("armory_pay(orig, kill, crit);") < dispatch.index("research_pay(orig, kill, crit);"))
     check("the pay is the pick's active row and the feed's pending, and nothing else is its input",
           "in.active = pick_active();" in ar and "long pending = st->pending;" in ar)
     check("the row is ours by kind and by the private trigger range, read out of the record",
@@ -951,7 +960,7 @@ def main():
     check("it forwarded the same export", "host: answers equal = YES" in outp)
     check("armed by the game's image name, the DLL DID write its log", os.path.isfile(os.path.join(a, "clienthook.log")),
           "%d lines" % len(armed_log.splitlines()))
-    check("the log carries build 39's banner", "version.dll build 39" in armed_log)
+    check("the log carries build 40's banner", "version.dll build 40" in armed_log)
     check("the log names the module it resolved at run time", "init: version.dll resolved from " in armed_log)
     resolved = ""
     for line in armed_log.split("\n"):
@@ -992,10 +1001,10 @@ def main():
         for f in failures:
             print("  FAILED: " + f)
         return 1
-    print("OK - one tree, eleven sources, two identical builds, the kept features armed, the forced publish back")
+    print("OK - one tree, twelve sources, two identical builds, the kept features armed, the forced publish back")
     print("     with its guard, its window and its kill switch, the token channel's dvar behind its file, the")
-    print("     armory's pick, its xp feed and the pay that rides the client's own award, and every offline")
-    print("     driver passing.")
+    print("     armory's pick, the augment research channel, its xp feed and the two pays that ride the client's")
+    print("     own award, and every offline driver passing.")
     return 0
 
 
