@@ -321,8 +321,8 @@
 54868	400	sat_ar_hawk_camo_zm_intergalactic_unlock	88930	2			54864|53953		
 54871	400	sat_ar_hawk_camo_zm_darkmatter_unlock	88930	2	106405		54867|53954		
 56715	400	sat_dm_scotia_camo_base	88940	5|10|20|30|40|50|60|70|80	105882|105759|105921|105908|105803|105779|106002|105981|106076			E75 W B12.0	
-56716	400	sat_dm_scotia_camo_unique1	88940	50	107075	56720			
-56717	400	sat_dm_scotia_camo_unique2	88940	15	107062	56720			
+56716	400	sat_dm_scotia_camo_unique1	88940	50	107075	56720		E75 W B95.2	
+56717	400	sat_dm_scotia_camo_unique2	88940	15	107062	56720		E75 W B12.4	
 56718	400	sat_dm_scotia_camo_unique3	88940	30	106905	56720		E75 W G152.1	
 56719	400	sat_dm_scotia_camo_unique_wrapper	88940	1			56716|56717|56718		
 56720	400	sat_dm_scotia_camo_unique_unlock	88940	1			56715		
@@ -385,7 +385,7 @@
 54942	400	sat_lm_hades_camo_zm_intergalactic_unlock	88943	2			54938|53953		
 54945	400	sat_lm_hades_camo_zm_darkmatter_unlock	88943	2	106477		54941|53954		
 57003	400	sat_me_knife_camo_base	98122	5|10|20|30|40|50|60|70|80	105422|105518|105420|105314|105557|105591|106122|106040|106247			E75 W	
-57004	400	sat_me_knife_camo_unique1	98122	15	106916	57008			
+57004	400	sat_me_knife_camo_unique1	98122	15	106916	57008		E75 W B12.14	
 57005	400	sat_me_knife_camo_unique2	98122	15	107009	57008		E75 W Y229.33.34	
 57006	400	sat_me_knife_camo_unique3	98122	30	107073	57008		E75 W G152.1	
 57007	400	sat_me_knife_camo_unique_wrapper	98122	1			57004|57005|57006		
@@ -417,7 +417,7 @@
 57071	400	sat_me_knife_camo_zm_intergalactic_unlock	98122	2			57067|53953		
 57074	400	sat_me_knife_camo_zm_darkmatter_unlock	98122	2	106344		57070|53954		
 57075	400	sat_me_shockbaton_camo_base	98753	5|10|20|30|40|50|60|70|80	105528|105765|105738|105627|105612|105648|105978|106275|106024			E75 W	
-57076	400	sat_me_shockbaton_camo_unique1	98753	15	106915	57080			
+57076	400	sat_me_shockbaton_camo_unique1	98753	15	106915	57080		E75 W B12.14	
 57077	400	sat_me_shockbaton_camo_unique2	98753	30	107002	57080		E75 W B229.1	
 57078	400	sat_me_shockbaton_camo_unique3	98753	50	106955	57080		E75 W B100.54	
 57079	400	sat_me_shockbaton_camo_unique_wrapper	98753	1			57076|57077|57078		
@@ -451,7 +451,7 @@
 57147	400	sat_pi_atlas_camo_base	88929	5|10|20|30|40|50|60|70|80	105756|105586|105542|105925|105331|105316|106198|106099|106012			E75 W B12.0	
 57148	400	sat_pi_atlas_camo_unique1	88929	10	107020	57152		E75 W B95.0	
 57149	400	sat_pi_atlas_camo_unique2	88929	30	106900	57152		E75 W B12.3	
-57150	400	sat_pi_atlas_camo_unique3	88929	15	106931	57152			
+57150	400	sat_pi_atlas_camo_unique3	88929	15	106931	57152		E75 W B12.14	
 57151	400	sat_pi_atlas_camo_unique_wrapper	88929	1			57148|57149|57150		
 57152	400	sat_pi_atlas_camo_unique_unlock	88929	1			57147		
 57153	400	sat_pi_atlas_camo_gold	88929	10	106398	57155		E75 W SL3	
@@ -544,9 +544,9 @@
 57358	400	sat_sm_zebra_camo_zm_intergalactic_wrapper	88926	1			57357		
 57359	400	sat_sm_zebra_camo_zm_intergalactic_unlock	88926	2			57355|53953		
 57362	400	sat_sm_zebra_camo_zm_darkmatter_unlock	88926	2	106352		57358|53954		
-57363	400	sat_sn_drake_camo_base	88927	5|10|20|30|40|50|60|70|80	105479|105338|105665|105896|105796|105593|106162|106146|106242				
-57364	400	sat_sn_drake_camo_unique1	88927	50	106997	57368			
-57365	400	sat_sn_drake_camo_unique2	88927	30	106909	57368			
+57363	400	sat_sn_drake_camo_base	88927	5|10|20|30|40|50|60|70|80	105479|105338|105665|105896|105796|105593|106162|106146|106242			E75 W B12.20	
+57364	400	sat_sn_drake_camo_unique1	88927	50	106997	57368		E75 W B95.2	
+57365	400	sat_sn_drake_camo_unique2	88927	30	106909	57368		E75 W B12.20	
 57366	400	sat_sn_drake_camo_unique3	88927	10	106854	57368		E75 W SR2	
 57367	400	sat_sn_drake_camo_unique_wrapper	88927	1			57364|57365|57366		
 57368	400	sat_sn_drake_camo_unique_unlock	88927	1			57363		
@@ -673,7 +673,7 @@
 57647	400	sat_ar_kite_camo_zm_intergalactic_unlock	88934	2			57643|53953		
 57650	400	sat_ar_kite_camo_zm_darkmatter_unlock	88934	2	106382		57646|53954		
 57651	400	sat_ar_vulture_camo_base	88931	5|10|20|30|40|50|60|70|80	105433|105842|105837|105753|105566|105905|106124|106266|106074			E75 W B12.0	
-57652	400	sat_ar_vulture_camo_unique1	88931	50	107040	57656			
+57652	400	sat_ar_vulture_camo_unique1	88931	50	107040	57656		E75 W B95.2	
 57653	400	sat_ar_vulture_camo_unique2	88931	50	106988	57656		E75 W B95.0	
 57654	400	sat_ar_vulture_camo_unique3	88931	50	107058	57656		E75 W B229.26	
 57655	400	sat_ar_vulture_camo_unique_wrapper	88931	1			57652|57653|57654		
@@ -705,8 +705,8 @@
 57719	400	sat_ar_vulture_camo_zm_intergalactic_unlock	88931	2			57715|53953		
 57722	400	sat_ar_vulture_camo_zm_darkmatter_unlock	88931	2	106468		57718|53954		
 57723	400	sat_dm_kara_camo_base	88942	5|10|20|30|40|50|60|70|80	105283|105856|105320|105276|105728|105797|106073|106086|106235			E75 W B12.0	
-57724	400	sat_dm_kara_camo_unique1	88942	15	107068	57728			
-57725	400	sat_dm_kara_camo_unique2	88942	50	106853	57728			
+57724	400	sat_dm_kara_camo_unique1	88942	15	107068	57728		E75 W B12.4	
+57725	400	sat_dm_kara_camo_unique2	88942	50	106853	57728		E75 W B95.2	
 57726	400	sat_dm_kara_camo_unique3	88942	50	106922	57728		E75 W B229.26	
 57727	400	sat_dm_kara_camo_unique_wrapper	88942	1			57724|57725|57726		
 57728	400	sat_dm_kara_camo_unique_unlock	88942	1			57723		
@@ -739,7 +739,7 @@
 57795	400	sat_dm_oman_camo_base	88941	5|10|20|30|40|50|60|70|80	105651|105281|105388|105259|105482|105562|106209|106031|106108			E75 W B12.0	
 57796	400	sat_dm_oman_camo_unique1	88941	30	106828	57800		E75 W Y229.23.25	
 57797	400	sat_dm_oman_camo_unique2	88941	50	107072	57800		E75 W G252.5	
-57798	400	sat_dm_oman_camo_unique3	88941	30	107064	57800			
+57798	400	sat_dm_oman_camo_unique3	88941	30	107064	57800		E75 W B12.20	
 57799	400	sat_dm_oman_camo_unique_wrapper	88941	1			57796|57797|57798		
 57800	400	sat_dm_oman_camo_unique_unlock	88941	1			57795		
 57801	400	sat_dm_oman_camo_gold	88941	10	106697	57803		E75 W SL3	
@@ -897,7 +897,7 @@
 58154	400	sat_pi_orion_camo_zm_intergalactic_unlock	88950	2			58150|53953		
 58157	400	sat_pi_orion_camo_zm_darkmatter_unlock	88950	2	106471		58153|53954		
 56320	400	sat_pi_timir_camo_base	88949	5|10|20|30|40|50|60|70|80	105877|105704|105261|105662|105589|105582|106094|106249|106020			E75 W B12.0	
-56321	400	sat_pi_timir_camo_unique1	88949	15	106951	56325			
+56321	400	sat_pi_timir_camo_unique1	88949	15	106951	56325		E75 W B12.14	
 56322	400	sat_pi_timir_camo_unique2	88949	50	107082	56325		E75 W B100.54	
 56323	400	sat_pi_timir_camo_unique3	88949	30	106985	56325		E75 W G152.1	
 56324	400	sat_pi_timir_camo_unique_wrapper	88949	1			56321|56322|56323		
@@ -1153,7 +1153,7 @@
 58675	400	sat_sm_puma_camo_zm_intergalactic_unlock	88937	2			58671|53953		
 58678	400	sat_sm_puma_camo_zm_darkmatter_unlock	88937	2	106607		58674|53954		
 58679	400	sat_sn_baltic_camo_base	88946	5|10|20|30|40|50|60|70|80	105717|105601|105631|105267|105435|105287|106028|106078|106034			E75 W B12.0	
-58680	400	sat_sn_baltic_camo_unique1	88946	15	107066	58684			
+58680	400	sat_sn_baltic_camo_unique1	88946	15	107066	58684		E75 W B12.4	
 58681	400	sat_sn_baltic_camo_unique2	88946	50	106874	58684		E75 W B100.46	
 58682	400	sat_sn_baltic_camo_unique3	88946	10	107087	58684		E75 W SR2	
 58683	400	sat_sn_baltic_camo_unique_wrapper	88946	1			58680|58681|58682		
@@ -1184,9 +1184,9 @@
 58746	400	sat_sn_baltic_camo_zm_intergalactic_wrapper	88946	1			58745		
 58747	400	sat_sn_baltic_camo_zm_intergalactic_unlock	88946	2			58743|53953		
 58750	400	sat_sn_baltic_camo_zm_darkmatter_unlock	88946	2	106590		58746|53954		
-58751	400	sat_sn_caspian_camo_base	88945	5|10|20|30|40|50|60|70|80	105745|105867|105498|105614|105858|105893|106003|106205|106179				
+58751	400	sat_sn_caspian_camo_base	88945	5|10|20|30|40|50|60|70|80	105745|105867|105498|105614|105858|105893|106003|106205|106179			E75 W B12.20	
 58752	400	sat_sn_caspian_camo_unique1	88945	50	106944	58756		E75 W B95.0	
-58753	400	sat_sn_caspian_camo_unique2	88945	15	106914	58756			
+58753	400	sat_sn_caspian_camo_unique2	88945	15	106914	58756		E75 W B12.4	
 58754	400	sat_sn_caspian_camo_unique3	88945	10	106824	58756		E75 W SR2	
 58755	400	sat_sn_caspian_camo_unique_wrapper	88945	1			58752|58753|58754		
 58756	400	sat_sn_caspian_camo_unique_unlock	88945	1			58751		
@@ -1281,7 +1281,7 @@
 64369	400	sat_lm_typhon_camo_zm_intergalactic_unlock	97917	2			64365|53953		
 64370	400	sat_lm_typhon_camo_zm_darkmatter_unlock	97917	2	124531		64368|53954		
 64371	400	sat_me_ballisticknife_camo_base	113930	5|10|20|30|40|50|60|70|80	123862|123891|123972|123980|123991|123830|123853|123964|123886			E75 W	
-64372	400	sat_me_ballisticknife_camo_unique1	113930	15	124665	64376			
+64372	400	sat_me_ballisticknife_camo_unique1	113930	15	124665	64376		E75 W B12.14	
 64373	400	sat_me_ballisticknife_camo_unique2	113930	30	124550	64376		E75 W G152.1	
 64374	400	sat_me_ballisticknife_camo_unique3	113930	30	124677	64376		E75 W B229.1	
 64375	400	sat_me_ballisticknife_camo_unique_wrapper	113930	1			64372|64373|64374		
@@ -1408,9 +1408,9 @@
 64624	400	sat_sm_hyena_camo_zm_intergalactic_wrapper	98043	1			64623		
 64625	400	sat_sm_hyena_camo_zm_intergalactic_unlock	98043	2			64621|53953		
 64626	400	sat_sm_hyena_camo_zm_darkmatter_unlock	98043	2	124557		64624|53954		
-64627	400	sat_sn_aden_camo_base	97997	5|10|20|30|40|50|60|70|80	124035|123920|123867|123937|123977|123935|123905|123976|124050				
+64627	400	sat_sn_aden_camo_base	97997	5|10|20|30|40|50|60|70|80	124035|123920|123867|123937|123977|123935|123905|123976|124050			E75 W B12.20	
 64628	400	sat_sn_aden_camo_unique1	97997	30	124472	64632		E75 W Y229.23.25	
-64629	400	sat_sn_aden_camo_unique2	97997	15	124629	64632			
+64629	400	sat_sn_aden_camo_unique2	97997	15	124629	64632		E75 W B12.4	
 64630	400	sat_sn_aden_camo_unique3	97997	50	124652	64632		E75 W B95.0	
 64631	400	sat_sn_aden_camo_unique_wrapper	97997	1			64628|64629|64630		
 64632	400	sat_sn_aden_camo_unique_unlock	97997	1			64627		
@@ -1505,9 +1505,9 @@
 65908	400	sat_ar_heron_camo_zm_intergalactic_unlock	116618	2			65904|53953		
 65909	400	sat_ar_heron_camo_zm_darkmatter_unlock	116618	2	128449		65907|53954		
 65910	400	sat_dm_solomon_camo_base	119845	5|10|20|30|40|50|60|70|80	127671|127664|127660|127573|127577|127550|127510|127502|127611			E75 W B12.0	
-65911	400	sat_dm_solomon_camo_unique1	119845	50	128287	65915			
+65911	400	sat_dm_solomon_camo_unique1	119845	50	128287	65915		E75 W B95.2	
 65912	400	sat_dm_solomon_camo_unique2	119845	50	128308	65915		E75 W G252.5	
-65913	400	sat_dm_solomon_camo_unique3	119845	15	128311	65915			
+65913	400	sat_dm_solomon_camo_unique3	119845	15	128311	65915		E75 W B12.4	
 65914	400	sat_dm_solomon_camo_unique_wrapper	119845	1			65911|65912|65913		
 65915	400	sat_dm_solomon_camo_unique_unlock	119845	1			65910		
 65916	400	sat_dm_solomon_camo_gold	119845	10	128406	65918		E75 W SL3	
@@ -1824,10 +1824,10 @@
 68851	400	sat_sm_bear_camo_zm_intergalactic_wrapper	125262	1			68850		
 68852	400	sat_sm_bear_camo_zm_intergalactic_unlock	125262	2			68848|53953		
 68853	400	sat_sm_bear_camo_zm_darkmatter_unlock	125262	2	132901		68851|53954		
-68854	400	sat_sn_coral_camo_base	126466	5|10|20|30|40|50|60|70|80	131605|131590|131579|131647|131562|131599|131589|131515|131533				
+68854	400	sat_sn_coral_camo_base	126466	5|10|20|30|40|50|60|70|80	131605|131590|131579|131647|131562|131599|131589|131515|131533			E75 W B12.20	
 68855	400	sat_sn_coral_camo_unique1	126466	30	132770	68859		E75 W Y229.23.25	
 68856	400	sat_sn_coral_camo_unique2	126466	10	132772	68859		E75 W SR2	
-68857	400	sat_sn_coral_camo_unique3	126466	15	132742	68859			
+68857	400	sat_sn_coral_camo_unique3	126466	15	132742	68859		E75 W B12.4	
 68858	400	sat_sn_coral_camo_unique_wrapper	126466	1			68855|68856|68857		
 68859	400	sat_sn_coral_camo_unique_unlock	126466	1			68854		
 68860	400	sat_sn_coral_camo_gold	126466	10	132864	68862		E75 W SL3	
@@ -1921,9 +1921,9 @@
 71871	400	sat_ar_kiwi_camo_zm_intergalactic_unlock	131330	2			71867|53953		
 71872	400	sat_ar_kiwi_camo_zm_darkmatter_unlock	131330	2	142110		71870|53954		
 71873	400	sat_dm_samar_camo_base	133345	5|10|20|30|40|50|60|70|80	141869|141991|141897|141912|141901|141890|141986|141898|141854			E75 W B12.0	
-71874	400	sat_dm_samar_camo_unique1	133345	15	142066	71878			
+71874	400	sat_dm_samar_camo_unique1	133345	15	142066	71878		E75 W B12.4	
 71875	400	sat_dm_samar_camo_unique2	133345	10	142061	71878		E75 W SR2	
-71876	400	sat_dm_samar_camo_unique3	133345	50	142069	71878			
+71876	400	sat_dm_samar_camo_unique3	133345	50	142069	71878		E75 W B95.2	
 71877	400	sat_dm_samar_camo_unique_wrapper	133345	1			71874|71875|71876		
 71878	400	sat_dm_samar_camo_unique_unlock	133345	1			71873		
 71879	400	sat_dm_samar_camo_gold	133345	10	142159	71881		E75 W SL3	
@@ -1953,7 +1953,7 @@
 71935	400	sat_dm_samar_camo_zm_intergalactic_unlock	133345	2			71931|53953		
 71936	400	sat_dm_samar_camo_zm_darkmatter_unlock	133345	2	142127		71934|53954		
 71745	400	sat_me_maru_camo_base	132997	5|10|20|30|40|50|60|70|80	142903|142983|142933|142976|142969|142925|142934|142941|142990			E75 W	
-71746	400	sat_me_maru_camo_unique1	132997	15	143072	71750			
+71746	400	sat_me_maru_camo_unique1	132997	15	143072	71750		E75 W B12.14	
 71747	400	sat_me_maru_camo_unique2	132997	10	143054	71750		E75 W B312.13	
 71748	400	sat_me_maru_camo_unique3	132997	30	143048	71750		E75 W B229.1	
 71749	400	sat_me_maru_camo_unique_wrapper	132997	1			71746|71747|71748		
@@ -2114,7 +2114,7 @@
 74850	400	sat_lm_hildr_camo_zm_darkmatter_unlock	142433	2	147725		74848|53954		
 74562	400	sat_me_castor_camo_base	136389	5|10|20|30|40|50|60|70|80	149720|149761|149776|149767|149777|149738|149745|149775|149730			E75 W	
 74563	400	sat_me_castor_camo_unique1	136389	15	149746	74567		E75 W Y229.33.34	
-74564	400	sat_me_castor_camo_unique2	136389	15	149716	74567			
+74564	400	sat_me_castor_camo_unique2	136389	15	149716	74567		E75 W B12.14	
 74565	400	sat_me_castor_camo_unique3	136389	30	149755	74567		E75 W B229.1	
 74566	400	sat_me_castor_camo_unique_wrapper	136389	1			74563|74564|74565		
 74567	400	sat_me_castor_camo_unique_unlock	136389	1			74562		
@@ -4840,3 +4840,7 @@
 69334	368	sat_super_flame_blast_armory_unlock	0	100000	117946			E200074 X	
 71372	368	sat_super_death_machine_armory_unlock	0	100000	117964			E200075 X	
 71374	368	sat_super_cradle_gas_grenade_armory_unlock	0	100000	117950			E200076 X	
+78011	900	sat_zm_questline_super_ee_skins_1	0	1	151944+149865+149884			E794 B239.35	
+78012	900	sat_zm_questline_super_ee_skins_2	0	1	151945+149890+149895			E794 B239.35	
+78013	900	sat_zm_questline_super_ee_skins_3	0	1	149894+149879+149872			E794 B239.35	
+78014	900	sat_zm_questline_super_ee_skins_4	0	1	149896			E794 B239.35	
