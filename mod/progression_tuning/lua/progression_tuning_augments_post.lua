@@ -18,12 +18,14 @@ local K_USV = "a82011d283698aa4"
 local DEV = "d428ffe65b5694d6"
 -- the two switches that want a full house
 local DV_ONE, DV_TWO = "zm_unlock_augments", "zm_unlock_all"
+-- the research channel a press writes
+local CH = "pt_research_ch"
 -- the activation rows and the start event
 local ACT_A, ACT_B = 53979, 47576
 local START_EVENT, START_KEY = 846, 74
 local SLOTS = 9
 
-local VERSION = "v3"
+local VERSION = "v4"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -37,7 +39,8 @@ if S.parts[PART] == true then return end
 S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
-  active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil }
+  active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
+  restored = false }
 S.aug = G
 
 -- says a thing once
@@ -481,6 +484,169 @@ local function resolve(id)
   return id
 end
 
+-- menu or match
+local function front()
+  local f = fn_of(rawget(_G, "Engine"), "InFrontend")
+  if f == nil then return nil end
+  local ok, v = pcall(f)
+  if ok then return v == true end
+  return nil
+end
+
+local DGET, DSET
+
+-- the channel dvar as the hash the engine stores
+local function dvkey()
+  local h = rawget(_G, "xhashdvar")
+  if type(h) == "function" then
+    local ok, k = pcall(h, CH)
+    if ok and k ~= nil then return k end
+  end
+  return CH
+end
+
+-- the channel line as this vm reads it
+local function dget()
+  if DGET == nil then DGET = fn_of(rawget(_G, "Dvar"), "GetDvarString") end
+  if DGET == nil then return nil end
+  local key = dvkey()
+  local ok, v = pcall(DGET, key)
+  if ok and type(v) == "string" then return v end
+  if key ~= CH then
+    local okp, v2 = pcall(DGET, CH)
+    if okp and type(v2) == "string" then return v2 end
+  end
+  return nil
+end
+
+-- the id the channel line names
+local function chrow(v)
+  if type(v) ~= "string" then return nil end
+  local n = string.match(v, "^a=(%d+)")
+  if n == nil then return nil end
+  return tonumber(n)
+end
+
+-- one channel write read back
+local function dchput(val)
+  if DSET == nil then DSET = fn_of(rawget(_G, "Dvar"), "SetDvarString") end
+  if DSET == nil then return false end
+  local key = dvkey()
+  if not pcall(DSET, key, val) and key ~= CH then pcall(DSET, CH, val) end
+  return dget() == val
+end
+
+-- the pick the channel line names
+local function seed()
+  local id = chrow(dget())
+  if id == nil or id < 1 then return false end
+  if G.sat == id then return true end
+  G.active, G.sat = id, id
+  if G.restored ~= true then
+    G.restored = true
+    if front() ~= false then dp("augments research restored a=" .. id) end
+  end
+  return true
+end
+
+-- the pick a press writes to the channel
+local function save(sat)
+  if front() == false then return false end
+  local val = "a=" .. sat
+  if dget() == val then return true end
+  if not dchput(val) then return false end
+  dp("augments research saved a=" .. sat)
+  return true
+end
+
+-- hands an event to the game own root
+local function fire(ev)
+  local lui = rawget(_G, "LUI")
+  local getroot = fn_of(lui, "GetRoot")
+  if getroot == nil then return false end
+  local okr, rootEl = pcall(getroot)
+  if not okr or rootEl == nil then return false end
+  local _, uir = slot_of(lui, "UIRoot")
+  local fe = (uir ~= nil) and fn_of(uir, "ProcessEvent") or nil
+  if fe ~= nil and pcall(fe, rootEl, ev) then return true end
+  fe = fn_of(rootEl, "ProcessEvent")
+  if fe ~= nil and pcall(fe, rootEl, ev) then return true end
+  local der = fn_of(rootEl, "dispatchEventToRoot")
+  if der ~= nil and pcall(der, rootEl, ev) then return true end
+  return false
+end
+
+-- the event the hud reads as a grant
+local function grant(loot)
+  local f = fn_of(rawget(_G, "Challenge"), "GetAEKindID")
+  if f == nil then return false end
+  local ok, kind = pcall(f, "ae_kind_zm_augment")
+  if not ok or kind == nil then return false end
+  return fire({ name = "ae_reward_granted", kind = kind, items = { loot } })
+end
+
+-- the loot id the active research item publishes
+local function active_loot(c, key)
+  local root = rawget(_G, "_DataSources") or rawget(_G, "DataSources")
+  local node = hfield(hfield(hfield(root, "zm"), "frontend"), "augment_select")
+  local ds = hfield(hfield(node, "active_augment_research_item"), "loot_id")
+  local get = hfield(ds, "GetValue")
+  if type(get) == "function" then
+    local ok, v = pcall(get, ds, c)
+    if ok and v ~= nil then return v end
+  end
+  return key
+end
+
+-- the cached row the active pick names
+local function active_row()
+  local sat = G.sat
+  if sat == nil or sat < 1 then return nil, nil end
+  local cache = cache_of(rawget(_G, "ZMAUGMENT"))
+  if type(cache) ~= "table" then return nil, nil end
+  local key, row = nil, nil
+  for k, ch in pairs(cache) do
+    if type(ch) == "table" and tonumber(hfield(ch, "achievementID")) == sat then
+      if type(k) == "number" then return k, ch end
+      if key == nil then key, row = k, ch end
+    end
+  end
+  if key == nil then return nil, nil end
+  return tonumber(key), row
+end
+
+-- the baseline one row is read against
+local BASE = {}
+
+-- one tier crossing raises one card
+local function watch_tiers(c)
+  if G.on ~= false then return end
+  if front() ~= false then return end
+  local key, row = active_row()
+  if row == nil then return end
+  local n = steps(c, row)
+  local sat = G.sat
+  local b = BASE[sat]
+  if b == nil then
+    BASE[sat] = { last = n }
+    return
+  end
+  if b.base == nil then
+    if b.last == n then b.base = n end
+    b.last = n
+    return
+  end
+  if n > b.base then
+    local loot = active_loot(c, key)
+    for i = b.base + 1, n do
+      local sent = false
+      if loot ~= nil then sent = grant(loot) end
+      dp("augments tier id=" .. sat .. " tier=" .. i .. " sent=" .. tostring(sent))
+    end
+    b.base = n
+  end
+end
+
 -- the press the menu sends
 local function caught(ev, ...)
   local id = tonumber(ev)
@@ -498,6 +664,7 @@ local function caught(ev, ...)
   local sat = resolve(sent)
   G.active, G.sat, G.dirty = sent, sat, true
   dp("augments research start id=" .. sent .. " sat=" .. sat)
+  pcall(save, sat)
 end
 
 -- the answer the activation rows carry
@@ -559,6 +726,8 @@ pass = function(c)
     local _, f = slot_of(rawget(_G, "ZMAUGMENT"), "initcurrentactiveresearch")
     if type(f) == "function" then pcall(f, c) end
   end
+  if G.sat == nil or G.sat < 1 or front() == true then pcall(seed) end
+  pcall(watch_tiers, c)
 end
 
 -- the wrappers this part keeps one of
@@ -772,6 +941,7 @@ end
 S.probes.augments = function() return W.refresh ~= nil and W.refresh.w ~= nil end
 
 pcall(install)
+pcall(seed)
 pcall(start)
 local api = S.api
 local r = type(api) == "table" and api.ready or nil

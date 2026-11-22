@@ -39,7 +39,18 @@ The cases:
       open past it, the switches step the rule aside, every other id passes through;
   16. the door chain: an armory-like extender arming before and after ours stays at two wrappers,
       the depth stays the base plus two, and both rules still answer;
-  17. the late door: no locks table at load, then the table arriving, then a new table after it.
+  17. the late door: no locks table at load, then the table arriving, then a new table after it;
+  18. the channel: a press writes the sat id once, a repeat press of the same row writes nothing,
+      and the next press moves the line;
+  19. the restore: a saved line answers 53979 and 47576 with the row it names, says one line, and
+      a line that arrives after load is seeded on a later tick;
+  20. the popup: the first read and the second are the baseline, one crossing raises one native
+      event with the kind and the published loot id, a reload mid match cards nothing, and a
+      lower read never replays a tier;
+  21. the switches and the vm: a switch on raises nothing, the menu vm raises nothing, a press in
+      the match vm never writes the channel;
+  22. the late popup: the card falls back to the row id while the active item is absent, then
+      names the published loot id once it is there.
 """
 import os
 import re
@@ -177,6 +188,17 @@ local function dleaf(v) return setmetatable({ v = v }, { __index = LEAF }) end
 for i = 1, 9 do ARR[i][HK("is_unlocked")] = dleaf(true) end
 _DataSources = { [HK("zm")] = { [HK("frontend")] = { [HK("augment_select")] = {
   [HK("current_augment_research")] = ARR } } } }
+ACTIVE = dleaf(107157)
+_DataSources[HK("zm")][HK("frontend")][HK("augment_select")][HK("active_augment_research_item")] =
+  { [HK("loot_id")] = ACTIVE }
+function DROPACTIVE()
+  _DataSources[HK("zm")][HK("frontend")][HK("augment_select")][HK("active_augment_research_item")] = nil
+end
+function PUTACTIVE()
+  _DataSources[HK("zm")][HK("frontend")][HK("augment_select")][HK("active_augment_research_item")] =
+    { [HK("loot_id")] = ACTIVE }
+end
+function CHV() return DVARS[xhashdvar("pt_research_ch")] or "" end
 function SLOTV(i) return ARR[i][HK("is_unlocked")].v end
 function SLALL() local s = ""; for i = 1, 9 do s = s .. (ARR[i][HK("is_unlocked")].v and "1" or "0") end; return s end
 function SLRESET() for i = 1, 9 do ARR[i][HK("is_unlocked")].v = true end end
@@ -485,7 +507,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line and nothing else", len(l) == 2,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v3 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v4 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -879,6 +901,181 @@ def case_lock_late(lua51):
           and val(r, "FACE('answer') == SEC_A") == "False", val(r, "FACE('answer') == SEC_A"))
 
 
+# --- 18: the press writes the research channel ------------------------------------------------
+def case_channel(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    r.execute("REFRESH(0)")
+    check("channel: no press leaves the line empty", val(r, "CHV()") == "", val(r, "CHV()"))
+    r.execute("PRESS(40001)")
+    check("channel: a press writes the sat id", val(r, "CHV()") == "a=40001", val(r, "CHV()"))
+    check("channel: one saved line names it",
+          count_line(lines_of(r), "progression_tuning: augments research saved a=40001") == 1,
+          " | ".join([ln for ln in lines_of(r) if "research saved" in ln][:2]))
+    r.execute("REFRESH(0); REFRESH(0)")
+    check("channel: later passes do not write again",
+          val(r, "CHV()") == "a=40001" and count_line(lines_of(r), "augments research saved") == 1,
+          "%d" % count_line(lines_of(r), "augments research saved"))
+    r.execute("PRESS(48298)")
+    check("channel: a carryover press keeps the sat id and says nothing new",
+          val(r, "CHV()") == "a=40001" and count_line(lines_of(r), "augments research saved") == 1,
+          val(r, "CHV()"))
+    r.execute("PRESS(40002)")
+    check("channel: the next press moves the line", val(r, "CHV()") == "a=40002"
+          and count_line(lines_of(r), "augments research saved") == 2, val(r, "CHV()"))
+
+
+# --- 19: a restart restores the research from the channel ------------------------------------
+def case_restore(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "SET_DVAR('pt_research_ch', 'a=40001')")
+    off(r)
+    check("restore: 53979 answers the saved research", val(r, "LAST(53979)") == "40001",
+          val(r, "LAST(53979)"))
+    check("restore: 47576 answers it as well", val(r, "LAST(47576)") == "40001", val(r, "LAST(47576)"))
+    check("restore: one restored line names it",
+          count_line(lines_of(r), "progression_tuning: augments research restored a=40001") == 1,
+          " | ".join([ln for ln in lines_of(r) if "restored" in ln][:2]))
+    r.execute("REFRESH(0); REFRESH(0)")
+    check("restore: said once over three passes",
+          count_line(lines_of(r), "augments research restored") == 1,
+          "%d" % count_line(lines_of(r), "augments research restored"))
+    check("restore: the active research read returns that row", val(r, "GETACTIVE(0)") == "7001",
+          val(r, "GETACTIVE(0)"))
+    check("restore: the pick is not written back", count_line(lines_of(r), "research saved") == 0,
+          "%d" % count_line(lines_of(r), "research saved"))
+
+
+def case_restore_late(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()")
+    off(r)
+    pump(r, 1)
+    check("late restore: an empty line says nothing", count_line(lines_of(r), "restored") == 0,
+          "%d" % count_line(lines_of(r), "restored"))
+    r.execute("SET_DVAR('pt_research_ch', 'a=40002')")
+    pump(r, 8)
+    check("late restore: a line that arrives is seeded on a tick", val(r, "LAST(53979)") == "40002",
+          val(r, "LAST(53979)"))
+    check("late restore: one line once", count_line(lines_of(r), "augments research restored") == 1,
+          "%d" % count_line(lines_of(r), "augments research restored"))
+
+
+# --- 20: the match vm raises one native card per tier crossing -------------------------------
+def case_popup(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r)
+    r.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r.execute("REFRESH(0)")
+    check("popup: the first read is the baseline", val(r, "NAMED('ae_reward_granted')") == "0",
+          val(r, "NAMED('ae_reward_granted')"))
+    r.execute("REFRESH(0)")
+    check("popup: the second read confirms the baseline",
+          val(r, "NAMED('ae_reward_granted')") == "0", val(r, "NAMED('ae_reward_granted')"))
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("popup: one tier crossing raises one card", val(r, "NAMED('ae_reward_granted')") == "1",
+          val(r, "NAMED('ae_reward_granted')"))
+    check("popup: the card names the kind the hud tests",
+          val(r, "LASTOF('ae_reward_granted').kind") in ("437", "437.0"),
+          val(r, "LASTOF('ae_reward_granted').kind"))
+    check("popup: the card carries one loot id",
+          val(r, "#LASTOF('ae_reward_granted').items") == "1", val(r, "#LASTOF('ae_reward_granted').items"))
+    check("popup: the loot id is the one the active item publishes",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("107157", "107157.0"),
+          val(r, "LASTOF('ae_reward_granted').items[1]"))
+    check("popup: one line names the row and the tier",
+          count_line(lines_of(r), "progression_tuning: augments tier id=40001 tier=1 sent=true") == 1,
+          " | ".join([ln for ln in lines_of(r) if "augments tier" in ln][:2]))
+    r.execute("REFRESH(0); REFRESH(0)")
+    check("popup: the same tier does not card twice", val(r, "NAMED('ae_reward_granted')") == "1",
+          val(r, "NAMED('ae_reward_granted')"))
+    r.execute("SET_PROG(40001, 140000)")
+    r.execute("REFRESH(0)")
+    check("popup: the next tier raises the next card", val(r, "NAMED('ae_reward_granted')") == "2",
+          val(r, "NAMED('ae_reward_granted')"))
+    check("popup: the second line names tier two",
+          count_line(lines_of(r), "augments tier id=40001 tier=2 sent=true") == 1,
+          " | ".join([ln for ln in lines_of(r) if "augments tier" in ln][:2]))
+    r.execute("SET_PROG(40001, 0)")
+    r.execute("REFRESH(0); REFRESH(0)")
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("popup: a lower read never replays a tier", val(r, "NAMED('ae_reward_granted')") == "2",
+          val(r, "NAMED('ae_reward_granted')"))
+    r2 = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r2)
+    r2.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r2.execute("SET_PROG(40001, 140000)")
+    r2.execute("REFRESH(0); REFRESH(0); REFRESH(0)")
+    check("popup: a reload mid match cards nothing", val(r2, "NAMED('ae_reward_granted')") == "0",
+          val(r2, "NAMED('ae_reward_granted')"))
+
+
+def case_popup_multi(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r)
+    r.execute("SET_DVAR('pt_research_ch', 'a=40002')")
+    r.execute("REFRESH(0); REFRESH(0)")
+    r.execute("SET_PROG(40002, 275000)")
+    r.execute("REFRESH(0)")
+    check("popup multi: three steps raise three cards",
+          val(r, "NAMED('ae_reward_granted')") == "3", val(r, "NAMED('ae_reward_granted')"))
+    check("popup multi: one line per tier",
+          count_line(lines_of(r), "augments tier id=40002 tier=") == 3,
+          "%d" % count_line(lines_of(r), "augments tier id=40002 tier="))
+
+
+def case_popup_on(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    r.execute("SET_DVAR('zm_unlock_augments', '0'); SET_DVAR('zm_unlock_all', '1')")
+    r.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r.execute("SET_PROG(40001, 300000)")
+    r.execute("REFRESH(0); REFRESH(0); REFRESH(0)")
+    check("popup on: the switch raises no card", val(r, "NAMED('ae_reward_granted')") == "0",
+          val(r, "NAMED('ae_reward_granted')"))
+    check("popup on: and says no tier line", count_line(lines_of(r), "augments tier ") == 0,
+          "%d" % count_line(lines_of(r), "augments tier "))
+    r2 = rt(ZMFIX + "\nMAKEZM()")
+    off(r2)
+    r2.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r2.execute("REFRESH(0); REFRESH(0)")
+    r2.execute("SET_PROG(40001, 70000)")
+    r2.execute("REFRESH(0)")
+    check("popup: the menu vm raises no card", val(r2, "NAMED('ae_reward_granted')") == "0",
+          val(r2, "NAMED('ae_reward_granted')"))
+
+
+def case_popup_match(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r)
+    r.execute("REFRESH(0)")
+    r.execute("PRESS(40001)")
+    check("match: a press records the pick", val(r, "ProgressionTuning.aug.active") in ("40001", "40001.0"),
+          val(r, "ProgressionTuning.aug.active"))
+    check("match: the channel is not written", val(r, "CHV()") == "", val(r, "CHV()"))
+    check("match: no saved line is said", count_line(lines_of(r), "research saved") == 0,
+          "%d" % count_line(lines_of(r), "research saved"))
+    check("match: 53979 still answers the pick", val(r, "LAST(53979)") == "40001",
+          val(r, "LAST(53979)"))
+
+
+def case_popup_late(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false\nDROPACTIVE()")
+    off(r)
+    r.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r.execute("REFRESH(0); REFRESH(0)")
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("late popup: the card falls back to the row id",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("7001", "7001.0"),
+          val(r, "LASTOF('ae_reward_granted').items[1]"))
+    r.execute("PUTACTIVE()")
+    r.execute("SET_PROG(40001, 140000)")
+    r.execute("REFRESH(0)")
+    check("late popup: the item is read once it is there",
+          val(r, "LASTOF('ae_reward_granted').items[1]") in ("107157", "107157.0"),
+          val(r, "LASTOF('ae_reward_granted').items[1]"))
+
+
 def case_file():
     bad = []
     for i, ln in enumerate(SRC.split("\n"), 1):
@@ -926,7 +1123,8 @@ def main():
     for case in (case_off, case_on, case_line, case_ticks, case_count, case_press, case_alias,
                  case_chain, case_plain, case_late, case_late_read, case_tick_pass, case_twice,
                  case_decoy, case_blind, case_research, case_lock, case_lock_chain, case_lock_late,
-                 case_missing):
+                 case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
+                 case_popup_on, case_popup_match, case_popup_late, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)
