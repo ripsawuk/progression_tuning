@@ -29,7 +29,7 @@ local SLOTS = 9
 -- a weight the fill guard computes to dark
 local DARK = 0.001
 
-local VERSION = "v9"
+local VERSION = "v10"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -44,7 +44,8 @@ S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
   active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
-  cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gask = nil, gkey = nil }
+  cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gask = nil, gkey = nil,
+  gfed = false }
 S.aug = G
 
 -- says a thing once
@@ -435,17 +436,37 @@ local function clearall(c, Z, store, done)
   end
 end
 
+-- the keys this vm keeps its members under
+local K = {}
+
+-- a key filled once a table holds it
+local function kfill(tbl, hex, name)
+  local v = K[name]
+  if v ~= nil then return v end
+  v = key_hex(tbl, hex)
+  if v ~= nil then K[name] = v end
+  return v
+end
+
+-- the field the gate reads on the gamemode bundle
+local function bundleval(b)
+  if type(b) ~= "table" then return nil end
+  local k = key_hex(b, K_BUNDLE)
+  if k ~= nil then return field(b, k) end
+  local h = xh(K_BUNDLE)
+  if h == nil then return nil end
+  return field(b, h)
+end
+
 -- the key the native gate asks for
 local function gatekey()
   local fb = fn_of(rawget(_G, "Game"), "getactivegamemodescriptbundle")
   local fk = fn_of(rawget(_G, "Challenge"), "getaeuserstatekey")
   if fb == nil or fk == nil then return nil end
   local okb, b = pcall(fb)
-  if not okb or type(b) ~= "table" then return nil end
-  local k = key_hex(b, K_BUNDLE)
-  if k == nil then return nil end
-  local okf, fld = pcall(function() return b[k] end)
-  if not okf or fld == nil then return nil end
+  if not okb then return nil end
+  local fld = bundleval(b)
+  if fld == nil then return nil end
   local okk, key = pcall(fk, fld)
   if not okk or key == nil then return nil end
   return key
@@ -490,13 +511,14 @@ local function qrword()
   return tostring(v)
 end
 
--- the native gate pass on its own row
-local function gatepass(c, row)
+-- the native gate function
+local function gatefn()
   local Z = rawget(_G, "ZMAUGMENT")
-  local f = key_hex(Z, K_COUNT)
-  f = f ~= nil and field(Z, f) or nil
-  if type(f) ~= "function" then return false end
-  return pcall(f, c, row) == true
+  local k = kfill(Z, K_COUNT, "count")
+  if k == nil then return nil end
+  local f = field(Z, k)
+  if type(f) == "function" then return f end
+  return nil
 end
 
 -- the native list repaint
@@ -519,10 +541,15 @@ local function gate(c, owned)
     dp("augments gate owned=" .. owned .. " key=none fed=0 fn=0 qr=" .. qrword())
     return
   end
-  local ok = gatepass(c, row)
+  local fn = gatefn()
+  local ok = false
+  if key ~= nil and fn ~= nil then
+    ok = pcall(fn, c, row) == true
+    if ok then pcall(repaint, c) end
+  end
   local fed = (G.gask == true) and 1 or 0
+  if fed == 1 then G.gfed = true end
   local asked = G.gkey or key
-  repaint(c)
   dp("augments gate owned=" .. owned .. " key=" .. tostring(asked or "none")
     .. " fed=" .. fed .. " fn=" .. (ok and 1 or 0) .. " qr=" .. qrword())
 end
@@ -624,7 +651,9 @@ local function whole(c)
   if rows > 0 then
     pcall(flag, store, done)
     if front() ~= false then pcall(clearall, c, Z, store, done) end
-    if owned ~= prev then pcall(gate, c, owned) end
+    if owned ~= prev or (owned > 0 and G.gfed ~= true and front() ~= false) then
+      pcall(gate, c, owned)
+    end
     if G.ladSaid ~= true and G.lad ~= nil then
       G.ladSaid = true
       local ref, rungs, first, p = G.lad.ref, G.lad.rungs, G.lad.first, G.lad.p
@@ -882,25 +911,79 @@ local function answered(r, id)
   return t
 end
 
+-- one cell of a csv row by its column name
+local function cell(row, cols, name)
+  local v = hfield(row, name)
+  if v ~= nil then return v end
+  local i = field(cols, name)
+  if i == nil then return nil end
+  v = field(row, i)
+  if v ~= nil then return v end
+  return field(row, tostring(i))
+end
+
+-- the first row one csv table holds
+local function rowread(t)
+  local csv = rawget(_G, "CSV")
+  local cols = hfield(t, "cols")
+  if type(cols) ~= "table" then return nil end
+  local file = nil
+  local gf = fn_of(csv, "GetFileName")
+  if gf ~= nil then
+    local ok, v = pcall(gf, t)
+    if ok then file = v end
+  end
+  if file == nil then file = hfield(t, "file") end
+  if file == nil then return nil end
+  local rf = fn_of(csv, "ReadRowWithFileAndColumns")
+  if rf ~= nil then
+    local ok, row = pcall(rf, file, 0, cols)
+    if ok and type(row) == "table" then return row end
+  end
+  local st = rawget(_G, "StringTable")
+  local lr = fn_of(st, "tablelookuprowwithcolumndata")
+  if lr ~= nil then
+    local ok, row = pcall(lr, file, 0, cols)
+    if ok and type(row) == "table" then return row end
+  end
+  local all = fn_of(st, "tablereadallrows")
+  if all == nil then return nil end
+  local ok, rows = pcall(all, file, cols)
+  if not ok or type(rows) ~= "table" then return nil end
+  local row = field(rows, 1)
+  if row == nil then row = field(rows, 0) end
+  if type(row) == "table" then return row end
+  return nil
+end
+
 -- the row the ladder thresholds sit on
 rowzero = function()
   if G.row ~= nil then return G.row end
-  local ch, st = rawget(_G, "Challenge"), rawget(_G, "StringTable")
+  local ch = rawget(_G, "Challenge")
   local fe, ft = fn_of(ch, "GetAEKindID"), fn_of(ch, "GetFileTableByType")
-  local lr = fn_of(st, "tablelookuprowwithcolumndata")
-  if fe == nil or ft == nil or lr == nil then return nil end
-  local okk, kind = pcall(fe, "ae_kind_zm_augment")
-  if not okk or kind == nil then return nil end
-  local okt, table2 = pcall(ft, kind)
-  if not okt or type(table2) ~= "table" then return nil end
-  local file, cols = hfield(table2, "file"), hfield(table2, "cols")
-  if file == nil or type(cols) ~= "table" then return nil end
-  local okr, row = pcall(lr, file, 0, cols)
-  if not okr or type(row) ~= "table" then return nil end
-  if type(hfield(row, "amount")) ~= "string" then return nil end
-  if type(hfield(row, "augment_unlocks")) ~= "string" then return nil end
-  G.row = row
-  return row
+  local tries = {}
+  if fe ~= nil and ft ~= nil then
+    local okk, kind = pcall(fe, "ae_kind_zm_augment")
+    if okk and kind ~= nil then
+      local okt, t = pcall(ft, kind)
+      if okt and type(t) == "table" then tries[#tries + 1] = t end
+    end
+  end
+  local csv = rawget(_G, "CSV")
+  local zt = type(csv) == "table" and field(csv, "zmaugmentsachievements") or nil
+  if type(zt) == "table" then tries[#tries + 1] = zt end
+  for i = 1, #tries do
+    local t = tries[i]
+    local cols = hfield(t, "cols")
+    local row = rowread(t)
+    if type(row) == "table" and type(cols) == "table"
+      and type(cell(row, cols, "amount")) == "string"
+      and type(cell(row, cols, "augment_unlocks")) == "string" then
+      G.row = row
+      return row
+    end
+  end
+  return nil
 end
 
 -- a pass that keeps the menu on the store
@@ -1086,18 +1169,6 @@ local function lk_say()
     G.lkMiss = true
     dp("augments locks missing")
   end
-end
-
--- the keys this vm keeps its members under
-local K = {}
-
--- a key filled once a table holds it
-local function kfill(tbl, hex, name)
-  local v = K[name]
-  if v ~= nil then return v end
-  v = key_hex(tbl, hex)
-  if v ~= nil then K[name] = v end
-  return v
 end
 
 -- puts the wrappers this vm can reach in place

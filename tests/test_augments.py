@@ -335,6 +335,12 @@ Game = {}
 BUNDLE = { ["#x053308f95ad2e716"] = "zm_augments_total_unlock_count" }
 Game[xhash("getactivegamemodescriptbundle")] = function() return BUNDLE end
 Challenge[xhash("getaeuserstatekey")] = function(field) return GKEYOBJ() end
+function BUNDLE_EMPTY() BUNDLE = {} end
+function BUNDLE_FILL() BUNDLE = { ["#x053308f95ad2e716"] = "zm_augments_total_unlock_count" } end
+function BKEYS() local n = 0; for _ in pairs(BUNDLE) do n = n + 1 end; return n end
+GATE_DECOY = 0
+Z[xhash("633a1942eeae0eaa")] = function() GATE_DECOY = GATE_DECOY + 1; return 0 end
+function DECOY() return GATE_DECOY end
 Z[HK("equipment_type")] = { [HK("none")] = 4294967295, [HK("perk")] = 2 }
 REPAINTS = 0
 EQUIP = {}
@@ -715,7 +721,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line, one ladder line and nothing else", len(l) == 3,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v9 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v10 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -1735,6 +1741,64 @@ def case_gate_row(lua51):
           val(r2, "COUNTED") in ("0", "0.0")
           and "augments gate owned=1 key=0#0x0A1B2C3D4E5F6071 fed=0 fn=1" in " ".join(lines_of(r2)),
           " | ".join([ln for ln in lines_of(r2) if "augments gate" in ln][:1]))
+    r3 = gate_rt("tok")
+    off(r3)
+    r3.execute("StringTable[xhash('tablelookuprowwithcolumndata')] = function() return nil end")
+    r3.execute("ROWS['aug.csv'] = { [1] = ROW0 }")
+    r3.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r3.execute("REFRESH(0)")
+    check("gate row: a failed row lookup falls back to the rows read",
+          val(r3, "COUNTED") in ("3", "3.0")
+          and val(r3, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
+          "counted=" + val(r3, "COUNTED"))
+    r4 = gate_rt("tok")
+    off(r4)
+    r4.execute("Challenge[xhash('GetFileTableByType')] = function() return nil end")
+    r4.execute("CSV.zmaugmentsachievements = { file = 'aug.csv',"
+               " cols = { id = 0, amount = 4, augment_unlocks = 16 } }")
+    r4.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r4.execute("REFRESH(0)")
+    check("gate row: no file table from the kind falls back to the csv table",
+          val(r4, "COUNTED") in ("3", "3.0")
+          and val(r4, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
+          "counted=" + val(r4, "COUNTED"))
+
+
+# --- 31: the key resolved on a later pass, the gate found by its printed hex --------------------
+def case_gate_late(lua51):
+    r = gate_rt("tok")
+    off(r)
+    r.execute("BUNDLE_EMPTY()")
+    check("gate late: the bundle is empty at arm", val(r, "BKEYS()") == "0", val(r, "BKEYS()"))
+    r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r.execute("REFRESH(0)")
+    check("gate late: an empty bundle leaves the key unresolved",
+          r.eval("ProgressionTuning.aug.ukey") is None and val(r, "COUNT_CALLS") == "0",
+          "ukey=%s calls=%s" % (r.eval("ProgressionTuning.aug.ukey"), val(r, "COUNT_CALLS")))
+    check("gate late: the first pass says the key was not there",
+          "augments gate owned=3 key=none fed=0 fn=0" in " ".join(lines_of(r)),
+          " | ".join([ln for ln in lines_of(r) if "augments gate" in ln][:1]))
+    r.execute("BUNDLE_FILL()")
+    r.execute("REFRESH(0)")
+    check("gate late: the key resolves on a later pass",
+          r.eval("ProgressionTuning.aug.ukey") is not None, "ukey=nil")
+    check("gate late: the native pass runs on that later pass",
+          val(r, "COUNTED") in ("3", "3.0") and val(r, "COUNT_CALLS") == "1",
+          "counted=%s calls=%s" % (val(r, "COUNTED"), val(r, "COUNT_CALLS")))
+    check("gate late: quick revive opens at three owned",
+          val(r, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
+          val(r, "FIELD('specialty_quickrevive','isUnlocked')"))
+    check("gate late: the diag names the key, the feed and the pass",
+          "augments gate owned=3 key=0#0x0A1B2C3D4E5F6071 fed=1 fn=1 qr=true" in " ".join(lines_of(r)),
+          " | ".join([ln for ln in lines_of(r) if "augments gate" in ln][-1:]))
+    check("gate late: the answer is matched by the printed key, not the object",
+          val(r, "ProgressionTuning.aug.ukey == GATE_KEY") == "False",
+          val(r, "ProgressionTuning.aug.ukey == GATE_KEY"))
+    check("gate late: the function under the xhash of the hex is never used",
+          val(r, "DECOY()") == "0", "decoy=" + val(r, "DECOY()"))
+    r.execute("REFRESH(0)")
+    check("gate late: a held count is not fed again", val(r, "COUNT_CALLS") == "1",
+          val(r, "COUNT_CALLS"))
 
 
 def case_file():
@@ -1788,7 +1852,7 @@ def main():
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
                  case_popup_on, case_popup_match, case_popup_late, case_twin, case_twin_popup,
                  case_twin_on, case_ladder_active, case_gate, case_gate_on, case_gate_order,
-                 case_gate_row, case_missing):
+                 case_gate_row, case_gate_late, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)
