@@ -17,6 +17,33 @@ Two pieces, and you generally want both:
 Without the hook the mod still arms and draws what the client itself published; without the mod the hook pays XP
 and nothing on screen says so.
 
+## Feature List
+
+|Type|Feature/Action|
+|---|---|
+|General|Weapon XP progression; leveling up rate is decreased to match the vanilla experience. Dynamic dampening is working as per vanilla. DLL is used to read the weapon XP correctly as default Kronos sets this manually|
+|General|Restored pop up splashes related to Weapon Levels, Reticles, Daily/Weekly/Career/Dark Ops challenge completions, Armory unlocks, (Zombies) Augments research|
+|General|Camo tracking; Progression related camos are locked behind their requirements. Same for prestige camos|
+|General|Attachment Locking/Unlocking; Attachments associated with Prestige are locked as expected until Prestiged. Armory attachments are locked if 'Unlock Armory' is off and not earned. Seasonal weapons attachments are also fixed|
+|General| Base Bo7 Weapons now follow the operator level before unlocking|
+|General|Restored general career challenge tracking across all modes; Career tab no longer shows 100% and follows your progress based on events received in game. Unlocks held behind challenges are also locked until the challenge is completed|
+|General|Locked down calling cards; All calling cards related to progression are now locked until the challenge is completed; any calling card with no pursuitable progression is left unlocked (Ranked Play)|
+|General|Fixed the weekly challenge menu; accessing it no longer kicks you out and allows you to view and complete S6 Weeks 1-4 challenges.|
+|General|Fixed Armory; you can now select and earn related armory unlocks for previous seasonal weapons, attachments, field upgrades, and etc. Also has some stuff related to endgame!|
+|General|Restored Double XP/Double Weapon XP functionality; You can set tokens you want manually via Debug Options, or 'Enable Double XP' which enables permanent event mode across all modes (also the tokens count down when actively playing, not paused (solo) or in pre game lobby. Currently no way to earn them however|
+|General|Fixed Operator Skins across Zombies, Multiplayer, and Endgame. Until related events (challenges) are not completed, related skins will stay locked|
+|Zombies|Fixed Augment Research; you can now select which augments you want to research before starting a game and all banked XP will go towards unlocking augments selected. Also shows a completion popup when achieved and automatically ticks over to the next augment in line as per vanilla game. Can be toggled off via Debug Settings as per default Kronos|
+|Zombies|Pause menu widgets are no longer frozen, now shows **live** progress towards challenges, camos, and armory so you are updated as soon as you work towards stuff| 
+|Zombies|Completing the Super Easter Egg now plays the games default popups and splashes, and unlocks Memento Mori across all story characters, aswell as the default Warden skin|
+|Multiplayer|Fixed One Hit Kill camo tracking for snipers|
+
+## Known Issues
+- XP awards for all challenges are not yet earnable
+- Bo6 weapons and operators are exempt from most functions here. They cannot be levelled up and you cannot unlock camos for them. Operators stay unlocked if enabled
+- 'Permanently unlocked by prestige' still shows even on things that are locked
+- Some MP diamond/mastery camo rows are blocked by missing events
+- Armory earning is not fully tested, simulated with a reduced XP requirement and working end to end. 
+
 ## Requirements
 
 - Call of Duty: Black Ops 7 (2025), Zombies mode, on the **Kronos** client.
