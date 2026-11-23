@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 282876
-SHIP_LUA_SHA = "E4C248FE8FF0780800B730FC35EDFE59293B334E43B4222C9B8FBC6F2DA19C40"
-LITERAL_SHA = "D086D352C6E379809E4F3E07D7271C16F82B8B3A7C8815CF6232CFBA23003075"
+SHIP_LUA_LEN = 286485
+SHIP_LUA_SHA = "7FA0B2B1289F8B91DA72B8FFF553313D85CD0D0B21A04E8B1273E69CF5E4D629"
+LITERAL_SHA = "BFCF8DFDB7534B2C12B5F1E8015954A8A4BB379F4A2B554D528FA4A80909DA55"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -6463,6 +6463,58 @@ function SET_CHAL_PROGRESS(id, v) OC[tostring(id)] = { xp = v, rank = 0 } end
 
 AUGFIX = r"""
 LOOT[xhash("getitemimagebyid")] = function(id) return "ui_icon_zm_augment_" .. tostring(id) end
+AUGLOC = {}
+function AUG_SAY(k, v) AUGLOC[k] = v end
+function AUG_FORGET(k) AUGLOC[k] = nil end
+Engine[xhash("Localize")] = function(k, a, b, c)
+  local key = tostring(k)
+  local h = string.match(key, "^#x(%x+)$")
+  if h ~= nil then key = "0x" .. h end
+  local v = AUGLOC[key]
+  if v == nil then return key end
+  if a ~= nil then
+    v = string.gsub(v, "&&1", tostring(a))
+    v = string.gsub(v, "&&2", tostring(b))
+    v = string.gsub(v, "&&3", tostring(c))
+  end
+  return v
+end
+Engine[xhash("ToUpperCase")] = function(s) return string.upper(tostring(s)) end
+ZMAUGMENT = {}
+function AUG_STORE(ref, loot, dn, major, et)
+  local all = ZMAUGMENT[xhash("augmentlist_full")]
+  if all == nil then all = {}; ZMAUGMENT[xhash("augmentlist_full")] = all end
+  if all[ref] == nil then all[ref] = {} end
+  table.insert(all[ref], { lootid = loot, displayname = dn, type = major, equipmenttype = et })
+end
+PERK = {}
+AUGPK = {}
+function AUG_PERK(ref, key) AUGPK[ref] = key end
+PERK[xhash("GetBundleByRef")] = function(ref)
+  local k = AUGPK[ref]
+  if k == nil then return nil end
+  return { name = k }
+end
+PERK[xhash("GetName")] = function(b)
+  if type(b) ~= "table" then return "" end
+  return Engine[xhash("Localize")](b.name)
+end
+SUPER = {}
+AUGSK = {}
+function AUG_SUPER(ref, key) AUGSK[ref] = key end
+SUPER[xhash("GetName")] = function(ref)
+  local k = AUGSK[ref]
+  if k == nil then return "" end
+  return Engine[xhash("Localize")](k)
+end
+AMMOK = {}
+function AUG_AMMO(ref, key) AMMOK[ref] = key end
+ZMAUGMENT.ammomod = {}
+ZMAUGMENT.ammomod[xhash("getnamefromlootref")] = function(ref)
+  local k = AMMOK[ref]
+  if k == nil then return "" end
+  return Engine[xhash("Localize")](k)
+end
 function AUG_QUEUE(list)
   local S = rawget(_G, "ProgressionTuning")
   S.aug = S.aug or {}
@@ -6495,12 +6547,12 @@ def augment_card(lua51):
     check("augcard: the card asks the augment research splash type",
           rt.eval("AUG_OPTS('displayLocation')") == "zmAugmentResearchComplete",
           str(rt.eval("AUG_OPTS('displayLocation')")))
-    check("augcard: the card carries the node's own image and name",
+    check("augcard: a rung with no augment cache entry keeps the image and sends no body",
           rt.eval("AUG_OPTS('icon')") == "ui_icon_zm_augment_801"
-          and rt.eval("AUG_OPTS('bodyText')") == "ITEM 801",
+          and rt.eval("AUG_OPTS('bodyText')") is None,
           "%s / %s" % (rt.eval("AUG_OPTS('icon')"), rt.eval("AUG_OPTS('bodyText')")))
-    check("augcard: one line names the ref, the tier and the draw",
-          has_line(lines_of(rt), "splash augment card ref=sat_aug_one tier=1 drawn=true"),
+    check("augcard: one line names the ref, the tier, the draw and the body source",
+          has_line(lines_of(rt), "splash augment card ref=sat_aug_one tier=1 drawn=true bodytext=none"),
           " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
     check("augcard: the entry leaves the queue", rt.eval("AUG_LEFT()") == 0,
           str(rt.eval("AUG_LEFT()")))
@@ -6518,9 +6570,67 @@ def augment_card(lua51):
           "%s / %s" % (rt.eval("EVENTS[1].options.icon"), rt.eval("EVENTS[2].options.icon")))
     got = [ln for ln in lines_of(rt) if "splash augment card ref=sat_aug_one" in ln][-2:]
     check("augcard: two lines, one per tier",
-          len(got) == 2 and got[0].endswith("tier=1 drawn=true")
-          and got[1].endswith("tier=2 drawn=true"),
+          len(got) == 2 and got[0].endswith("tier=1 drawn=true bodytext=none")
+          and got[1].endswith("tier=2 drawn=true bodytext=none"),
           " | ".join(got))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_SAY('0x5c1477471a9cb470', 'Major Perk Augment')")
+    rt.execute("AUG_SAY('0x52b8137a3f837c3c', 'Minor Perk Augment')")
+    rt.execute("AUG_SAY('zm_sat_augment/name_staminup_freefaller', 'Free Faller')")
+    rt.execute("AUG_SAY('zombie_perks/staminup', 'Stamin-Up')")
+    rt.execute("AUG_PERK('specialty_staminup', 'zombie_perks/staminup')")
+    rt.execute("AUG_STORE('specialty_staminup', 57731, '&zm_sat_augment/name_staminup_freefaller', true, 0)")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57731 } })")
+    pump(rt, 40)
+    check("augcard: the major perk card carries the sentence its pieces build",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up ",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: the line says the sentence was built",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=built"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_SAY('0x326c9afbe733968d', 'Unlocked &&1 ^3^B&&2 ^R ^7for &&3 ')")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57731 } })")
+    pump(rt, 40)
+    check("augcard: the template key answers the sentence itself",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up ",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: the line says the sentence came from the game's own key",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=native"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_FORGET('0x326c9afbe733968d')")
+    rt.execute("AUG_SAY('zm_sat_augment/name_cryofreeze_extension', 'Extension')")
+    rt.execute("AUG_SAY('shared_hintstrings/ammomod_cryofreeze', 'Cryo Freeze')")
+    rt.execute("AUG_AMMO('zm_t10_ammomod_cryofreeze', 'shared_hintstrings/ammomod_cryofreeze')")
+    rt.execute("AUG_STORE('zm_t10_ammomod_cryofreeze', 57696,"
+               " '&zm_sat_augment/name_cryofreeze_extension', false, 1)")
+    rt.execute("AUG_QUEUE({ { sat = 55588, tier = 1, ref = 'zm_t10_ammomod_cryofreeze', loot = 57696 } })")
+    pump(rt, 40)
+    check("augcard: a minor ammo mod card names the ammo mod last",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Minor Perk Augment ^3^BEXTENSION ^R ^7for Cryo Freeze ",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_SAY('zm_sat_augment/name_energymine_frequencyboost', 'Frequency Boost')")
+    rt.execute("AUG_SAY('super_zm/energy_mine', 'Energy Mine')")
+    rt.execute("AUG_SUPER('super_energy_mine', 'super_zm/energy_mine')")
+    rt.execute("AUG_STORE('super_energy_mine', 71055,"
+               " '&zm_sat_augment/name_energymine_frequencyboost', true, 2)")
+    rt.execute("AUG_QUEUE({ { sat = 55552, tier = 1, ref = 'super_energy_mine', loot = 71055 } })")
+    pump(rt, 40)
+    check("augcard: a field upgrade card names the field upgrade last",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREQUENCY BOOST ^R ^7for Energy Mine ",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
 
     rm = new_rt(lua51, src=False, frontend=True)
     rm.execute(AUGFIX)

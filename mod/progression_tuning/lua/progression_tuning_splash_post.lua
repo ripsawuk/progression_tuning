@@ -675,27 +675,137 @@ local function in_match()
   return v ~= true
 end
 
--- the augment name one loot id answers
-local function aug_name(loot)
-  local nm = call(rawget(_G, "LOOT"), "getitemnamebyid", loot, true)
-  if empty(nm) or keyish(nm) then return nil end
-  return nm
+-- the equipment type numbers the augment list carries
+local ET_PERK, ET_AMMO, ET_FIELD = 0, 1, 2
+-- the two type keys the sentence opens with
+local AUG_MAJOR = { "#x5c1477471a9cb470", "0x5c1477471a9cb470" }
+local AUG_MINOR = { "#x52b8137a3f837c3c", "0x52b8137a3f837c3c" }
+-- the sentence key the research card asks for
+local AUG_TEXT = { "#x326c9afbe733968d", "0x326c9afbe733968d" }
+
+-- the text one hash key answers
+local function hash_text(loc, forms)
+  local i = 1
+  while i <= #forms do
+    local ok, v = pcall(loc, forms[i])
+    if ok and not empty(v) and not keyish(v) then return v end
+    i = i + 1
+  end
+  return nil
+end
+
+-- the augment entry one rung loot id names
+local function aug_entry(ref, loot)
+  local want = tonumber(loot)
+  if want == nil then return nil, nil end
+  local _, all = member(rawget(_G, "ZMAUGMENT"), "augmentlist_full")
+  if type(all) ~= "table" then return nil, nil end
+  local function scan(list)
+    if type(list) ~= "table" then return nil end
+    local i = 1
+    while i <= #list do
+      local e = list[i]
+      if type(e) == "table" then
+        local _, id = member(e, "lootid")
+        if tonumber(id) == want then return e end
+      end
+      i = i + 1
+    end
+    return nil
+  end
+  if type(ref) == "string" then
+    local _, one = member(all, ref)
+    local e = scan(one)
+    if e ~= nil then return ref, e end
+  end
+  for r, one in pairs(all) do
+    local e = scan(one)
+    if e ~= nil then return r, e end
+  end
+  return nil, nil
+end
+
+-- the equipment name the card names last
+local function aug_equip(ref, et)
+  local name = nil
+  if et == ET_FIELD then
+    name = call(rawget(_G, "SUPER"), "GetName", ref)
+  elseif et == ET_AMMO then
+    local _, am = member(rawget(_G, "ZMAUGMENT"), "ammomod")
+    name = call(am, "getnamefromlootref", ref)
+  elseif et == ET_PERK then
+    local P = rawget(_G, "PERK")
+    name = call(P, "GetName", call(P, "GetBundleByRef", ref))
+  end
+  if empty(name) or keyish(name) then return nil end
+  return name
+end
+
+-- the augment name the card upper cases
+local function aug_upper(loc, up, dn)
+  if type(dn) ~= "string" or dn == "" or up == nil then return nil end
+  local ok, v = pcall(loc, (string.gsub(dn, "^&", "")))
+  if not ok or empty(v) or keyish(v) then return nil end
+  local oku, w = pcall(up, v)
+  if not oku or type(w) ~= "string" or w == "" then return nil end
+  return w
+end
+
+-- the sentence the game own template answers
+local function aug_native(loc, kind, name, equip)
+  local i = 1
+  while i <= #AUG_TEXT do
+    local ok, v = pcall(loc, AUG_TEXT[i], kind, name, equip)
+    if ok and not empty(v) and not keyish(v)
+      and string.find(v, name, 1, true) ~= nil and string.find(v, equip, 1, true) ~= nil
+      and string.find(v, "&&", 1, true) == nil then
+      return v
+    end
+    i = i + 1
+  end
+  return nil
+end
+
+-- the sentence the template carries
+local function aug_built(kind, name, equip)
+  return "Unlocked " .. kind .. " ^3^B" .. name .. " ^R ^7for " .. equip .. " "
+end
+
+-- the card body text and how it was reached
+local function aug_body(e)
+  local loc = fn_of(rawget(_G, "Engine"), "Localize")
+  local up = fn_of(rawget(_G, "Engine"), "ToUpperCase")
+  if loc == nil then return nil, "none" end
+  local ref, entry = aug_entry(e.ref, e.loot)
+  if entry == nil then return nil, "none" end
+  local _, dn = member(entry, "displayname")
+  local name = aug_upper(loc, up, dn)
+  if name == nil then return nil, "none" end
+  local _, et = member(entry, "equipmenttype")
+  local equip = aug_equip(ref, tonumber(et))
+  if equip == nil then return nil, "none" end
+  local _, major = member(entry, "type")
+  local kind = hash_text(loc, major and AUG_MAJOR or AUG_MINOR)
+  if kind == nil then return nil, "none" end
+  local v = aug_native(loc, kind, name, equip)
+  if v ~= nil then return v, "native" end
+  return aug_built(kind, name, equip), "built"
 end
 
 -- draws one augment research completion
 local function aug_show(e)
-  local LOOT = rawget(_G, "LOOT")
-  local image = call(LOOT, "getitemimagebyid", e.loot)
-  local name = aug_name(e.loot)
+  local image = call(rawget(_G, "LOOT"), "getitemimagebyid", e.loot)
+  local body, how = aug_body(e)
   local opts = { controllerIndex = 0, displayLocation = "zmAugmentResearchComplete" }
   if not empty(image) and image ~= "white" then opts.icon = image end
-  if name ~= nil then opts.bodyText = name end
+  if body ~= nil then opts.bodyText = body end
+  local line = "splash augment card ref=" .. tostring(e.ref) .. " tier=" .. tostring(e.tier)
   local ok, err = fire({ name = "add_message_splash_manager", immediate = true, options = opts })
   if ok then
     LAST = { kind = "aug", id = e.loot }
-    log("splash augment card ref=" .. tostring(e.ref) .. " tier=" .. tostring(e.tier) .. " drawn=true")
+    log(line .. " drawn=true bodytext=" .. how)
   else
-    log("splash augment card ref=" .. tostring(e.ref) .. " tier=" .. tostring(e.tier) .. " drawn=false")
+    log(line .. " drawn=false bodytext=" .. how)
     if said("augerr:" .. tostring(e.ref) .. ":" .. tostring(e.tier)) then
       vlog("augment card refused at dispatch: " .. clip(err, 50))
     end
