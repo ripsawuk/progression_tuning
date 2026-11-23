@@ -12,8 +12,10 @@ local K_SLOTS = "bd666394faa4374c"
 local K_SEND = "e636d3bf423fd414"
 -- the progress read the menu asks
 local K_PROG = "31eee6570ef4bb8b"
--- the one call user state reader
-local K_USV = "a82011d283698aa4"
+-- the gamemode field the gate reads
+local K_BUNDLE = "053308f95ad2e716"
+-- the native list repaint
+local K_REPAINT = "236a81b14f8791e4"
 -- the dev bool the tier code reads
 local DEV = "d428ffe65b5694d6"
 -- the two switches that want a full house
@@ -27,7 +29,7 @@ local SLOTS = 9
 -- a weight the fill guard computes to dark
 local DARK = 0.001
 
-local VERSION = "v8"
+local VERSION = "v9"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -42,7 +44,7 @@ S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
   active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
-  cards = {}, restored = false, lkOn = false, lkMiss = false }
+  cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gask = nil, gkey = nil }
 S.aug = G
 
 -- says a thing once
@@ -392,6 +394,9 @@ local rowzero
 -- the vm this part runs in
 local front
 
+-- the switch state the lock rule reads
+local hon
+
 -- writes the research flag the game reads
 local function flag(store, done)
   for ref, ok in pairs(done) do
@@ -430,25 +435,96 @@ local function clearall(c, Z, store, done)
   end
 end
 
--- the count the native ladder pass reads
-local function feed(c, count)
+-- the key the native gate asks for
+local function gatekey()
+  local fb = fn_of(rawget(_G, "Game"), "getactivegamemodescriptbundle")
+  local fk = fn_of(rawget(_G, "Challenge"), "getaeuserstatekey")
+  if fb == nil or fk == nil then return nil end
+  local okb, b = pcall(fb)
+  if not okb or type(b) ~= "table" then return nil end
+  local k = key_hex(b, K_BUNDLE)
+  if k == nil then return nil end
+  local okf, fld = pcall(function() return b[k] end)
+  if not okf or fld == nil then return nil end
+  local okk, key = pcall(fk, fld)
+  if not okk or key == nil then return nil end
+  return key
+end
+
+-- the count the native gate asks for
+local function uanswer(ctx)
+  local c = type(ctx) == "table" and ctx.c or nil
+  if c == nil then c = G.c end
+  G.gask = true
+  if type(ctx) == "table" and ctx.key ~= nil then G.gkey = ctx.key end
+  if hon() ~= false then return nil end
   local Z = rawget(_G, "ZMAUGMENT")
-  local kc = key_hex(Z, K_COUNT)
-  if kc == nil then return false end
-  local f = field(Z, kc)
+  if type(Z) ~= "table" then return nil end
+  local store, cache = field(Z, key_hex(Z, K_STORE)), cache_of(Z)
+  if type(store) ~= "table" or type(cache) ~= "table" then return nil end
+  return ticks(c, store, cache, map_of(Z), true)
+end
+
+-- registers the gate key once
+local function ureg()
+  local U = S.userstate
+  if type(U) ~= "table" then
+    U = { answer = {} }
+    S.userstate = U
+  end
+  if type(U.answer) ~= "table" then U.answer = {} end
+  if G.ukey ~= nil and U.answer[G.ukey] == uanswer then return G.ukey end
+  local key = gatekey()
+  if key == nil then return nil end
+  U.answer[key] = uanswer
+  G.ukey = key
+  return key
+end
+
+-- the quick revive gate field
+local function qrword()
+  local Z = rawget(_G, "ZMAUGMENT")
+  local e = field(field(Z, key_hex(Z, K_STORE)), ref_of(map_of(Z), 55407))
+  local v = hfield(e, "isUnlocked")
+  if v == nil then return "nil" end
+  return tostring(v)
+end
+
+-- the native gate pass on its own row
+local function gatepass(c, row)
+  local Z = rawget(_G, "ZMAUGMENT")
+  local f = key_hex(Z, K_COUNT)
+  f = f ~= nil and field(Z, f) or nil
   if type(f) ~= "function" then return false end
+  return pcall(f, c, row) == true
+end
+
+-- the native list repaint
+local function repaint(c)
+  local Z = rawget(_G, "ZMAUGMENT")
+  local f = key_hex(Z, K_REPAINT)
+  f = f ~= nil and field(Z, f) or nil
+  if type(f) ~= "function" then return false end
+  local ty = hfield(hfield(Z, "equipment_type"), "none")
+  if ty == nil then return false end
+  return pcall(f, c, ty) == true
+end
+
+-- the gate pass and the list repaint
+local function gate(c, owned)
+  local key = ureg()
+  G.gask, G.gkey = nil, nil
   local row = rowzero()
-  if row == nil then return false end
-  local OP = rawget(_G, "OnlineProgression")
-  local ku, cur = slot_of(OP, "getuserstatesvalues")
-  local kh = key_hex(OP, K_USV)
-  if kh ~= nil then ku, cur = kh, field(OP, kh) end
-  if type(cur) ~= "function" or ku == nil then return false end
-  local one = function() return setmetatable({}, { __index = function() return count end }) end
-  if not pcall(function() OP[ku] = one end) then return false end
-  local ok = pcall(f, c, row)
-  if field(OP, ku) == one then pcall(function() OP[ku] = cur end) end
-  return ok
+  if row == nil then
+    dp("augments gate owned=" .. owned .. " key=none fed=0 fn=0 qr=" .. qrword())
+    return
+  end
+  local ok = gatepass(c, row)
+  local fed = (G.gask == true) and 1 or 0
+  local asked = G.gkey or key
+  repaint(c)
+  dp("augments gate owned=" .. owned .. " key=" .. tostring(asked or "none")
+    .. " fed=" .. fed .. " fn=" .. (ok and 1 or 0) .. " qr=" .. qrword())
 end
 
 -- every panel slot follows the tier
@@ -543,11 +619,12 @@ local function whole(c)
     alias(cache)
     owned, tiers, rows, items, done = ticks(c, store, cache, map_of(Z))
   end)
+  local prev = G.owned
   G.tier, G.rows, G.owned, G.ix = tiers, rows, owned, items
   if rows > 0 then
     pcall(flag, store, done)
     if front() ~= false then pcall(clearall, c, Z, store, done) end
-    feed(c, owned)
+    if owned ~= prev then pcall(gate, c, owned) end
     if G.ladSaid ~= true and G.lad ~= nil then
       G.ladSaid = true
       local ref, rungs, first, p = G.lad.ref, G.lad.rungs, G.lad.first, G.lad.p
@@ -837,6 +914,7 @@ pass = function(c)
   if G.sat == nil or G.sat < 1 or front() == true then pcall(seed) end
   local n = 0
   if not on then
+    pcall(ureg)
     n = whole(c)
   else
     local okm, m = pcall(idmap, c)
@@ -918,7 +996,7 @@ local function onread(orig)
 end
 
 -- the switch state the lock rule reads
-local function hon()
+hon = function()
   if G.on ~= nil then return G.on end
   local one, two = dv(DV_ONE), dv(DV_TWO)
   if one == nil or two == nil then return nil end

@@ -309,6 +309,52 @@ local function reader()
   return k, f
 end
 
+-- the registry other parts answer through
+local U = S.userstate
+if type(U) ~= "table" then
+  U = { answer = {} }
+  S.userstate = U
+end
+if type(U.answer) ~= "table" then U.answer = {} end
+
+-- one key in its printed form
+local function kform(k)
+  local ok, s = pcall(tostring, k)
+  if not ok or type(s) ~= "string" then return nil end
+  local h = string.match(s, "#x(%x+)")
+  if h ~= nil then return "0x" .. string.lower(h) end
+  return string.lower(s)
+end
+
+-- the registered answer for one asked key
+local function ufind(k)
+  for rk, f in pairs(U.answer) do
+    if type(f) == "function" then
+      if rk == k then return f end
+      local a, b = kform(rk), kform(k)
+      if a ~= nil and a == b then return f end
+    end
+  end
+  return nil
+end
+
+-- fills the registered keys the read left out
+local function ustate(res, keys, c, own)
+  for k, v in pairs(keys) do
+    local ask = v
+    if ask == nil or type(ask) == "boolean" then ask = k end
+    local f = ufind(ask)
+    if f ~= nil and not (type(own) == "table" and own[ask] == true) then
+      local ok, val = pcall(f, { c = c, key = ask })
+      if ok and val ~= nil then
+        if type(res) ~= "table" then res = {} end
+        res[ask] = val
+      end
+    end
+  end
+  return res
+end
+
 -- fills the two end times the menu reads
 local function wrap_end()
   if T.p3 then return true end
@@ -323,17 +369,20 @@ local function wrap_end()
     if type(keys) ~= "table" then return res end
     local p, sec = remain()
     local now = utc()
+    local own = {}
     if now ~= nil then
       if p > 0 and wants(keys, DX_P) then
         if type(res) ~= "table" then res = {} end
         res[DX_P] = math.floor((now + p) * 1000)
+        own[DX_P] = true
       end
       if sec > 0 and wants(keys, DX_W) then
         if type(res) ~= "table" then res = {} end
         res[DX_W] = math.floor((now + sec) * 1000)
+        own[DX_W] = true
       end
     end
-    return res
+    return ustate(res, keys, c, own)
   end
   if not pcall(function() OP[k] = w end) then
     if said("p3set") then log("tokens P3 wrap=0") end

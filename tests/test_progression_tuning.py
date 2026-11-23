@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 290031
-SHIP_LUA_SHA = "6828BCBB45B806753321B9B90FE064381AD1F933DD57965EACE42BD5C3790F04"
-LITERAL_SHA = "24A450B55C2472F2496CE76F9D77E3329C3D6651B3A5761EB17FFB03D748CBBF"
+SHIP_LUA_LEN = 291361
+SHIP_LUA_SHA = "40E13510EF9406903F91511072C0459820BA89563BC31997A26EB062CF7B267C"
+LITERAL_SHA = "711D70CF1939A3F61137AAAD4FC050F14BDE56F7066C45B63E6653DA1C9ED36B"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1106,6 +1106,7 @@ LITERAL_ADDED = [
     " 131708 b=",
     " agree=",
     " aliases=",
+    "0x",
     "answer",
     "armory card ",
     "armory late ",
@@ -1128,6 +1129,7 @@ LITERAL_ADDED = [
     " computed and it keeps the client's own answer",
     " craft=",
     " card=",
+    "boolean",
     "craft",
     " csv=",
     " ctl=",
@@ -9897,6 +9899,88 @@ def options_layers(lua51):
           [b.split(",") for b in builds] == [buried] * 3, " | ".join(builds))
 
 
+TOKREG_FIX = r"""
+ProgressionTuning = { parts = {}, hooks = {}, probes = {}, api = {}, g11 = {}, scope = {} }
+ProgressionTuning.api.log = function(s) DebugPrint(s) end
+ProgressionTuning.api.clip = function(v, n)
+  local s = tostring(v)
+  if n ~= nil and #s > n then return string.sub(s, 1, n) end
+  return s
+end
+ProgressionTuning.api.dv = function(name) return Dvar[xhash("GetDvarString")](xhashdvar(name)) end
+ProgressionTuning.api.empty = function(v) return v == nil or v == "" end
+ProgressionTuning.api.fn_of = function(t, name)
+  local v = t and t[xhash(name)]
+  if type(v) == "function" then return v end
+end
+ProgressionTuning.api.member = function(t, name)
+  local k = xhash(name)
+  if t and t[k] ~= nil then return k, t[k] end
+end
+SAIDK = {}
+ProgressionTuning.api.said = function(k)
+  if SAIDK[k] then return false end
+  SAIDK[k] = true
+  return true
+end
+Engine[xhash("GetMilliseconds")] = function() return 0 end
+Engine[xhash("IsPaused")] = function() return false end
+Engine[xhash("GetCurrentEpochTime")] = function() return 1700000000 end
+OnlineProgression = {}
+USV_ORIG = function(c, keys) return { a = 1, b = 2 } end
+OnlineProgression[xhash("getuserstatesvalues")] = USV_ORIG
+function ASK(...)
+  local t = {}
+  for i = 1, select("#", ...) do t[i] = select(i, ...) end
+  return OnlineProgression[xhash("getuserstatesvalues")](0, t)
+end
+function SER(t)
+  if type(t) ~= "table" then return "nil" end
+  local ks = {}
+  for k in pairs(t) do ks[#ks + 1] = tostring(k) end
+  table.sort(ks)
+  local out = {}
+  for i = 1, #ks do out[i] = ks[i] .. "=" .. tostring(t[ks[i]]) end
+  return table.concat(out, ";")
+end
+"""
+
+
+def userstate_registry(lua51):
+    """The user state registry: empty means untouched, a hit fills one asked key."""
+    rt = lua51(unpack_returned_tuples=True)
+    rt.execute(PRELUDE)
+    rt.execute("FRONTEND = false")
+    rt.execute(TOKREG_FIX)
+    rt.execute(LUA_TEXT[TOKENS])
+
+    def sv(expr):
+        v = rt.eval(expr)
+        return None if v is None else str(v)
+
+    check("userstate: the token part wraps the one reader",
+          count_line(lines_of(rt), "tokens P3 wrap=1") == 1,
+          " | ".join(lines_of(rt)[:3]))
+    check("userstate: an empty registry leaves the answer byte for byte",
+          sv("SER(ASK('a','b'))") == sv("SER(USV_ORIG(0, {'a','b'}))"),
+          sv("SER(ASK('a','b'))"))
+    rt.execute("ProgressionTuning.userstate.answer['K'] = function(ctx) return 7 end")
+    check("userstate: a registered key is filled and the rest is untouched",
+          sv("SER(ASK('K','a'))") == "K=7;a=1;b=2", sv("SER(ASK('K','a'))"))
+    check("userstate: a key nobody asked for is not filled",
+          "K=" not in sv("SER(ASK('a'))"), sv("SER(ASK('a'))"))
+    rt.execute("ProgressionTuning.userstate.answer['N'] = function(ctx) return nil end")
+    check("userstate: an answer of nil adds nothing",
+          sv("SER(ASK('N','a'))") == "a=1;b=2", sv("SER(ASK('N','a'))"))
+    rt.execute('SET_DVAR("pt_tokens_ch", "p=600;w=0;n=5;c=0,0,0,0,0,0,0,0;x=0")')
+    rt.execute("ProgressionTuning.userstate.answer['cer__doublexp__player_xp_end_time'] = "
+               "function(ctx) return 999 end")
+    want = "a=1;b=2;cer__doublexp__player_xp_end_time=%d" % ((1700000000 + 600) * 1000)
+    check("userstate: the token part's own answer stands over the registry",
+          sv("SER(ASK('cer__doublexp__player_xp_end_time'))") == want,
+          sv("SER(ASK('cer__doublexp__player_xp_end_time'))"))
+
+
 def tokens_channel(lua51):
     """The token channel: what it reads, what it writes and what another vm's write does."""
     full = "p=600;w=1200;n=42;c=1,2,3,4,5,6,7,8;x=1"
@@ -12800,6 +12884,7 @@ def main():
             options_rows(lua51)
             options_layers(lua51)
             unlock_row(lua51)
+            userstate_registry(lua51)
             tokens_channel(lua51)
             armory_gate(lua51)
             armory_pick(lua51)

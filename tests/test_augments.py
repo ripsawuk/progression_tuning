@@ -80,6 +80,7 @@ from test_progression_tuning import PRELUDE, count_line, has_line, lines_of, pum
 
 LUA_DIR = os.path.join(ROOT, "mod", "progression_tuning", "lua")
 PART = os.path.join(LUA_DIR, "progression_tuning_augments_post.lua")
+TOKENS_PART = os.path.join(LUA_DIR, "progression_tuning_tokens_post.lua")
 PKG = ROOT
 
 passes, failures, infos = [], [], []
@@ -103,6 +104,8 @@ def info(msg):
 with open(PART, "rb") as fh:
     RAW = fh.read()
 SRC = RAW.decode("utf-8")
+with open(TOKENS_PART, "rb") as fh:
+    TOKENS_SRC = fh.read().decode("utf-8")
 
 # the members the part reaches by hash, the way the engine hands them out
 ZMFIX = r"""
@@ -113,7 +116,8 @@ COUNT_K = "#x0633a1942eeae0eaa"
 SLOTS_K = "#x0bd666394faa4374c"
 SEND_K = "#x0e636d3bf423fd414"
 PROG_K = "#x031eee6570ef4bb8b"
-USV_K = "#x0a82011d283698aa4"
+USV_K = xhash("getuserstatesvalues")
+REPAINT_K = "#x0236a81b14f8791e4"
 DEV_K = setmetatable({}, { __tostring = function() return "xhash: #x1d428ffe65b5694d6" end })
 DEVON = false
 AID = 40001
@@ -123,9 +127,13 @@ CID_B = 48303
 STATE_IP = 1
 PROG = { [tostring(AID)] = 0, [tostring(BID)] = 0 }
 STATE = { [tostring(AID)] = STATE_IP, [tostring(BID)] = STATE_IP }
+PROGREADS = 0
 function SET_PROG(id, v) PROG[tostring(id)] = v end
 local function HK(n) return xhash(n) end
-Challenge[HK("getchallengeprogress")] = function(c, id) return PROG[tostring(id)] or 0 end
+Challenge[HK("getchallengeprogress")] = function(c, id)
+  PROGREADS = PROGREADS + 1
+  return PROG[tostring(id)] or 0
+end
 Challenge[HK("getaeeventid")] = function(name) return 846 end
 Challenge[HK("GetAEEventKeyID")] = function(name, key) return 74 end
 Challenge[HK("GetAEKindID")] = function(name) return 437 end
@@ -133,7 +141,7 @@ Challenge[HK("GetFileTableByType")] = function(kind)
   return { [HK("file")] = "aug.csv", [HK("cols")] = { [0] = "id" } }
 end
 StringTable = StringTable or {}
-ROW0 = { [HK("amount")] = "0|3|6", [HK("augment_unlocks")] = "7001+7002|7003|7004" }
+ROW0 = { [HK("amount")] = "0|3|6", [HK("augment_unlocks")] = "7003|7001+7002+55407|7004" }
 StringTable[HK("tablelookuprowwithcolumndata")] = function(file, row, cols) return ROW0 end
 Dvar[HK("GetDvarBool")] = function(k, d)
   if k == DEV_K then return DEVON end
@@ -150,9 +158,11 @@ local function rows(base)
            currentTier = 3, isUnlocked = true, amountNeededToUnlock = "0" }
 end
 Z = {}
-Z[STORE_K] = { sat_aug_one = rows(801), sat_aug_two = rows(901) }
+Z[STORE_K] = { sat_aug_one = rows(801), sat_aug_two = rows(901), specialty_quickrevive = rows(1001) }
+Z[STORE_K].specialty_quickrevive.isUnlocked = false
 Z[DIFF_K] = { decoy = rows(701) }
-Z[HK("lootid_to_ref")] = { [7001] = "sat_aug_one", [7002] = "sat_aug_two" }
+Z[HK("lootid_to_ref")] = { [7001] = "sat_aug_one", [7002] = "sat_aug_two",
+                           [55407] = "specialty_quickrevive" }
 Z[HK("augmentresearchchallenges")] = {
   [7001] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
              [HK("amount")] = "70000|140000|275000" },
@@ -286,19 +296,58 @@ Z[SLOTS_K] = function(c, item)
 end
 
 COUNTED, COUNT_ROW, COUNT_CALLS = nil, nil, 0
+GATE_KEY = nil
+local function GSPLIT(s, sep)
+  local out = {}
+  for tok in string.gmatch(tostring(s), "([^" .. sep .. "]+)") do out[#out + 1] = tok end
+  return out
+end
+function GKEYOBJ()
+  return setmetatable({}, { __tostring = function() return "0#0x0A1B2C3D4E5F6071" end })
+end
 Z[COUNT_K] = function(c, row)
   COUNT_CALLS = COUNT_CALLS + 1
   COUNT_ROW = row
-  local OP = rawget(_G, "OnlineProgression")
-  local f = OP and OP[USV_K]
-  local got = nil
-  if type(f) == "function" then
-    local r = f(c, { "k" })
-    got = r and r["k"]
+  local n = 0
+  local b = Game[xhash("getactivegamemodescriptbundle")]()
+  local fld = b and b["#x053308f95ad2e716"] or nil
+  if fld then
+    local key = Challenge[xhash("getaeuserstatekey")](fld)
+    GATE_KEY = key
+    local v = OnlineProgression[USV_K](c, { key })
+    if v ~= nil and v[key] ~= nil then n = tonumber(v[key]) end
+    local amount = GSPLIT(row[xhash("amount")], "|")
+    local groups = GSPLIT(row[xhash("augment_unlocks")], "|")
+    for i = 1, math.min(#groups, #amount) do
+      for _, lid in ipairs(GSPLIT(groups[i], "+")) do
+        local ref = Z[HK("lootid_to_ref")][tonumber(lid)]
+        if ref then
+          Z[STORE_K][ref].amountNeededToUnlock = amount[i]
+          Z[STORE_K][ref].isUnlocked = tonumber(amount[i]) <= n
+        end
+      end
+    end
   end
-  COUNTED = got
-  for _, e in pairs(Z[STORE_K]) do e.amountNeededToUnlock = tostring(got) end
+  COUNTED = n
   return 0
+end
+Game = {}
+BUNDLE = { ["#x053308f95ad2e716"] = "zm_augments_total_unlock_count" }
+Game[xhash("getactivegamemodescriptbundle")] = function() return BUNDLE end
+Challenge[xhash("getaeuserstatekey")] = function(field) return GKEYOBJ() end
+Z[HK("equipment_type")] = { [HK("none")] = 4294967295, [HK("perk")] = 2 }
+REPAINTS = 0
+EQUIP = {}
+for i = 1, 3 do EQUIP[i] = { [HK("is_unlocked")] = dleaf(false) } end
+_DataSources[HK("zm")][HK("frontend")][HK("augment_list")] = { [HK("equipment_items")] = EQUIP }
+function EQV(i) return tostring(EQUIP[i][HK("is_unlocked")].v) end
+Z[REPAINT_K] = function(c, ty)
+  REPAINTS = REPAINTS + 1
+  local refs = { "sat_aug_one", "sat_aug_two", "specialty_quickrevive" }
+  for i = 1, 3 do
+    local e = Z[STORE_K][refs[i]]
+    EQUIP[i][HK("is_unlocked")].v = (e and e.isUnlocked == true) or false
+  end
 end
 
 OnlineProgression = {}
@@ -306,6 +355,9 @@ USV_CALLS = 0
 USV_ORIG = function(c, keys) USV_CALLS = USV_CALLS + 1; return {} end
 OnlineProgression[USV_K] = USV_ORIG
 function USV_SAME() return OnlineProgression[USV_K] == USV_ORIG end
+function USV_TAKE() USV_F1 = OnlineProgression[USV_K] end
+function USV_HELD() return tostring(OnlineProgression[USV_K] == USV_F1) end
+function USV_WRAPPED() return tostring(OnlineProgression[USV_K] ~= USV_ORIG) end
 function USV_N() local n = 0; for _ in pairs(OnlineProgression) do n = n + 1 end; return n end
 
 PROXY_LOOT = {}
@@ -472,8 +524,7 @@ function PROGAT(ref, i) return tostring(ZMAUGMENT[STORE_K][ref][i][xhash("progre
 """
 
 # the same table keyed the plain way - never indexed by the part
-ZMPLAIN = r"""
-DEV_K = setmetatable({}, { __tostring = function() return "xhash: #x1d428ffe65b5694d6" end })
+ZMPLAIN = r"""DEV_K = setmetatable({}, { __tostring = function() return "xhash: #x1d428ffe65b5694d6" end })
 Dvar[xhash("GetDvarBool")] = function(k, d) return d end
 Challenge[xhash("getchallengeprogress")] = function(c, id) return 0 end
 ZMAUGMENT = {}
@@ -499,6 +550,63 @@ function REFRESH(c) ZMAUGMENT[REFRESH_K](c) end
 function FIELD(ref, name) local e = ZMAUGMENT[STORE_K][ref]; return tostring(e and e[name]) end
 FACED = true
 """
+
+# the shared api the token part reads, and its own user state reader
+TOKAPI = r"""
+local S0 = rawget(_G, "ProgressionTuning")
+if type(S0) ~= "table" then
+  S0 = { parts = {}, hooks = {}, probes = {}, api = {}, g11 = {}, scope = {} }
+  rawset(_G, "ProgressionTuning", S0)
+end
+S0.api.log = function(s) DebugPrint(s) end
+S0.api.clip = function(v, n)
+  local s = tostring(v)
+  if n ~= nil and #s > n then return string.sub(s, 1, n) end
+  return s
+end
+S0.api.dv = function(name) return Dvar[xhash("GetDvarString")](xhashdvar(name)) end
+S0.api.empty = function(v) return v == nil or v == "" end
+S0.api.fn_of = function(t, name)
+  local v = t and t[xhash(name)]
+  if type(v) == "function" then return v end
+end
+S0.api.member = function(t, name)
+  local k = xhash(name)
+  if t and t[k] ~= nil then return k, t[k] end
+end
+SAIDK = {}
+S0.api.said = function(k)
+  if SAIDK[k] then return false end
+  SAIDK[k] = true
+  return true
+end
+Engine[xhash("GetMilliseconds")] = function() return 0 end
+Engine[xhash("IsPaused")] = function() return false end
+Engine[xhash("GetCurrentEpochTime")] = function() return 1700000000 end
+function ANSWER()
+  local U = rawget(_G, "ProgressionTuning").userstate
+  local k = ProgressionTuning.aug and ProgressionTuning.aug.ukey
+  local f = U and U.answer and U.answer[k]
+  if type(f) ~= "function" then return "none" end
+  local v = f({ c = 0 })
+  if v == nil then return "nil" end
+  return tostring(v)
+end
+"""
+
+
+def gate_rt(first):
+    r = lua51()(unpack_returned_tuples=True)
+    r.execute(PRELUDE)
+    r.execute("FRONTEND = true")
+    r.execute(ZMFIX + "\nMAKEZM()\n" + TOKAPI)
+    if first == "tok":
+        r.execute(TOKENS_SRC)
+        r.execute(SRC)
+    else:
+        r.execute(SRC)
+        r.execute(TOKENS_SRC)
+    return r
 
 
 def lua51():
@@ -607,7 +715,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line, one ladder line and nothing else", len(l) == 3,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v8 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v9 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -671,10 +779,13 @@ def case_ticks(lua51):
 
 # --- 6: the count the game's own ladder pass reads ----------------------------------------------
 def case_count(lua51):
-    r = rt(ZMFIX + "\nMAKEZM()")
+    r = gate_rt("tok")
     off(r)
+    r.execute("USV_TAKE()")
     r.execute("REFRESH(0)")
-    check("count: nothing owned feeds a zero", val(r, "COUNTED") in ("0", "0.0"), "counted=" + val(r, "COUNTED"))
+    check("count: nothing owned means no gate call and no line",
+          val(r, "COUNT_CALLS") == "0" and count_line(lines_of(r), "augments gate") == 0,
+          "calls=" + val(r, "COUNT_CALLS"))
     r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
     r.execute("REFRESH(0)")
     check("count: two researched tiers feed the ladders' owned ids",
@@ -684,15 +795,20 @@ def case_count(lua51):
     check("count: the ladder gate follows the count the pass saw",
           val(r, "FIELD('sat_aug_one','amountNeededToUnlock')") == "3",
           val(r, "FIELD('sat_aug_one','amountNeededToUnlock')"))
-    check("count: the user state reader is the same function after the pass", val(r, "USV_SAME()") == "True",
-          val(r, "USV_SAME()"))
+    check("count: the reader stays the token part's wrapper across the pass",
+          val(r, "USV_HELD()") == "true" and val(r, "USV_WRAPPED()") == "true",
+          "held=" + val(r, "USV_HELD()"))
     check("count: the user state table keeps its one member", val(r, "USV_N()") == "1", val(r, "USV_N()"))
     check("count: the ownership getter is the same function after the pass", val(r, "PO_SAME()") == "True",
           val(r, "PO_SAME()"))
     check("count: the ownership table keeps its one member", val(r, "PO_N()") == "1", val(r, "PO_N()"))
     before = val(r, "COUNT_CALLS")
     r.execute("REFRESH(0); REFRESH(0)")
-    check("count: one feed per refresh pass", int(val(r, "COUNT_CALLS")) == int(before) + 2,
+    check("count: a held count is not fed again", val(r, "COUNT_CALLS") == before,
+          "%s -> %s" % (before, val(r, "COUNT_CALLS")))
+    r.execute("SET_PROG(40001, 0); SET_PROG(40002, 0)")
+    r.execute("REFRESH(0)")
+    check("count: a changed count feeds once more", int(val(r, "COUNT_CALLS")) == int(before) + 1,
           "%s -> %s" % (before, val(r, "COUNT_CALLS")))
 
 
@@ -770,10 +886,10 @@ def case_chain(lua51):
           val(r, "Challenges[SEND_K] == TOPS") == "True", val(r, "Challenges[SEND_K] == TOPS"))
     check("chain: the progress wrapper the foreign one holds is not wrapped again",
           val(r, "OnlineChallenges[PROG_K] == TOPP") == "True", val(r, "OnlineChallenges[PROG_K] == TOPP"))
-    before = val(r, "COUNT_CALLS")
+    before = val(r, "PROGREADS")
     r.execute("REFRESH(0)")
     check("chain: the pass still runs once through the foreign wrapper",
-          int(val(r, "COUNT_CALLS")) == int(before) + 1, "%s -> %s" % (before, val(r, "COUNT_CALLS")))
+          int(val(r, "PROGREADS")) - int(before) == 8, "%s -> %s" % (before, val(r, "PROGREADS")))
     r.execute("PRESS(40001)")
     check("chain: one press through the foreign wrapper says one line",
           count_line(lines_of(r), "augments research start") == 1,
@@ -834,10 +950,10 @@ def case_tick_pass(lua51):
     r = rt(ZMFIX + "\nMAKEZM()")
     off(r)
     pump(r, 1)
-    first = val(r, "COUNT_CALLS")
+    first = val(r, "PROGREADS")
     pump(r, 8)
-    check("tick: the timer runs a pass of its own", int(val(r, "COUNT_CALLS")) > int(first),
-          "%s -> %s" % (first, val(r, "COUNT_CALLS")))
+    check("tick: the timer runs a pass of its own", int(val(r, "PROGREADS")) > int(first),
+          "%s -> %s" % (first, val(r, "PROGREADS")))
 
 
 def case_twice(lua51):
@@ -982,8 +1098,8 @@ def case_lock_chain(lua51):
     check("chain lock: the extender rule still answers too", r.eval("ANS(777)") is True
           and r.eval("OPN(778)") is True, val(r, "ANS(777)"))
     check("chain lock: the depth stays the base plus two", val(r, "DEPTHMAX") == "3", val(r, "DEPTHMAX"))
-    check("chain lock: the pass still runs once per refresh", int(val(r, "COUNT_CALLS")) > 0,
-          val(r, "COUNT_CALLS"))
+    check("chain lock: the pass still runs once per refresh", int(val(r, "PROGREADS")) > 0,
+          val(r, "PROGREADS"))
 
 
 # --- 17: prison absent, then present ---------------------------------------------------------
@@ -1524,6 +1640,103 @@ def case_twin_on(lua51):
           val(r, "LK9('staminup')") == "111111111", val(r, "LK9('staminup')"))
 
 
+# --- 30: the native gate fed through the user state registry -----------------------------------
+def case_gate(lua51):
+    r = gate_rt("tok")
+    off(r)
+    r.execute("REFRESH(0)")
+    check("gate: nothing owned leaves the native pass unrun",
+          val(r, "COUNT_CALLS") == "0", "calls=" + val(r, "COUNT_CALLS"))
+    check("gate: and no line for a count that did not move",
+          count_line(lines_of(r), "augments gate") == 0, " | ".join(lines_of(r)[:3]))
+    r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r.execute("REFRESH(0)")
+    check("gate: three owned ids reach the native pass",
+          val(r, "COUNTED") in ("3", "3.0"), "counted=" + val(r, "COUNTED"))
+    check("gate: the native row drives the pass", val(r, "COUNT_ROW == ROW0") == "True",
+          val(r, "COUNT_ROW == ROW0"))
+    check("gate: quick revive opens at three owned",
+          val(r, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
+          val(r, "FIELD('specialty_quickrevive','isUnlocked')"))
+    check("gate: the amount the red text prints is the native one",
+          val(r, "FIELD('specialty_quickrevive','amountNeededToUnlock')") == "3",
+          val(r, "FIELD('specialty_quickrevive','amountNeededToUnlock')"))
+    check("gate: the list is repainted from the native fields",
+          val(r, "REPAINTS") == "1" and val(r, "EQV(3)") == "true",
+          "repaints=" + val(r, "REPAINTS") + " eq=" + val(r, "EQV(3)"))
+    want = ("progression_tuning: augments gate owned=3 key=0#0x0A1B2C3D4E5F6071 "
+            "fed=1 fn=1 qr=true")
+    got = [ln for ln in lines_of(r) if "augments gate" in ln]
+    check("gate: one diag line names the count, the key, the feed and the field",
+          len(got) == 1 and got[0] == want, " | ".join(got[:2]))
+    r.execute("REFRESH(0)")
+    check("gate: a held count is not fed again", val(r, "COUNT_CALLS") == "1",
+          val(r, "COUNT_CALLS"))
+    check("gate: and no second line", count_line(lines_of(r), "augments gate") == 1,
+          "%d" % count_line(lines_of(r), "augments gate"))
+    r.execute("SET_PROG(40001, 0); SET_PROG(40002, 0)")
+    r.execute("REFRESH(0)")
+    check("gate: a changed count feeds once more", val(r, "COUNT_CALLS") == "2",
+          val(r, "COUNT_CALLS"))
+    check("gate: and closes quick revive again",
+          val(r, "FIELD('specialty_quickrevive','isUnlocked')") == "false",
+          val(r, "FIELD('specialty_quickrevive','isUnlocked')"))
+    check("gate: one more line for the second change", count_line(lines_of(r), "augments gate") == 2,
+          "%d" % count_line(lines_of(r), "augments gate"))
+
+
+def case_gate_on(lua51):
+    r = gate_rt("tok")
+    off(r)
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("gate on: the key is registered while the switches are off",
+          r.eval("ProgressionTuning.aug.ukey") is not None, "ukey=nil")
+    check("gate on: the registered answer carries the count",
+          val(r, "ANSWER()") in ("1", "1.0"), val(r, "ANSWER()"))
+    before = val(r, "COUNT_CALLS")
+    r.execute("SET_DVAR('zm_unlock_augments', '1')")
+    r.execute("REFRESH(0)")
+    check("gate on: the gate is not run with a switch on", val(r, "COUNT_CALLS") == before,
+          "%s -> %s" % (before, val(r, "COUNT_CALLS")))
+    check("gate on: the registered answer says nothing new", val(r, "ANSWER()") == "nil",
+          val(r, "ANSWER()"))
+
+
+def case_gate_order(lua51):
+    for first in ("tok", "aug"):
+        r = gate_rt(first)
+        off(r)
+        r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+        r.execute("REFRESH(0)")
+        check("gate order (%s): the native pass answers three" % first,
+              val(r, "COUNTED") in ("3", "3.0"), "counted=" + val(r, "COUNTED"))
+        check("gate order (%s): quick revive opens" % first,
+              val(r, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
+              val(r, "FIELD('specialty_quickrevive','isUnlocked')"))
+        check("gate order (%s): the diag says the key was fed" % first,
+              "fed=1" in " ".join(lines_of(r)), " | ".join(lines_of(r)[:4]))
+
+
+def case_gate_row(lua51):
+    r = gate_rt("tok")
+    off(r)
+    r.execute("StringTable[xhash('tablelookuprowwithcolumndata')] = function() return nil end")
+    r.execute("SET_PROG(40001, 70000)")
+    r.execute("REFRESH(0)")
+    check("gate row: no ladder row leaves the key unfed and says so",
+          "augments gate owned=1 key=none fed=0 fn=0" in " ".join(lines_of(r)),
+          " | ".join([ln for ln in lines_of(r) if "augments gate" in ln][:1]))
+    r2 = rt(ZMFIX + "\nMAKEZM()")
+    off(r2)
+    r2.execute("SET_PROG(40001, 70000)")
+    r2.execute("REFRESH(0)")
+    check("gate row: no token part means the native pass asks and gets nothing",
+          val(r2, "COUNTED") in ("0", "0.0")
+          and "augments gate owned=1 key=0#0x0A1B2C3D4E5F6071 fed=0 fn=1" in " ".join(lines_of(r2)),
+          " | ".join([ln for ln in lines_of(r2) if "augments gate" in ln][:1]))
+
+
 def case_file():
     bad = []
     for i, ln in enumerate(SRC.split("\n"), 1):
@@ -1574,7 +1787,8 @@ def main():
                  case_slot, case_bonus, case_toggle_ids, case_lock_lines, case_lock_answer,
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
                  case_popup_on, case_popup_match, case_popup_late, case_twin, case_twin_popup,
-                 case_twin_on, case_ladder_active, case_missing):
+                 case_twin_on, case_ladder_active, case_gate, case_gate_on, case_gate_order,
+                 case_gate_row, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)
