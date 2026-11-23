@@ -212,7 +212,7 @@ ARMORY_GSC = "progression_tuning_armory.gsc"
 SEE_FIRE_GSC = "progression_tuning_see_fire.gsc"
 TOGGLES = ["pt_on", "pt_level", "pt_attach", "pt_camo", "pt_daily", "pt_log"]
 REMOVED = [
-    "RETIC", "badge", "Badge", "Mastery", "dedupe", "DEDUPE", "_DataSources", "NearestToCompletion",
+    "RETIC", "badge", "Badge", "Mastery", "dedupe", "DEDUPE", "NearestToCompletion",
     "TrackedChallenges", "setupweaponcamochallenges", "getcamochallengefromref", "GetCamoDataByLootID",
     "gettrackedchallengedata", "camo_credit",
     "getweaponprestigeattachmentquery", "weaponprestigeprogression",
@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 286485
-SHIP_LUA_SHA = "7FA0B2B1289F8B91DA72B8FFF553313D85CD0D0B21A04E8B1273E69CF5E4D629"
-LITERAL_SHA = "BFCF8DFDB7534B2C12B5F1E8015954A8A4BB379F4A2B554D528FA4A80909DA55"
+SHIP_LUA_LEN = 290031
+SHIP_LUA_SHA = "6828BCBB45B806753321B9B90FE064381AD1F933DD57965EACE42BD5C3790F04"
+LITERAL_SHA = "24A450B55C2472F2496CE76F9D77E3329C3D6651B3A5761EB17FFB03D748CBBF"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1909,6 +1909,9 @@ def static_checks():
     for word in TOKENS_RESIDUE_KEEP:
         scan = scan.replace(word, "")
     found = [k for k in REMOVED if k in scan]
+    ds_users = [n for n in SHIP_FILES if "_DataSources" in LUA_TEXT[n]]
+    check("lua: the datasource tree is read by the armory pick and the augment card alone",
+          ds_users == [SPLASH, ARMORY], " | ".join(ds_users))
     check("lua: the retired channel name and the gsc word are reads and prose, once each, in tokens",
           all(sum(LUA_TEXT[n].count(w) for n in LUA_FILES) == 1 for w in TOKENS_RESIDUE_KEEP)
           and all(w in LUA_TEXT[TOKENS] for w in TOKENS_RESIDUE_KEEP),
@@ -6501,12 +6504,15 @@ PERK[xhash("GetName")] = function(b)
 end
 SUPER = {}
 AUGSK = {}
+SUPERC = nil
 function AUG_SUPER(ref, key) AUGSK[ref] = key end
-SUPER[xhash("GetName")] = function(ref)
+SUPER[xhash("GetName")] = function(c, ref)
+  SUPERC = c
   local k = AUGSK[ref]
   if k == nil then return "" end
   return Engine[xhash("Localize")](k)
 end
+function AUG_SUPERC() return SUPERC end
 AMMOK = {}
 function AUG_AMMO(ref, key) AMMOK[ref] = key end
 ZMAUGMENT.ammomod = {}
@@ -6531,6 +6537,39 @@ function AUG_OPTS(f)
   if e == nil or e.options == nil then return nil end
   return e.options[f]
 end
+AUGLOC_BACK = nil
+function AUG_NOLOC()
+  AUGLOC_BACK = Engine[xhash("Localize")]
+  Engine[xhash("Localize")] = nil
+end
+function AUG_YESLOC() Engine[xhash("Localize")] = AUGLOC_BACK end
+AUGALL_BACK = nil
+function AUG_NOSTORE()
+  AUGALL_BACK = ZMAUGMENT[xhash("augmentlist_full")]
+  ZMAUGMENT[xhash("augmentlist_full")] = nil
+end
+function AUG_YESSTORE() ZMAUGMENT[xhash("augmentlist_full")] = AUGALL_BACK end
+function AUG_DS(body)
+  local ds = {}
+  ds[xhash("GetValue")] = function(self, c) return body end
+  local node = {}
+  node[xhash("research_splash_description")] = ds
+  local fe = {}
+  fe[xhash("augment_select")] = node
+  local zm = {}
+  zm[xhash("frontend")] = fe
+  local root = {}
+  root[xhash("zm")] = zm
+  _DataSources = root
+end
+function AUG_DS_PLAIN(body)
+  local ds = { GetValue = function(self, c) return body end }
+  local node = { research_splash_description = ds }
+  local fe = { augment_select = node }
+  local zm = { frontend = fe }
+  _DataSources = { zm = zm }
+end
+function AUG_DS_NIL() _DataSources = nil end
 """
 
 
@@ -6539,6 +6578,8 @@ def augment_card(lua51):
     rt.execute(AUGFIX)
     rt.execute(SPLASHQ)
     load(rt)
+    rt.execute("AUG_STORE('sat_aug_other', 900, '&x', true, 0)")
+    rt.execute("AUG_DS_NIL()")
     rt.execute("AUG_QUEUE({ { sat = 40001, tier = 1, ref = 'sat_aug_one', loot = 801 } })")
     pump(rt, 4)
     check("augcard: one queued crossing becomes one card",
@@ -6551,8 +6592,10 @@ def augment_card(lua51):
           rt.eval("AUG_OPTS('icon')") == "ui_icon_zm_augment_801"
           and rt.eval("AUG_OPTS('bodyText')") is None,
           "%s / %s" % (rt.eval("AUG_OPTS('icon')"), rt.eval("AUG_OPTS('bodyText')")))
-    check("augcard: one line names the ref, the tier, the draw and the body source",
-          has_line(lines_of(rt), "splash augment card ref=sat_aug_one tier=1 drawn=true bodytext=none"),
+    check("augcard: one line names the ref, the tier, the draw, the body source and the entry stage",
+          has_line(lines_of(rt),
+                   "splash augment card ref=sat_aug_one tier=1 drawn=true bodytext=none:s2entry "
+                   "diag=loc=1 store=table:0 entry=0 dn=- name=- et=- equip=- kind=- ds=0 raw loot=801"),
           " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
     check("augcard: the entry leaves the queue", rt.eval("AUG_LEFT()") == 0,
           str(rt.eval("AUG_LEFT()")))
@@ -6570,8 +6613,8 @@ def augment_card(lua51):
           "%s / %s" % (rt.eval("EVENTS[1].options.icon"), rt.eval("EVENTS[2].options.icon")))
     got = [ln for ln in lines_of(rt) if "splash augment card ref=sat_aug_one" in ln][-2:]
     check("augcard: two lines, one per tier",
-          len(got) == 2 and got[0].endswith("tier=1 drawn=true bodytext=none")
-          and got[1].endswith("tier=2 drawn=true bodytext=none"),
+          len(got) == 2 and "tier=1 drawn=true bodytext=none:s2entry " in got[0]
+          and "tier=2 drawn=true bodytext=none:s2entry " in got[1],
           " | ".join(got))
 
     rt.execute("CLEAR()")
@@ -6589,7 +6632,8 @@ def augment_card(lua51):
           repr(rt.eval("AUG_OPTS('bodyText')")))
     check("augcard: the line says the sentence was built",
           has_line(lines_of(rt),
-                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=built"),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=built "
+                   "diag=loc=1 store=table:1 entry=1 dn=1 name=1 et=0 equip=1 kind=1 ds=0"),
           " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
 
     rt.execute("CLEAR()")
@@ -6602,7 +6646,8 @@ def augment_card(lua51):
           repr(rt.eval("AUG_OPTS('bodyText')")))
     check("augcard: the line says the sentence came from the game's own key",
           has_line(lines_of(rt),
-                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=native"),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=native "
+                   "diag=loc=1 store=table:1 entry=1 dn=1 name=1 et=0 equip=1 kind=1 ds=0"),
           " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
 
     rt.execute("CLEAR()")
@@ -6631,6 +6676,122 @@ def augment_card(lua51):
           rt.eval("AUG_OPTS('bodyText')")
           == "Unlocked Major Perk Augment ^3^BFREQUENCY BOOST ^R ^7for Energy Mine ",
           repr(rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: the field upgrade name is asked with the controller first",
+          rt.eval("AUG_SUPERC()") == 0, str(rt.eval("AUG_SUPERC()")))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_NOLOC()")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57731 } })")
+    pump(rt, 40)
+    check("augcard: a missing localize is stage one and sends no body",
+          rt.eval("AUG_OPTS('bodyText')") is None
+          and has_line(lines_of(rt),
+                       "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=none:s1loc "
+                       "diag=loc=0 store=table:1 entry=1 dn=1 name=- et=- equip=- kind=- ds=0"),
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+    rt.execute("AUG_YESLOC()")
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_NOSTORE()")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57731 } })")
+    pump(rt, 40)
+    check("augcard: a missing store is stage two and names the nil",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=none:s2store "
+                   "diag=loc=1 store=nil:0 entry=- dn=- name=- et=- equip=- kind=- ds=0"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+    rt.execute("AUG_YESSTORE()")
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_STORE('specialty_staminup', 57740, '&zm_sat_augment/name_absent', true, 0)")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57740 } })")
+    pump(rt, 40)
+    check("augcard: a name the engine does not resolve is stage three",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=none:s3name "
+                   "diag=loc=1 store=table:2 entry=1 dn=1 name=0 et=- equip=- kind=- ds=0 "
+                   "raw dn=&zm_sat_augment/name_absent name="),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_STORE('specialty_absent', 57742, '&zm_sat_augment/name_staminup_freefaller', true, 0)")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_absent', loot = 57742 } })")
+    pump(rt, 40)
+    check("augcard: an equipment name that answers nothing is stage four",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_absent tier=2 drawn=true bodytext=none:s4equip "
+                   "diag=loc=1 store=table:1 entry=1 dn=1 name=1 et=0 equip=0 kind=- ds=0 raw equip="),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_FORGET('0x5c1477471a9cb470')")
+    rt.execute("AUG_FORGET('0x52b8137a3f837c3c')")
+    rt.execute("AUG_STORE('specialty_staminup', 57743, '&zm_sat_augment/name_staminup_freefaller', true, 0)")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57743 } })")
+    pump(rt, 40)
+    check("augcard: a kind key that answers nothing is stage five",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=none:s5kind "
+                   "diag=loc=1 store=table:3 entry=1 dn=1 name=1 et=0 equip=1 kind=0 ds=0 "
+                   "raw kind=0x5c1477471a9cb470|0x5c1477471a9cb470"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_SAY('0x5c1477471a9cb470', 'Major Perk Augment')")
+    rt.execute("AUG_DS('Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up')")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57743 } })")
+    pump(rt, 40)
+    check("augcard: the game own aggregate answers the body",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: the line names the aggregate route with its own sentence",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=ds "
+                   "diag=loc=1 store=table:3 entry=1 dn=1 name=1 et=0 equip=1 kind=1 ds=1 "
+                   "raw body=Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_DS('Unlocked Major Perk Augment ^3^BHARD TARGET ^R ^7for Stamin-Up')")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57743 } })")
+    pump(rt, 40)
+    check("augcard: a stale aggregate is refused and the built sentence answers",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up ",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: the refused aggregate is still named in the diag",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_staminup tier=2 drawn=true bodytext=built "
+                   "diag=loc=1 store=table:3 entry=1 dn=1 name=1 et=0 equip=1 kind=1 ds=1 "
+                   "raw body=Unlocked Major Perk Augment ^3^BHARD TARGET ^R ^7for Stamin-Up"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_DS('Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up')")
+    rt.execute("AUG_STORE('specialty_absent', 57744, '&zm_sat_augment/name_staminup_freefaller', true, 7)")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_absent', loot = 57744 } })")
+    pump(rt, 40)
+    check("augcard: the aggregate answers even when the chain fails at stage four",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up",
+          repr(rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: and its line still shows the failed chain",
+          has_line(lines_of(rt),
+                   "splash augment card ref=specialty_absent tier=2 drawn=true bodytext=ds "
+                   "diag=loc=1 store=table:2 entry=1 dn=1 name=1 et=7 equip=0 kind=- ds=1"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln][-1:]))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_DS_PLAIN('Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up')")
+    rt.execute("AUG_QUEUE({ { sat = 55571, tier = 2, ref = 'specialty_staminup', loot = 57743 } })")
+    pump(rt, 40)
+    last = [ln for ln in lines_of(rt) if "splash augment card" in ln][-1]
+    check("augcard: a plain named datasource tree answers nothing",
+          rt.eval("AUG_OPTS('bodyText')")
+          == "Unlocked Major Perk Augment ^3^BFREE FALLER ^R ^7for Stamin-Up "
+          and "bodytext=ds" not in last and "ds=0" in last, last)
+    rt.execute("AUG_DS_NIL()")
 
     rm = new_rt(lua51, src=False, frontend=True)
     rm.execute(AUGFIX)

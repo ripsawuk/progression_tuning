@@ -685,21 +685,53 @@ local AUG_TEXT = { "#x326c9afbe733968d", "0x326c9afbe733968d" }
 
 -- the text one hash key answers
 local function hash_text(loc, forms)
+  local first, second = nil, nil
   local i = 1
   while i <= #forms do
     local ok, v = pcall(loc, forms[i])
-    if ok and not empty(v) and not keyish(v) then return v end
+    if ok then
+      if i == 1 then first = v else second = v end
+      if not empty(v) and not keyish(v) then return v, first, second end
+    end
     i = i + 1
   end
+  return nil, first, second
+end
+
+-- a datasource node by its hash
+local function dslot(tbl, name)
+  if type(tbl) ~= "table" then return nil end
+  local x = rawget(_G, "xhash")
+  if type(x) ~= "function" then return nil end
+  local ok, k = pcall(x, name)
+  if not ok or k == nil then return nil end
+  local oki, v = pcall(function() return tbl[k] end)
+  if oki then return v end
+  return nil
+end
+
+-- the sentence the game own aggregate answers
+local function aug_ds()
+  local root = rawget(_G, "_DataSources") or rawget(_G, "DataSources")
+  local node = dslot(dslot(dslot(root, "zm"), "frontend"), "augment_select")
+  local ds = dslot(node, "research_splash_description")
+  local get = dslot(ds, "GetValue")
+  if type(get) ~= "function" then
+    local _, f = member(ds, "GetValue")
+    get = f
+  end
+  if type(get) ~= "function" then return nil end
+  local ok, v = pcall(get, ds, 0)
+  if ok and not empty(v) then return v end
   return nil
 end
 
 -- the augment entry one rung loot id names
 local function aug_entry(ref, loot)
   local want = tonumber(loot)
-  if want == nil then return nil, nil end
+  if want == nil then return nil, nil, 0 end
   local _, all = member(rawget(_G, "ZMAUGMENT"), "augmentlist_full")
-  if type(all) ~= "table" then return nil, nil end
+  if type(all) ~= "table" then return nil, nil, 0 end
   local function scan(list)
     if type(list) ~= "table" then return nil end
     local i = 1
@@ -713,23 +745,25 @@ local function aug_entry(ref, loot)
     end
     return nil
   end
+  local n = 0
   if type(ref) == "string" then
     local _, one = member(all, ref)
+    if type(one) == "table" then n = #one end
     local e = scan(one)
-    if e ~= nil then return ref, e end
+    if e ~= nil then return ref, e, n end
   end
   for r, one in pairs(all) do
     local e = scan(one)
-    if e ~= nil then return r, e end
+    if e ~= nil then return r, e, (type(one) == "table") and #one or 0 end
   end
-  return nil, nil
+  return nil, nil, n
 end
 
 -- the equipment name the card names last
 local function aug_equip(ref, et)
   local name = nil
   if et == ET_FIELD then
-    name = call(rawget(_G, "SUPER"), "GetName", ref)
+    name = call(rawget(_G, "SUPER"), "GetName", 0, ref)
   elseif et == ET_AMMO then
     local _, am = member(rawget(_G, "ZMAUGMENT"), "ammomod")
     name = call(am, "getnamefromlootref", ref)
@@ -771,44 +805,116 @@ local function aug_built(kind, name, equip)
   return "Unlocked " .. kind .. " ^3^B" .. name .. " ^R ^7for " .. equip .. " "
 end
 
+-- the raw text one diag field carries
+local function rawtxt(v)
+  if v == nil then return "" end
+  return clip(v, 90)
+end
+
+-- the diag tail one card prints
+local function aug_diag(d)
+  return "loc=" .. d.loc .. " store=" .. d.store .. " entry=" .. d.entry .. " dn=" .. d.dn
+    .. " name=" .. d.name .. " et=" .. d.et .. " equip=" .. d.equip .. " kind=" .. d.kind
+    .. " ds=" .. d.ds
+end
+
 -- the card body text and how it was reached
 local function aug_body(e)
   local loc = fn_of(rawget(_G, "Engine"), "Localize")
   local up = fn_of(rawget(_G, "Engine"), "ToUpperCase")
-  if loc == nil then return nil, "none" end
-  local ref, entry = aug_entry(e.ref, e.loot)
-  if entry == nil then return nil, "none" end
-  local _, dn = member(entry, "displayname")
-  local name = aug_upper(loc, up, dn)
-  if name == nil then return nil, "none" end
-  local _, et = member(entry, "equipmenttype")
-  local equip = aug_equip(ref, tonumber(et))
-  if equip == nil then return nil, "none" end
-  local _, major = member(entry, "type")
-  local kind = hash_text(loc, major and AUG_MAJOR or AUG_MINOR)
-  if kind == nil then return nil, "none" end
-  local v = aug_native(loc, kind, name, equip)
-  if v ~= nil then return v, "native" end
-  return aug_built(kind, name, equip), "built"
+  local _, all = member(rawget(_G, "ZMAUGMENT"), "augmentlist_full")
+  local ref, entry, n = aug_entry(e.ref, e.loot)
+  local d = { loc = (loc ~= nil) and "1" or "0", entry = "-", dn = "-", name = "-", et = "-",
+              equip = "-", kind = "-", ds = "0" }
+  if type(all) == "table" then
+    d.store = "table:" .. tostring(n)
+    d.entry = (entry ~= nil) and "1" or "0"
+  else
+    d.store = "nil:0"
+  end
+  local dsbody = aug_ds()
+  if dsbody ~= nil then d.ds = "1" end
+  local dn, name, equip, kind, k1, k2 = nil, nil, nil, nil, nil, nil
+  if entry ~= nil then
+    local _, v = member(entry, "displayname")
+    if type(v) == "string" and v ~= "" then
+      dn = v
+      d.dn = "1"
+    else
+      d.dn = "0"
+    end
+    if loc ~= nil then
+      name = aug_upper(loc, up, dn)
+      d.name = (name ~= nil) and "1" or "0"
+    end
+    if name ~= nil then
+      local _, et = member(entry, "equipmenttype")
+      et = tonumber(et)
+      if et ~= nil then d.et = tostring(et) end
+      equip = aug_equip(ref, et)
+      d.equip = (equip ~= nil) and "1" or "0"
+    end
+    if equip ~= nil then
+      local _, major = member(entry, "type")
+      kind, k1, k2 = hash_text(loc, major and AUG_MAJOR or AUG_MINOR)
+      d.kind = (kind ~= nil) and "1" or "0"
+    end
+  end
+  local stage = nil
+  if loc == nil then
+    stage = "s1loc"
+  elseif type(all) ~= "table" then
+    stage = "s2store"
+  elseif entry == nil then
+    stage = "s2entry"
+  elseif name == nil then
+    stage = "s3name"
+  elseif equip == nil then
+    stage = "s4equip"
+  elseif kind == nil then
+    stage = "s5kind"
+  end
+  if dsbody ~= nil and (name == nil or string.find(dsbody, name, 1, true) ~= nil) then
+    return dsbody, "ds", nil, aug_diag(d), "raw body=" .. rawtxt(dsbody)
+  end
+  local parts = {}
+  if dsbody ~= nil then parts[#parts + 1] = "body=" .. rawtxt(dsbody) end
+  if stage == "s2entry" then
+    parts[#parts + 1] = "loot=" .. rawtxt(e.loot)
+  elseif stage == "s3name" then
+    parts[#parts + 1] = "dn=" .. rawtxt(dn)
+    parts[#parts + 1] = "name=" .. rawtxt(name)
+  elseif stage == "s4equip" then
+    parts[#parts + 1] = "equip=" .. rawtxt(equip)
+  elseif stage == "s5kind" then
+    parts[#parts + 1] = "kind=" .. rawtxt(k1) .. "|" .. rawtxt(k2)
+  end
+  local tail = (#parts > 0) and ("raw " .. table.concat(parts, " ")) or nil
+  if stage == nil then
+    local v = aug_native(loc, kind, name, equip)
+    if v ~= nil then return v, "native", nil, aug_diag(d), tail end
+    return aug_built(kind, name, equip), "built", nil, aug_diag(d), tail
+  end
+  return nil, "none", stage, aug_diag(d), tail
 end
 
 -- draws one augment research completion
 local function aug_show(e)
   local image = call(rawget(_G, "LOOT"), "getitemimagebyid", e.loot)
-  local body, how = aug_body(e)
+  local body, how, stage, diag, raw = aug_body(e)
   local opts = { controllerIndex = 0, displayLocation = "zmAugmentResearchComplete" }
   if not empty(image) and image ~= "white" then opts.icon = image end
   if body ~= nil then opts.bodyText = body end
   local line = "splash augment card ref=" .. tostring(e.ref) .. " tier=" .. tostring(e.tier)
   local ok, err = fire({ name = "add_message_splash_manager", immediate = true, options = opts })
+  if stage ~= nil then how = how .. ":" .. stage end
+  line = line .. " drawn=" .. tostring(ok == true) .. " bodytext=" .. how .. " diag=" .. diag
+  if raw ~= nil then line = line .. " " .. raw end
+  log(line)
   if ok then
     LAST = { kind = "aug", id = e.loot }
-    log(line .. " drawn=true bodytext=" .. how)
-  else
-    log(line .. " drawn=false bodytext=" .. how)
-    if said("augerr:" .. tostring(e.ref) .. ":" .. tostring(e.tier)) then
-      vlog("augment card refused at dispatch: " .. clip(err, 50))
-    end
+  elseif said("augerr:" .. tostring(e.ref) .. ":" .. tostring(e.tier)) then
+    vlog("augment card refused at dispatch: " .. clip(err, 50))
   end
 end
 
