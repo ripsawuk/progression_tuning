@@ -27,7 +27,7 @@ local SLOTS = 9
 -- a weight the fill guard computes to dark
 local DARK = 0.001
 
-local VERSION = "v7"
+local VERSION = "v8"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
@@ -42,7 +42,7 @@ S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
   active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
-  restored = false, lkOn = false, lkMiss = false }
+  cards = {}, restored = false, lkOn = false, lkMiss = false }
 S.aug = G
 
 -- says a thing once
@@ -507,6 +507,23 @@ local function slotted(c, item)
   return slots(c, t)
 end
 
+-- the cached row the active pick names
+local function active_row()
+  local sat = G.sat
+  if sat == nil or sat < 1 then return nil, nil end
+  local cache = cache_of(rawget(_G, "ZMAUGMENT"))
+  if type(cache) ~= "table" then return nil, nil end
+  local key, row = nil, nil
+  for k, ch in pairs(cache) do
+    if type(ch) == "table" and tonumber(hfield(ch, "achievementID")) == sat then
+      if type(k) == "number" then return k, ch end
+      if key == nil then key, row = k, ch end
+    end
+  end
+  if key == nil then return nil, nil end
+  return tonumber(key), row
+end
+
 -- one refresh ends on the game own numbers
 local function whole(c)
   local Z = rawget(_G, "ZMAUGMENT")
@@ -533,8 +550,16 @@ local function whole(c)
     feed(c, owned)
     if G.ladSaid ~= true and G.lad ~= nil then
       G.ladSaid = true
-      dp("augments ladder ref=" .. tostring(G.lad.ref) .. " rungs=" .. G.lad.rungs
-        .. " first=" .. G.lad.first .. " progress=" .. G.lad.p)
+      local ref, rungs, first, p = G.lad.ref, G.lad.rungs, G.lad.first, G.lad.p
+      local akey, arow = active_row()
+      if arow ~= nil then
+        ref = ref_of(map_of(Z), akey) or ref
+        rungs, first = rung_of(arow), first_of(hfield(arow, "amount"))
+        local _, ap = steps(c, arow)
+        p = ap
+      end
+      dp("augments ladder ref=" .. tostring(ref) .. " rungs=" .. rungs
+        .. " first=" .. first .. " progress=" .. p)
     end
   end
   if G.last ~= nil and G.tier[G.last] ~= nil then slots(c, G.tier[G.last]) end
@@ -683,32 +708,6 @@ local function save(sat)
   return true
 end
 
--- hands an event to the game own root
-local function fire(ev)
-  local lui = rawget(_G, "LUI")
-  local getroot = fn_of(lui, "GetRoot")
-  if getroot == nil then return false end
-  local okr, rootEl = pcall(getroot)
-  if not okr or rootEl == nil then return false end
-  local _, uir = slot_of(lui, "UIRoot")
-  local fe = (uir ~= nil) and fn_of(uir, "ProcessEvent") or nil
-  if fe ~= nil and pcall(fe, rootEl, ev) then return true end
-  fe = fn_of(rootEl, "ProcessEvent")
-  if fe ~= nil and pcall(fe, rootEl, ev) then return true end
-  local der = fn_of(rootEl, "dispatchEventToRoot")
-  if der ~= nil and pcall(der, rootEl, ev) then return true end
-  return false
-end
-
--- the event the hud reads as a grant
-local function grant(loot)
-  local f = fn_of(rawget(_G, "Challenge"), "GetAEKindID")
-  if f == nil then return false end
-  local ok, kind = pcall(f, "ae_kind_zm_augment")
-  if not ok or kind == nil then return false end
-  return fire({ name = "ae_reward_granted", kind = kind, items = { loot } })
-end
-
 -- the loot id the active research item publishes
 local function active_loot(c, key)
   local root = rawget(_G, "_DataSources") or rawget(_G, "DataSources")
@@ -720,23 +719,6 @@ local function active_loot(c, key)
     if ok and v ~= nil then return v end
   end
   return key
-end
-
--- the cached row the active pick names
-local function active_row()
-  local sat = G.sat
-  if sat == nil or sat < 1 then return nil, nil end
-  local cache = cache_of(rawget(_G, "ZMAUGMENT"))
-  if type(cache) ~= "table" then return nil, nil end
-  local key, row = nil, nil
-  for k, ch in pairs(cache) do
-    if type(ch) == "table" and tonumber(hfield(ch, "achievementID")) == sat then
-      if type(k) == "number" then return k, ch end
-      if key == nil then key, row = k, ch end
-    end
-  end
-  if key == nil then return nil, nil end
-  return tonumber(key), row
 end
 
 -- the baseline one row is read against
@@ -755,7 +737,7 @@ local function rung_loot(key, i)
   return tonumber(hfield(e, "lootid"))
 end
 
--- one tier crossing raises one card
+-- one tier crossing queues one card
 local function watch_tiers(c)
   if G.on ~= false then return end
   if front() ~= false then return end
@@ -774,12 +756,12 @@ local function watch_tiers(c)
     return
   end
   if n > b.base then
+    local ref = ref_of(map_of(rawget(_G, "ZMAUGMENT")), key)
     for i = b.base + 1, n do
       local loot = rung_loot(key, i)
       if loot == nil then loot = active_loot(c, key) end
-      local sent = false
-      if loot ~= nil then sent = grant(loot) end
-      dp("augments tier id=" .. sat .. " tier=" .. i .. " sent=" .. tostring(sent))
+      G.cards[#G.cards + 1] = { sat = sat, tier = i, ref = ref, loot = loot }
+      dp("augments tier id=" .. sat .. " tier=" .. i .. " queued")
     end
     b.base = n
   end
@@ -852,6 +834,7 @@ pass = function(c)
   if one == nil or two == nil then return end
   local on = (one == "1") or (two == "1")
   G.on = on
+  if G.sat == nil or G.sat < 1 or front() == true then pcall(seed) end
   local n = 0
   if not on then
     n = whole(c)
@@ -869,7 +852,6 @@ pass = function(c)
     local _, f = slot_of(rawget(_G, "ZMAUGMENT"), "initcurrentactiveresearch")
     if type(f) == "function" then pcall(f, c) end
   end
-  if G.sat == nil or G.sat < 1 or front() == true then pcall(seed) end
   pcall(watch_tiers, c)
 end
 

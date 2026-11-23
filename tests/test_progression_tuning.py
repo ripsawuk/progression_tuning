@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 280859
-SHIP_LUA_SHA = "92746CDC0C0E9620E6424A8B36437BE2AD3C6539006CC7B8AEFF578482757B22"
-LITERAL_SHA = "6CDF42A6C3BEAB6098FFFD4266621412F0632DB705EC3126CD3B9D9725FFA5CC"
+SHIP_LUA_LEN = 282876
+SHIP_LUA_SHA = "E4C248FE8FF0780800B730FC35EDFE59293B334E43B4222C9B8FBC6F2DA19C40"
+LITERAL_SHA = "D086D352C6E379809E4F3E07D7271C16F82B8B3A7C8815CF6232CFBA23003075"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -6459,6 +6459,90 @@ function SET_CHAL_PROGRESS(id, v) OC[tostring(id)] = { xp = v, rank = 0 } end
     second = next((i for i, ln in enumerate(l) if "camo card id=57201" in ln and "target=300" in ln), None)
     check("order: two tiers of one row keep their own first in first out order",
           first is not None and second is not None and first < second, "%s %s" % (first, second))
+
+
+AUGFIX = r"""
+LOOT[xhash("getitemimagebyid")] = function(id) return "ui_icon_zm_augment_" .. tostring(id) end
+function AUG_QUEUE(list)
+  local S = rawget(_G, "ProgressionTuning")
+  S.aug = S.aug or {}
+  S.aug.cards = list
+end
+function AUG_LEFT()
+  local S = rawget(_G, "ProgressionTuning")
+  local a = S.aug
+  if type(a) ~= "table" or type(a.cards) ~= "table" then return -1 end
+  return #a.cards
+end
+function AUG_OPTS(f)
+  local e = LASTOF("add_message_splash_manager")
+  if e == nil or e.options == nil then return nil end
+  return e.options[f]
+end
+"""
+
+
+def augment_card(lua51):
+    rt = new_rt(lua51, src=False)
+    rt.execute(AUGFIX)
+    rt.execute(SPLASHQ)
+    load(rt)
+    rt.execute("AUG_QUEUE({ { sat = 40001, tier = 1, ref = 'sat_aug_one', loot = 801 } })")
+    pump(rt, 4)
+    check("augcard: one queued crossing becomes one card",
+          rt.eval("NAMED('add_message_splash_manager')") == 1,
+          str(rt.eval("NAMED('add_message_splash_manager')")))
+    check("augcard: the card asks the augment research splash type",
+          rt.eval("AUG_OPTS('displayLocation')") == "zmAugmentResearchComplete",
+          str(rt.eval("AUG_OPTS('displayLocation')")))
+    check("augcard: the card carries the node's own image and name",
+          rt.eval("AUG_OPTS('icon')") == "ui_icon_zm_augment_801"
+          and rt.eval("AUG_OPTS('bodyText')") == "ITEM 801",
+          "%s / %s" % (rt.eval("AUG_OPTS('icon')"), rt.eval("AUG_OPTS('bodyText')")))
+    check("augcard: one line names the ref, the tier and the draw",
+          has_line(lines_of(rt), "splash augment card ref=sat_aug_one tier=1 drawn=true"),
+          " | ".join([ln for ln in lines_of(rt) if "splash augment card" in ln]))
+    check("augcard: the entry leaves the queue", rt.eval("AUG_LEFT()") == 0,
+          str(rt.eval("AUG_LEFT()")))
+
+    rt.execute("CLEAR()")
+    rt.execute("AUG_QUEUE({ { sat = 40001, tier = 1, ref = 'sat_aug_one', loot = 801 },"
+               " { sat = 40001, tier = 2, ref = 'sat_aug_one', loot = 802 } })")
+    pump(rt, 40)
+    check("augcard: two entries draw two cards",
+          rt.eval("NAMED('add_message_splash_manager')") == 2,
+          str(rt.eval("NAMED('add_message_splash_manager')")))
+    check("augcard: each card names its own node",
+          rt.eval("EVENTS[1].options.icon") == "ui_icon_zm_augment_801"
+          and rt.eval("EVENTS[2].options.icon") == "ui_icon_zm_augment_802",
+          "%s / %s" % (rt.eval("EVENTS[1].options.icon"), rt.eval("EVENTS[2].options.icon")))
+    got = [ln for ln in lines_of(rt) if "splash augment card ref=sat_aug_one" in ln][-2:]
+    check("augcard: two lines, one per tier",
+          len(got) == 2 and got[0].endswith("tier=1 drawn=true")
+          and got[1].endswith("tier=2 drawn=true"),
+          " | ".join(got))
+
+    rm = new_rt(lua51, src=False, frontend=True)
+    rm.execute(AUGFIX)
+    rm.execute(SPLASHQ)
+    load(rm)
+    rm.execute("AUG_QUEUE({ { sat = 40001, tier = 1, ref = 'sat_aug_one', loot = 801 } })")
+    rm.execute("rawget(_G, 'ProgressionTuning').draw.flush()")
+    check("augcard: the menu vm draws nothing", rm.eval("NEVENTS()") == 0,
+          str(rm.eval("NEVENTS()")))
+    check("augcard: and the entry waits in the queue", rm.eval("AUG_LEFT()") == 1,
+          str(rm.eval("AUG_LEFT()")))
+
+    ro = new_rt(lua51, src=False, pre="SET_TOGGLE('pt_on', 0)")
+    ro.execute(AUGFIX)
+    ro.execute(SPLASHQ)
+    load(ro)
+    ro.execute("AUG_QUEUE({ { sat = 40001, tier = 1, ref = 'sat_aug_one', loot = 801 } })")
+    ro.execute("rawget(_G, 'ProgressionTuning').draw.flush()")
+    check("augcard: with the mod switch off nothing is drawn", ro.eval("NEVENTS()") == 0,
+          str(ro.eval("NEVENTS()")))
+    check("augcard: and the entry is dropped", ro.eval("AUG_LEFT()") == 0,
+          str(ro.eval("AUG_LEFT()")))
 
 
 WEEKLYLOOK = """
@@ -12427,6 +12511,7 @@ def main():
             splash_cap(lua51)
             splash_priority(lua51)
             splash_order(lua51)
+            augment_card(lua51)
             weekly_look(lua51)
             weekly_gaps(lua51)
             weekly_heads(lua51)

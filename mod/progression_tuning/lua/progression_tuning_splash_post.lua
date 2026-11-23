@@ -22,11 +22,11 @@ local function vlog(...) return A.vlog(...) end
 local function ours(...) return A.ours(...) end
 local function rec_value(...) return A.rec_value(...) end
 
-local PRIO = { level = 1, camo = 3, chal = 4 }
+local PRIO = { level = 1, camo = 3, chal = 4, aug = 6 }
 -- the main part own timer step
 local TICK_MS = 250
 -- the native airtime of a card in ticks
-local AIR = { level = 12, camoA = 16, camoB = 12, chalD = 16, chalWB = 16, ret = 16 }
+local AIR = { level = 12, camoA = 16, camoB = 12, chalD = 16, chalWB = 16, ret = 16, aug = 12 }
 local AIR_MAX = 16
 -- the longest native hold of one group
 local HOLD_TICKS = 35
@@ -71,6 +71,7 @@ local REWARD_POLL = 8
 local ST_FINISHED, ST_CLAIMABLE = 3, 2
 S.reward = S.reward or { last = {}, bas = {}, done = {}, miss = {} }
 local reward_watch = nil
+local aug_watch = nil
 
 -- the alias the client own table answers with
 local function alias_of(name)
@@ -189,6 +190,7 @@ end
 -- one card per gap, worst first
 local function flush()
   if reward_watch ~= nil then pcall(reward_watch) end
+  if aug_watch ~= nil then pcall(aug_watch) end
   if #S.q == 0 then return end
   if S.tick < S.nextAt then return end
   local pick = 1
@@ -661,6 +663,61 @@ reward_watch = function()
       if r.miss[k] == 32 then log("reward row " .. k .. " reads nothing - no card this match") end
     end
     i = i + 1
+  end
+end
+
+-- is this the match vm
+local function in_match()
+  local f = fn_of(rawget(_G, "Engine"), "InFrontend")
+  if f == nil then return true end
+  local ok, v = pcall(f)
+  if not ok then return true end
+  return v ~= true
+end
+
+-- the augment name one loot id answers
+local function aug_name(loot)
+  local nm = call(rawget(_G, "LOOT"), "getitemnamebyid", loot, true)
+  if empty(nm) or keyish(nm) then return nil end
+  return nm
+end
+
+-- draws one augment research completion
+local function aug_show(e)
+  local LOOT = rawget(_G, "LOOT")
+  local image = call(LOOT, "getitemimagebyid", e.loot)
+  local name = aug_name(e.loot)
+  local opts = { controllerIndex = 0, displayLocation = "zmAugmentResearchComplete" }
+  if not empty(image) and image ~= "white" then opts.icon = image end
+  if name ~= nil then opts.bodyText = name end
+  local ok, err = fire({ name = "add_message_splash_manager", immediate = true, options = opts })
+  if ok then
+    LAST = { kind = "aug", id = e.loot }
+    log("splash augment card ref=" .. tostring(e.ref) .. " tier=" .. tostring(e.tier) .. " drawn=true")
+  else
+    log("splash augment card ref=" .. tostring(e.ref) .. " tier=" .. tostring(e.tier) .. " drawn=false")
+    if said("augerr:" .. tostring(e.ref) .. ":" .. tostring(e.tier)) then
+      vlog("augment card refused at dispatch: " .. clip(err, 50))
+    end
+  end
+end
+
+-- drains the crossings the augments part queued
+aug_watch = function()
+  local aug = S.aug
+  if type(aug) ~= "table" then return end
+  local list = aug.cards
+  if type(list) ~= "table" or #list == 0 then return end
+  if not in_match() then return end
+  while #list > 0 do
+    local e = table.remove(list, 1)
+    if type(e) == "table" then
+      if not enqueue("aug", function() aug_show(e) end) then
+        if said("augoff:" .. tostring(e.ref) .. ":" .. tostring(e.tier)) then
+          vlog("augment card dropped - the mod switch is off")
+        end
+      end
+    end
   end
 end
 

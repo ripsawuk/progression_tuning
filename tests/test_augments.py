@@ -439,6 +439,8 @@ end
 function CACHEK() return type(next(Z[HK("augmentresearchchallenges")])) end
 CARDED = 0
 Z[HK("initcurrentactiveresearch")] = function(c) CARDED = CARDED + 1 end
+function CARDS() return #ProgressionTuning.aug.cards end
+function CARD(i, f) local e = ProgressionTuning.aug.cards[i]; return e and tostring(e[f]) end
 """
 
 # the twinned item: the cache's own merged nine rung ladder, six cer then three sat
@@ -605,7 +607,7 @@ def case_line(lua51):
     l = lines_of(r)
     check("line: one arm line, one owned line, one ladder line and nothing else", len(l) == 3,
           "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v7 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v8 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
@@ -1249,55 +1251,45 @@ def case_restore_late(lua51):
           "%d" % count_line(lines_of(r), "augments research restored"))
 
 
-# --- 20: the match vm raises one native card per tier crossing -------------------------------
+# --- 20: the match vm queues one entry per tier crossing -------------------------------------
 def case_popup(lua51):
     r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
     off(r)
     r.execute("SET_DVAR('pt_research_ch', 'a=40001')")
     r.execute("REFRESH(0)")
-    check("popup: the first read is the baseline", val(r, "NAMED('ae_reward_granted')") == "0",
-          val(r, "NAMED('ae_reward_granted')"))
+    check("popup: the first read is the baseline", val(r, "CARDS()") == "0", val(r, "CARDS()"))
     r.execute("REFRESH(0)")
-    check("popup: the second read confirms the baseline",
-          val(r, "NAMED('ae_reward_granted')") == "0", val(r, "NAMED('ae_reward_granted')"))
+    check("popup: the second read confirms the baseline", val(r, "CARDS()") == "0", val(r, "CARDS()"))
     r.execute("SET_PROG(40001, 70000)")
     r.execute("REFRESH(0)")
-    check("popup: one tier crossing raises one card", val(r, "NAMED('ae_reward_granted')") == "1",
-          val(r, "NAMED('ae_reward_granted')"))
-    check("popup: the card names the kind the hud tests",
-          val(r, "LASTOF('ae_reward_granted').kind") in ("437", "437.0"),
-          val(r, "LASTOF('ae_reward_granted').kind"))
-    check("popup: the card carries one loot id",
-          val(r, "#LASTOF('ae_reward_granted').items") == "1", val(r, "#LASTOF('ae_reward_granted').items"))
-    check("popup: the loot id is the crossed rung's own node",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("801", "801.0"),
-          val(r, "LASTOF('ae_reward_granted').items[1]"))
-    check("popup: one line names the row and the tier",
-          count_line(lines_of(r), "progression_tuning: augments tier id=40001 tier=1 sent=true") == 1,
+    check("popup: one tier crossing queues one entry", val(r, "CARDS()") == "1", val(r, "CARDS()"))
+    got = [val(r, "CARD(1,'%s')" % f) for f in ("sat", "tier", "ref", "loot")]
+    check("popup: the entry names the row, the tier, the ref and its node",
+          got == ["40001", "1", "sat_aug_one", "801"], " ".join(got))
+    check("popup: one line says the tier was queued",
+          count_line(lines_of(r), "progression_tuning: augments tier id=40001 tier=1 queued") == 1,
           " | ".join([ln for ln in lines_of(r) if "augments tier" in ln][:2]))
     r.execute("REFRESH(0); REFRESH(0)")
-    check("popup: the same tier does not card twice", val(r, "NAMED('ae_reward_granted')") == "1",
-          val(r, "NAMED('ae_reward_granted')"))
+    check("popup: the same tier queues nothing twice", val(r, "CARDS()") == "1", val(r, "CARDS()"))
     r.execute("SET_PROG(40001, 140000)")
     r.execute("REFRESH(0)")
-    check("popup: the next tier raises the next card", val(r, "NAMED('ae_reward_granted')") == "2",
-          val(r, "NAMED('ae_reward_granted')"))
+    check("popup: the next tier queues the next entry", val(r, "CARDS()") == "2", val(r, "CARDS()"))
+    got = [val(r, "CARD(2,'%s')" % f) for f in ("tier", "loot")]
+    check("popup: the second entry names tier two and its own node", got == ["2", "802"], " ".join(got))
     check("popup: the second line names tier two",
-          count_line(lines_of(r), "augments tier id=40001 tier=2 sent=true") == 1,
+          count_line(lines_of(r), "progression_tuning: augments tier id=40001 tier=2 queued") == 1,
           " | ".join([ln for ln in lines_of(r) if "augments tier" in ln][:2]))
     r.execute("SET_PROG(40001, 0)")
     r.execute("REFRESH(0); REFRESH(0)")
     r.execute("SET_PROG(40001, 70000)")
     r.execute("REFRESH(0)")
-    check("popup: a lower read never replays a tier", val(r, "NAMED('ae_reward_granted')") == "2",
-          val(r, "NAMED('ae_reward_granted')"))
+    check("popup: a lower read never replays a tier", val(r, "CARDS()") == "2", val(r, "CARDS()"))
     r2 = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
     off(r2)
     r2.execute("SET_DVAR('pt_research_ch', 'a=40001')")
     r2.execute("SET_PROG(40001, 140000)")
     r2.execute("REFRESH(0); REFRESH(0); REFRESH(0)")
-    check("popup: a reload mid match cards nothing", val(r2, "NAMED('ae_reward_granted')") == "0",
-          val(r2, "NAMED('ae_reward_granted')"))
+    check("popup: a reload mid match queues nothing", val(r2, "CARDS()") == "0", val(r2, "CARDS()"))
 
 
 def case_popup_multi(lua51):
@@ -1307,8 +1299,10 @@ def case_popup_multi(lua51):
     r.execute("REFRESH(0); REFRESH(0)")
     r.execute("SET_PROG(40002, 275000)")
     r.execute("REFRESH(0)")
-    check("popup multi: three steps raise three cards",
-          val(r, "NAMED('ae_reward_granted')") == "3", val(r, "NAMED('ae_reward_granted')"))
+    check("popup multi: three steps queue three entries",
+          val(r, "CARDS()") == "3", val(r, "CARDS()"))
+    got = [val(r, "CARD(%d,'loot')" % i) for i in (1, 2, 3)]
+    check("popup multi: the three entries name their own nodes", got == ["901", "902", "903"], " ".join(got))
     check("popup multi: one line per tier",
           count_line(lines_of(r), "augments tier id=40002 tier=") == 3,
           "%d" % count_line(lines_of(r), "augments tier id=40002 tier="))
@@ -1320,8 +1314,8 @@ def case_popup_on(lua51):
     r.execute("SET_DVAR('pt_research_ch', 'a=40001')")
     r.execute("SET_PROG(40001, 300000)")
     r.execute("REFRESH(0); REFRESH(0); REFRESH(0)")
-    check("popup on: the switch raises no card", val(r, "NAMED('ae_reward_granted')") == "0",
-          val(r, "NAMED('ae_reward_granted')"))
+    check("popup on: the switch queues no entry", val(r, "CARDS()") == "0",
+          val(r, "CARDS()"))
     check("popup on: and says no tier line", count_line(lines_of(r), "augments tier ") == 0,
           "%d" % count_line(lines_of(r), "augments tier "))
     r2 = rt(ZMFIX + "\nMAKEZM()")
@@ -1330,8 +1324,8 @@ def case_popup_on(lua51):
     r2.execute("REFRESH(0); REFRESH(0)")
     r2.execute("SET_PROG(40001, 70000)")
     r2.execute("REFRESH(0)")
-    check("popup: the menu vm raises no card", val(r2, "NAMED('ae_reward_granted')") == "0",
-          val(r2, "NAMED('ae_reward_granted')"))
+    check("popup: the menu vm queues nothing", val(r2, "CARDS()") == "0",
+          val(r2, "CARDS()"))
 
 
 def case_popup_match(lua51):
@@ -1355,21 +1349,45 @@ def case_popup_late(lua51):
     r.execute("REFRESH(0); REFRESH(0)")
     r.execute("SET_PROG(40001, 70000)")
     r.execute("REFRESH(0)")
-    check("late popup: the card names the rung with no active item to read",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("801", "801.0"),
-          val(r, "LASTOF('ae_reward_granted').items[1]"))
+    check("late popup: the entry names the rung with no active item to read",
+          val(r, "CARD(1,'loot')") == "801",
+          val(r, "CARD(1,'loot')"))
     r.execute("PUTACTIVE()")
     r.execute("SET_PROG(40001, 140000)")
     r.execute("REFRESH(0)")
     check("late popup: the next rung names its own node",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("802", "802.0"),
-          val(r, "LASTOF('ae_reward_granted').items[1]"))
+          val(r, "CARD(2,'loot')") == "802",
+          val(r, "CARD(2,'loot')"))
     r.execute("Z[STORE_K]['sat_aug_one'][3][xhash('lootid')] = nil")
     r.execute("SET_PROG(40001, 300000)")
     r.execute("REFRESH(0)")
     check("late popup: a node with no loot id falls back to the active item",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("107157", "107157.0"),
-          val(r, "LASTOF('ae_reward_granted').items[1]"))
+          val(r, "CARD(3,'loot')") == "107157",
+          val(r, "CARD(3,'loot')"))
+
+
+# --- 31: the ladder line names the active research ------------------------------------------
+def case_ladder_active(lua51):
+    r = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r)
+    r.execute("SET_DVAR('pt_research_ch', 'a=40002')")
+    r.execute("SET_PROG(40002, 150000)")
+    r.execute("REFRESH(0)")
+    line = [ln for ln in lines_of(r) if "augments ladder" in ln]
+    check("ladder ref: the line names the active research and its own progress",
+          len(line) == 1
+          and line[0].endswith("augments ladder ref=sat_aug_two rungs=3 first=70000 progress=150000"),
+          " | ".join(line[:2]))
+    r2 = rt(ZMFIX + "\nMAKEZM()", "FRONTEND = false")
+    off(r2)
+    r2.execute("SET_DVAR('pt_research_ch', 'a=40001')")
+    r2.execute("SET_PROG(40001, 70000)")
+    r2.execute("REFRESH(0)")
+    l2 = [ln for ln in lines_of(r2) if "augments ladder" in ln]
+    check("ladder ref: another active research moves the line with it",
+          len(l2) == 1
+          and l2[0].endswith("augments ladder ref=sat_aug_one rungs=3 first=70000 progress=70000"),
+          " | ".join(l2[:2]))
 
 
 # --- 28: the nine rung twin, the cache's own merged ladder ------------------------------------
@@ -1466,7 +1484,7 @@ def case_twin(lua51):
           "113421=%s 110782=%s" % (val(r, "ANS(113421)"), val(r, "ANS(110782)")))
 
 
-# --- 29: the twin's card and its switch -------------------------------------------------------
+# --- 29: the twin's queue entry and its switch ------------------------------------------------
 def case_twin_popup(lua51):
     r = rt(ZMFIX + "\nMAKEZM()\n" + TWIN, "TWIN()\nFRONTEND = false")
     off(r)
@@ -1474,23 +1492,23 @@ def case_twin_popup(lua51):
     r.execute("PAIR(9000, 10999)")
     r.execute("REFRESH(0); REFRESH(0)")
     check("twin popup: nothing below the first merged rung",
-          val(r, "NAMED('ae_reward_granted')") == "0", val(r, "NAMED('ae_reward_granted')"))
+          val(r, "CARDS()") == "0", val(r, "CARDS()"))
     r.execute("PAIR(10000, 10000)")
     r.execute("REFRESH(0)")
-    check("twin popup: the first rung raises one card", val(r, "NAMED('ae_reward_granted')") == "1",
-          val(r, "NAMED('ae_reward_granted')"))
-    check("twin popup: the card names the first node's cer id",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("57733", "57733.0"),
-          val(r, "LASTOF('ae_reward_granted').items[1]"))
+    check("twin popup: the first rung queues one entry", val(r, "CARDS()") == "1",
+          val(r, "CARDS()"))
+    check("twin popup: the entry names the first node's cer id",
+          val(r, "CARD(1,'loot')") == "57733",
+          val(r, "CARD(1,'loot')"))
     check("twin popup: one line names the row and the rung",
-          count_line(lines_of(r), "augments tier id=40001 tier=1 sent=true") == 1,
+          count_line(lines_of(r), "augments tier id=40001 tier=1 queued") == 1,
           " | ".join([ln for ln in lines_of(r) if "augments tier" in ln][:2]))
     r.execute("PAIR(0, 45000)")
     r.execute("REFRESH(0)")
     check("twin popup: the second rung names the second cer id",
-          val(r, "LASTOF('ae_reward_granted').items[1]") in ("57731", "57731.0")
-          and val(r, "NAMED('ae_reward_granted')") == "2",
-          val(r, "LASTOF('ae_reward_granted').items[1]"))
+          val(r, "CARD(2,'loot')") == "57731"
+          and val(r, "CARDS()") == "2",
+          val(r, "CARD(2,'loot')"))
 
 
 def case_twin_on(lua51):
@@ -1556,7 +1574,7 @@ def main():
                  case_slot, case_bonus, case_toggle_ids, case_lock_lines, case_lock_answer,
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
                  case_popup_on, case_popup_match, case_popup_late, case_twin, case_twin_popup,
-                 case_twin_on, case_missing):
+                 case_twin_on, case_ladder_active, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)
