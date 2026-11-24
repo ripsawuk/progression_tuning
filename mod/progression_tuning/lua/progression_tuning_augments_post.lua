@@ -10,8 +10,6 @@ local K_SLOTS = "bd666394faa4374c"
 local K_SEND = "e636d3bf423fd414"
 -- the progress read the menu asks
 local K_PROG = "31eee6570ef4bb8b"
--- the gamemode field the gate reads
-local K_BUNDLE = "053308f95ad2e716"
 -- the cache the count pass fills
 local K_CACHE = "8ac6d3ec3791c80f"
 -- the builder that owns the cache
@@ -36,11 +34,10 @@ local SLOTS = 9
 -- a weight the fill guard computes to dark
 local DARK = 0.001
 
-local VERSION = "v11"
+local VERSION = "v12"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
-local R2_PASSES = 40
 local RTRIES = 4
 
 local S = rawget(_G, "ProgressionTuning")
@@ -54,8 +51,7 @@ S.parts[PART] = true
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
   active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
   cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gkey = nil,
-  gfed = false, ukeys = nil, utot = nil, uob = nil, gval = nil, passes = 0, rtry = 0,
-  r1Said = false, r2Said = false }
+  gfed = false, ukeys = nil, gval = nil, rtry = 0 }
 S.aug = G
 
 -- says a thing once
@@ -461,30 +457,6 @@ local function nn(v)
   return tostring(v)
 end
 
--- the field the gate reads on the gamemode bundle
-local function bundleval(b)
-  if type(b) ~= "table" then return nil end
-  local k = key_hex(b, K_BUNDLE)
-  if k ~= nil then return field(b, k) end
-  local h = xh(K_BUNDLE)
-  if h == nil then return nil end
-  return field(b, h)
-end
-
--- the two keys and the bundle field once
-local function r2say()
-  if G.r2Said == true then return end
-  local fld = nil
-  local fb = fn_of(rawget(_G, "Game"), "getactivegamemodescriptbundle")
-  if fb ~= nil then
-    local ok, b = pcall(fb)
-    if ok then fld = bundleval(b) end
-  end
-  if fld == nil and (G.passes or 0) < R2_PASSES then return end
-  G.r2Said = true
-  dp("augprobe R2 total=" .. nn(G.utot) .. " ob=" .. nn(G.uob) .. " bundle=" .. nn(fld))
-end
-
 -- the count key function the engine hands out
 local function ufn()
   local C = rawget(_G, "Challenge")
@@ -541,8 +513,6 @@ local function ureg()
     if key ~= nil then
       U.answer[key] = uanswer
       n = n + 1
-      if i == 1 and G.utot == nil then G.utot = key end
-      if i == 2 and G.uob == nil then G.uob = key end
       if G.ukey == nil then G.ukey = key end
     end
   end
@@ -613,11 +583,7 @@ end
 -- the count pass the game runs on its own build
 local function gate(c, owned, store, done, say)
   G.gkey, G.gval = nil, nil
-  local before, after, rows = recache(c)
-  if G.r1Said ~= true then
-    G.r1Said = true
-    dp("augprobe R1 cache=" .. nn(before) .. " rebuilt=" .. nn(after) .. " rows=" .. rows)
-  end
+  local _, after = recache(c)
   local rebuilt = after == "table"
   if rebuilt then
     pcall(repaint, c)
@@ -993,7 +959,6 @@ end
 pass = function(c)
   if c == nil then c = G.c end
   G.c = c
-  G.passes = (G.passes or 0) + 1
   local one, two = dv(DV_ONE), dv(DV_TWO)
   if one == nil or two == nil then return end
   local on = (one == "1") or (two == "1")
@@ -1018,7 +983,6 @@ pass = function(c)
     if type(f) == "function" then pcall(f, c) end
   end
   pcall(watch_tiers, c)
-  pcall(r2say)
 end
 
 -- the wrappers this part keeps one of

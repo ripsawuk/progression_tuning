@@ -750,15 +750,12 @@ def case_line(lua51):
     off(r)
     r.execute("REFRESH(0)")
     l = lines_of(r)
-    check("line: one arm line, one owned line, one ladder line, one probe line and nothing else", len(l) == 4,
+    check("line: one arm line, one owned line, one ladder line and nothing else", len(l) == 3,
           "%d lines: %s" % (len(l), " | ".join(l[:4])))
-    want = "progression_tuning: augments armed v11 unlock=0 all=0 devcomplete=false"
+    want = "progression_tuning: augments armed v12 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
-    r2 = [ln for ln in l if "augprobe R2" in ln]
-    check("line: one probe line names both keys and the bundle field",
-          len(r2) == 1 and r2[0].endswith(" bundle=zm_augments_total_unlock_count"), " | ".join(r2[:2]))
     ladder = [ln for ln in l if "augments ladder" in ln]
     check("line: one ladder line names the rungs and the first threshold",
           len(ladder) == 1 and ladder[0].endswith(" rungs=3 first=70000 progress=0"),
@@ -1805,9 +1802,9 @@ def case_arm(lua51):
         r = gate_rt(first)
         check("arm (%s): every name is registered before any pass" % first,
               val(r, "ProgressionTuning.aug.ukeys") == "4"
-              and val(r, "ProgressionTuning.aug.passes") == "0",
-              "ukeys=%s passes=%s" % (val(r, "ProgressionTuning.aug.ukeys"),
-                                      val(r, "ProgressionTuning.aug.passes")))
+              and val(r, "COUNT_CALLS") == "0",
+              "ukeys=%s calls=%s" % (val(r, "ProgressionTuning.aug.ukeys"),
+                                     val(r, "COUNT_CALLS")))
         n = r.eval("(function() local n = 0"
                    " for _ in pairs(ProgressionTuning.userstate.answer) do n = n + 1 end"
                    " return n end)()")
@@ -1844,9 +1841,6 @@ def case_rebuild(lua51):
     check("rebuild: the cache the builder made holds the rows",
           val(r, "CACHEK()") == "number", val(r, "CACHEK()"))
     check("rebuild: one repaint for the one change", val(r, "REPAINTS") == "1", val(r, "REPAINTS"))
-    check("rebuild: one probe line names the types and the rows",
-          count_line(lines_of(r), "progression_tuning: augprobe R1 cache=table rebuilt=table rows=2") == 1,
-          " | ".join([ln for ln in lines_of(r) if "augprobe R1" in ln][:2]))
     r.execute("REFRESH(0); REFRESH(0)")
     check("rebuild: a held count rebuilds nothing",
           val(r, "BUILDS") == "1" and val(r, "REPAINTS") == "1",
@@ -1872,10 +1866,6 @@ def case_idle(lua51):
     l = lines_of(r)
     check("idle: the gate line is said once over fifty unchanged passes",
           count_line(l, "augments gate") == 1, "%d" % count_line(l, "augments gate"))
-    check("idle: R1 is said once", count_line(l, "augprobe R1") == 1,
-          "%d" % count_line(l, "augprobe R1"))
-    check("idle: R2 is said once", count_line(l, "augprobe R2") == 1,
-          "%d" % count_line(l, "augprobe R2"))
     check("idle: one rebuild and one repaint for the one change",
           val(r, "BUILDS") == "1" and val(r, "REPAINTS") == "1",
           "builds=%s repaints=%s" % (val(r, "BUILDS"), val(r, "REPAINTS")))

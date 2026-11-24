@@ -338,17 +338,6 @@ local function ufind(k)
   return nil
 end
 
--- one line per asked key twelve at most
-local US_SAID = {}
-local function ussay(k, hit)
-  local s = kform(k)
-  if s == nil or US_SAID[s] ~= nil then return end
-  if (T.usn or 0) >= 12 then return end
-  US_SAID[s] = true
-  T.usn = (T.usn or 0) + 1
-  log("userstate ask=" .. s .. " hit=" .. (hit and 1 or 0))
-end
-
 -- fills the registered keys the read left out
 local function ustate(res, keys, c, own)
   for k, v in pairs(keys) do
@@ -356,16 +345,13 @@ local function ustate(res, keys, c, own)
     if ask == nil or type(ask) == "boolean" then ask = k end
     local ours = type(own) == "table" and own[ask] == true
     local f = ufind(ask)
-    local hit = ours
     if f ~= nil and not ours then
       local ok, val = pcall(f, { c = c, key = ask })
       if ok and val ~= nil then
         if type(res) ~= "table" then res = {} end
         res[ask] = val
-        hit = true
       end
     end
-    ussay(ask, hit)
   end
   return res
 end
