@@ -473,54 +473,6 @@ local function wrap_ev()
   return T.ev == true
 end
 
--- the one loc key the token menu shows
-local LOC_KEY = "4849F2616A844C09"
-local LOC_NAME = "hash_4849f2616a844c09"
-local LOC_BYTES = string.char(0x09, 0x4C, 0x84, 0x6A, 0x61, 0xF2, 0x49, 0x48)
-local LOC_OLD = "Active XP Tokens count down in real-time"
-local LOC_NEW = "Active XP Tokens count down with in-game time"
-local LOC_LOW = string.lower(LOC_OLD)
-local LOC_OURS = setmetatable({}, { __mode = "k" })
-
--- the key in the shapes the menu may pass
-local function loc_key(v)
-  if type(v) == "string" then
-    if string.lower(v) == LOC_NAME or v == LOC_BYTES then return true end
-    return false
-  end
-  local ok, s = pcall(tostring, v)
-  if not ok or type(s) ~= "string" then return false end
-  s = string.gsub(string.upper(s), "[^0-9A-F]", "")
-  if string.len(s) == 17 and string.sub(s, 1, 1) == "3" then s = string.sub(s, 2) end
-  return (string.gsub(s, "^0+", "")) == LOC_KEY
-end
-
--- answers the token footer with our own text
-local function wrap_loc()
-  if T.loc then return true end
-  local E = rawget(_G, "Engine")
-  if type(E) ~= "table" then return false end
-  local k, o = member(E, "Localize")
-  if k == nil or type(o) ~= "function" then return false end
-  if LOC_OURS[o] then
-    T.loc = true
-    return true
-  end
-  local w = function(s, ...)
-    if loc_key(s) then return LOC_NEW end
-    local res = o(s, ...)
-    if type(res) == "string" and string.lower(res) == LOC_LOW then return LOC_NEW end
-    return res
-  end
-  if not pcall(function() E[k] = w end) then return false end
-  local okr, got = pcall(function() return E[k] end)
-  if not okr or got ~= w then return false end
-  LOC_OURS[o] = true
-  LOC_OURS[w] = true
-  T.loc = true
-  return true
-end
-
 -- says the status dvar is missing once
 local function stsay()
   local v = dv(ST)
@@ -704,6 +656,10 @@ local function install()
       if id == nil or AE_LOOT[id] == nil then
         refused("notoken", c, aeid, kd, kvals)
       else
+        if T.x == 1 then
+          refused("perm", c, aeid, kd, kvals)
+          return true
+        end
         local n = had(id)
         if n > 0 and fire({ name = AE_EV, controller = c, kind = kdv, success = true, id = id }) then
           T.n[id] = n - 1
@@ -738,7 +694,6 @@ local function step()
   if not T.armed then pcall(install) end
   if not T.p3 then pcall(wrap_end) end
   if not T.ev then pcall(wrap_ev) end
-  if not T.loc then pcall(wrap_loc) end
   pcall(release)
   pcall(tick_chan)
 end
@@ -761,7 +716,6 @@ end
 clock()
 pcall(wrap_end)
 pcall(wrap_ev)
-pcall(wrap_loc)
 
 local dp = rawget(_G, "DebugPrint") or rawget(_G, "print")
 if type(dp) == "function" then pcall(dp, "progression_tuning: part tokens armed") end

@@ -23,7 +23,7 @@ local function gun_tries(...) return A.gun_tries(...) end
 local function resolve_gun(...) return A.resolve_gun(...) end
 local function ours(...) return A.ours(...) end
 
-local MINXP_MAX = 40
+local MINXP_MAX = 60
 
 local function enqueue(what, fn)
   local d = S.draw

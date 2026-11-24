@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 291381
-SHIP_LUA_SHA = "265237373A43CCAA9D6E5DF1DD6CDD23642B957DF2D281F8304BD95024AC9FC8"
-LITERAL_SHA = "711D70CF1939A3F61137AAAD4FC050F14BDE56F7066C45B63E6653DA1C9ED36B"
+SHIP_LUA_LEN = 289759
+SHIP_LUA_SHA = "A315404BE753BFB04ED54C3E87A90A934D0D9714BF2DC6AF1A1144CA385ABA3E"
+LITERAL_SHA = "C5FDADDCB04391F85851D801D9D28FB11BAA818253A1AD532B505A81282C7A5D"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1069,6 +1069,9 @@ LITERAL_REMOVED = [
     "v4",
     "v5",
     "v8",
+    "4849F2616A844C09",
+    "Active XP Tokens count down in real-time",
+    "Active XP Tokens count down with in-game time",
     "Challenge.GetAEKindID refused ae_kind_reticle",
     "GL_HACK",
     "GetSoundLengthMS",
@@ -1081,6 +1084,7 @@ LITERAL_REMOVED = [
     "armory check owned 151472=",
     "armory check progression 151472=",
     "getweaponmpref",
+    "hash_4849f2616a844c09",
     "isunlocked",
     "no Challenge.GetAEKindID in this VM",
     "sat_sm_civet",
@@ -1491,7 +1495,6 @@ LITERAL_ADDED = [
     " kd=",
     " wraps=",
     " no bundle",
-    "4849F2616A844C09",
     "5a6d0000000000be",
     "7bf7f57679e8d050",
     "9f6c4b08602983fb",
@@ -1499,8 +1502,6 @@ LITERAL_ADDED = [
     ";x=1",
     "=#x",
     "=missing",
-    "Active XP Tokens count down in real-time",
-    "Active XP Tokens count down with in-game time",
     "DoubleXPType",
     "Dropdown",
     "Enable Double XP",
@@ -1538,7 +1539,6 @@ LITERAL_ADDED = [
     "getalldoublexpstates",
     "gettoastdatafromachievementid",
     "getuserstatesvalues",
-    "hash_4849f2616a844c09",
     "isdoubleweaponxpactive",
     "isdoublexpactive",
     "isdoublexpactivebytype",
@@ -1550,6 +1550,7 @@ LITERAL_ADDED = [
     "options move skip ",
     "options row moved after=",
     "options slot ",
+    "perm",
     "progression_tuning: part options armed",
     "progression_tuning: part tokens armed",
     "pt_permanent",
@@ -10046,6 +10047,30 @@ def tokens_channel(lua51):
           ro.eval('Engine[xhash("GetUTC")]()') == 1763520000
           and count_line(lines_of(ro), "progression_tuning: utc fill armed") == 1,
           str(ro.eval('Engine[xhash("GetUTC")]()')))
+
+
+def token_perm_gate(lua51):
+    """A press under the permanent flag is refused before it spends."""
+    pre = ('SET_DVAR("pt_tokens_ch", "p=0;w=0;n=1;c=2,2,2,2,2,2,2,2;x=0")\n'
+           'NAT = 0\n'
+           'OnlineChallenges[xhash("activateachievement")] = function(c, aeid, kd, evid)'
+           ' NAT = NAT + 1; return true end')
+    rt = new_rt(lua51, pre=pre)
+    pump(rt, 1)
+    press = 'OnlineChallenges[xhash("activateachievement")](0, 48364, 146, nil)'
+    rt.eval(press)
+    spent = (num(rt, "ProgressionTuning.tokens.used") == 1
+             and num(rt, "ProgressionTuning.tokens.c[5]") == 1)
+    rt.execute("ProgressionTuning.tokens.perm(true)")
+    held = str(ch_of(rt))
+    rt.eval(press)
+    check("tok: a press under the permanent flag is refused before it spends",
+          spent and num(rt, "ProgressionTuning.tokens.used") == 1
+          and num(rt, "ProgressionTuning.tokens.c[5]") == 1 and str(ch_of(rt)) == held
+          and count_line(lines_of(rt), "tokens Q12 ae refused why=perm") == 1
+          and num(rt, "NAT") == 0,
+          "used=%s c5=%s nat=%s" % (rt.eval("ProgressionTuning.tokens.used"),
+                                    rt.eval("ProgressionTuning.tokens.c[5]"), rt.eval("NAT")))
 ARMORY_FIX = r"""
 UTC = 0
 GATE_CALLS = 0
@@ -12885,6 +12910,7 @@ def main():
             unlock_row(lua51)
             userstate_registry(lua51)
             tokens_channel(lua51)
+            token_perm_gate(lua51)
             armory_gate(lua51)
             armory_pick(lua51)
             armory_queue(lua51)
