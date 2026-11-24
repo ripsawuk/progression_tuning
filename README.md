@@ -89,8 +89,9 @@ on what the build holds, or skip with a `SKIP` line.
 
 ## Layout
 
-    mod\progression_tuning\      the mod: mod.json, ten Lua parts (the diag part included as source) and
-                                 the folder's one GSC script
+    mod\progression_tuning\      the mod: mod.json, eleven Lua parts (main plus ten feature parts, armory and
+                                 augments included) and the folder's two GSC scripts (tokens, armory). The diag
+                                 part and the see_fire script are dev files and are not in the zip
     data\challenges.tsv          the weapon level ladder the release installs (see data\README.md)
     clienthook\src\              the hook: nine sources, seven headers, the export definition
     clienthook\build.cmd         build the DLL
@@ -101,6 +102,8 @@ on what the build holds, or skip with a `SKIP` line.
     RELEASE-NOTES-rc1.1.md       what changed in rc1.1
     RELEASE-NOTES-rc1.2.md       what changed in rc1.2
     RELEASE-NOTES-rc1.3.md       what changed in rc1.3
+    RELEASE-NOTES-rc1.4.md       what changed in rc1.4
+    RELEASE-NOTES-rc1.5.md       what changed in rc1.5
 
 Two things are deliberately **not** in this repository: any copy of a game file or a table derived from one, and
 any client binary other than the release's own DLL. The one exception is `data\challenges.tsv` - the weapon level
