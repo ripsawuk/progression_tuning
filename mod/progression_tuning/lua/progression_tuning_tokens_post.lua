@@ -12,7 +12,6 @@ local A = S.api
 local function log(...) return A.log(...) end
 local function clip(...) return A.clip(...) end
 local function dv(...) return A.dv(...) end
-local function empty(...) return A.empty(...) end
 local function fn_of(...) return A.fn_of(...) end
 local function member(...) return A.member(...) end
 local function said(...) return A.said(...) end
@@ -47,7 +46,6 @@ local C_IDS = { 84677, 84680, 84678, 84679, 84672, 84675, 84673, 84674 }
 local C_SLOT = {}
 for i, l in ipairs(C_IDS) do C_SLOT[l] = i end
 -- the gsc status read only
-local ST = "pt_tokens_st"
 local HD = rawget(_G, "xhashdvar")
 local H = rawget(_G, "xhash")
 -- the menu reader and the two token end times
@@ -148,7 +146,6 @@ local function chwrite()
 end
 
 local EV_OURS = setmetatable({}, { __mode = "k" })
-local EV_ALL = {}
 
 -- the record answer for one loot id
 local function own_loot(loot)
@@ -422,7 +419,6 @@ local function evone(tbl, name, make)
   local okr, got = pcall(function() return tbl[k] end)
   if not okr or got ~= w then return false end
   EV_OURS[o], EV_OURS[w] = true, true
-  EV_ALL[#EV_ALL + 1] = name
   return true
 end
 

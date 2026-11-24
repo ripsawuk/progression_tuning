@@ -336,10 +336,9 @@ local function reorder(items, key)
 end
 
 -- the item list holding our rows
-local function findMine(t, depth, acc)
+local function findMine(t, depth)
   if type(t) ~= "table" or depth > 4 then return nil end
   if type(t[1]) == "table" then
-    acc.any = true
     local i = 1
     while i <= #t do
       local it = t[i]
@@ -353,7 +352,7 @@ local function findMine(t, depth, acc)
   end
   for _, v in next, t do
     if type(v) == "table" then
-      local found = findMine(v, depth + 1, acc)
+      local found = findMine(v, depth + 1)
       if found ~= nil then return found end
     end
   end
@@ -362,13 +361,12 @@ end
 
 -- moves our rows after the anchor
 local function move(...)
-  local acc = { any = false }
   local items = nil
   local total = select("#", ...)
   local i = 1
   while i <= total and items == nil do
     local v = select(i, ...)
-    if type(v) == "table" and type(v[1]) == "table" then items = findMine(v, 0, acc) end
+    if type(v) == "table" and type(v[1]) == "table" then items = findMine(v, 0) end
     i = i + 1
   end
   if items == nil then return end
