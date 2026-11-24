@@ -3,7 +3,7 @@
 A Kronos mod folder for Call of Duty: Black Ops 7 Zombies. It is UI Lua and two GSC scripts: no game file is
 written by the mod, and it displays what the client hook's payload says rather than computing XP of its own.
 
-    mod.json                              name, version, the toggles, one description
+    mod.json                              name, author, version, type, requires, description
     lua\progression_tuning_main_post.lua  the core: registry, clock, payload readers, the door rule, the timer
     lua\progression_tuning_weaponxp_post.lua  the paid-XP display: gun bind, ladder pick, level crossing, TAB level
     lua\progression_tuning_splash_post.lua    the card drawing service: one queue, one airtime, a fixed order
@@ -11,16 +11,20 @@ written by the mod, and it displays what the client hook's payload says rather t
     lua\progression_tuning_challenges_post.lua  daily and weekly sweeps and their completion cards
     lua\progression_tuning_prison_post.lua    the lock door and the gunsmith scope
     lua\progression_tuning_reticles_post.lua  the optic watch (reticle unlocks are not answered yet)
+    lua\progression_tuning_armory_post.lua    the armory pick: the game's own armory list and its completion answer
+    lua\progression_tuning_augments_post.lua  the augments part: the cache ladder and its tier crossings
     lua\progression_tuning_options_post.lua   the Debug Options rows: XP Token Amount, Enable Double XP
     lua\progression_tuning_tokens_post.lua    the XP token channel: counts, countdown, activation, the menu reads
-    lua\progression_tuning_diag_post.lua      the temporary `rc1diag` block, `pt_diag` off by default
+    lua\progression_tuning_diag_post.lua      a dev part only: the `rc1diag` block, never in a release zip
     scripts\progression_tuning_tokens.gsc     the script side of the token channel: the native XP multipliers
     scripts\progression_tuning_armory.gsc     the armory XP feed: the operator's pre cap match xp in `pt_armory_xp`
+    scripts\progression_tuning_see_fire.gsc   a dev probe only: fires the super ee challenge on request
 
 Kronos loads every `*_post.lua` in the folder as its own chunk, and each file in the folder's `scripts\` as its own
 GSC program. `main` is required: it holds the registry and the API the other parts call, and it is the part that
-reports `core absent - no part <name>` when one is missing. The eight feature parts are optional - delete one
-and its feature is simply absent, the rest keep running.
+reports `core absent - no part <name>` when one is missing. The ten feature parts are optional - delete one
+and its feature is simply absent, the rest keep running. The diag Lua part and `see_fire.gsc` are dev parts: they
+stay in this folder and are left out of every release zip.
 
 ## The token channel
 

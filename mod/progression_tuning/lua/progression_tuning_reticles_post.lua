@@ -26,7 +26,6 @@ local CAMO_FIELDS = { "progress", "xp", "default" }
 local RET_KIND = 422
 local RET_CAP = 36
 local WATCH_GAP_TICKS = 32
-local RET_POLL_TICKS = 8
 
 local function enqueue(what, fn)
   local d = S.draw
@@ -246,7 +245,6 @@ end
 S.hooks.ret = function()
   if not want(nil) then return end
   if S.tick % A.poll ~= 0 then return end
-  if S.tick % RET_POLL_TICKS ~= 0 then return end
   pcall(ret_rows)
   pcall(ret_check)
 end

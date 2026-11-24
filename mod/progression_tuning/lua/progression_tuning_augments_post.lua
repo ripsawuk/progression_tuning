@@ -49,12 +49,12 @@ if S.parts[PART] == true then return end
 S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
-  active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
+  active = 0, sat = 0, on = nil, ix = nil, tier = {}, owned = 0, ev = nil, key = nil,
   cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gkey = nil,
   gfed = false, ukeys = nil, gval = nil, rtry = 0 }
 S.aug = G
 
--- says a thing once
+-- prints a line
 local function dp(msg)
   local f = rawget(_G, "DebugPrint")
   if type(f) == "function" then pcall(f, PREFIX .. msg) end
@@ -688,7 +688,7 @@ local function whole(c)
     owned, tiers, rows, items, done = ticks(c, store, cache, map_of(Z))
   end)
   local prev = G.owned
-  G.tier, G.rows, G.owned, G.ix = tiers, rows, owned, items
+  G.tier, G.owned, G.ix = tiers, owned, items
   if rows > 0 then
     pcall(flag, store, done)
     if front() ~= false then pcall(clearall, c, Z, store, done) end

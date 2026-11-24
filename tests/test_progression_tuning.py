@@ -206,8 +206,8 @@ LS_COUNT = 4203
 LS_SHA = "EC5C1479DE844E725AC0569A348B0349826783B1C0CC7598F0C949451A349581"
 ACCEPT = [89575, 96171, 96192, 96202, 102671, 126597, 126619, 111457]
 # the tokens script is rc1.4 prep's file byte for byte, the armory xp feed is a script of its own
-TOKENS_GSC_LEN = 8559
-TOKENS_GSC_SHA = "63EFBB2B9032C392FED53501124F77E85B3F0E15332415BF0796A2BBECDF06DC"
+TOKENS_GSC_LEN = 8557
+TOKENS_GSC_SHA = "97E3CA329D045197A606A4F4B7117F2C8D23805662EE3AFB1D2B249CAF2CEA88"
 ARMORY_GSC = "progression_tuning_armory.gsc"
 SEE_FIRE_GSC = "progression_tuning_see_fire.gsc"
 TOGGLES = ["pt_on", "pt_level", "pt_attach", "pt_camo", "pt_daily", "pt_log"]
@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 289759
-SHIP_LUA_SHA = "A315404BE753BFB04ED54C3E87A90A934D0D9714BF2DC6AF1A1144CA385ABA3E"
-LITERAL_SHA = "C5FDADDCB04391F85851D801D9D28FB11BAA818253A1AD532B505A81282C7A5D"
+SHIP_LUA_LEN = 286773
+SHIP_LUA_SHA = "904912C6DBECE116C41A3F3F98607281604A3C43C25D220F5597474B8A52DF86"
+LITERAL_SHA = "24DF3FE797904D4087128DB57DACDF717453827A5130A3399B26FD9859B2378F"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1493,15 +1493,11 @@ LITERAL_ADDED = [
     # the two rows parts: the page's own members, the two ids, the channel and its log lines
     " aeid=",
     " kd=",
-    " wraps=",
-    " no bundle",
     "5a6d0000000000be",
     "7bf7f57679e8d050",
     "9f6c4b08602983fb",
     ";c=([%d,]+)",
     ";x=1",
-    "=#x",
-    "=missing",
     "DoubleXPType",
     "Dropdown",
     "Enable Double XP",
@@ -1544,12 +1540,7 @@ LITERAL_ADDED = [
     "isdoublexpactivebytype",
     "onachievementactivated",
     "opt",
-    "options anchor missing",
     "options armed",
-    "options data id=",
-    "options move skip ",
-    "options row moved after=",
-    "options slot ",
     "perm",
     "progression_tuning: part options armed",
     "progression_tuning: part tokens armed",
@@ -1561,8 +1552,6 @@ LITERAL_ADDED = [
     "seed",
     "settokenuselocked",
     "tokens P3 wrap=1",
-    "tokens P5 perm=",
-    "tokens P6 event=",
     " q=",
     "%d+",
     ",",
@@ -1812,7 +1801,7 @@ def static_checks():
 
     check("mod.json: name", mod["name"] == "Progression Tuning", mod.get("name"))
     check("mod.json: author", mod["author"] == "ripsawuk", mod.get("author"))
-    check("mod.json: version 1.4", mod["version"] == "1.4", mod.get("version"))
+    check("mod.json: version 1.5", mod["version"] == "1.5", mod.get("version"))
     check("mod.json: type names the ui and the script", mod["type"] == "ui,script", mod.get("type"))
     check("mod.json: requires is empty", mod["requires"] == [])
     check("mod.json: the keys are the installed mods' six, in order",
@@ -2407,7 +2396,7 @@ def g11_reader(lua51, ls):
     lines = lines_of(rt)
 
     check("g11: the menu context arms the reader",
-          has_line(lines, "armed v1.4 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
+          has_line(lines, "armed v1.5 in the menu") and has_line(lines, "g11 armed (scope locksmith, 4203 ids)"),
           " | ".join(lines[:6]))
     check("g11: both ownership doors are wrapped",
           has_line(lines, "g11 isunlockedwithid wrapped (2 of 2: PROGRESSION, LOOT)"), " | ".join(lines[:8]))

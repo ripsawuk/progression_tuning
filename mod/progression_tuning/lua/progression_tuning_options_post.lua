@@ -131,7 +131,6 @@ local function iskey(k, hex)
   if h == nil then return false end
   h = string.gsub(h, "^0+", "")
   local b = string.gsub(hex, "^0+", "")
-  if h == b then return true end
   return string.sub(h, 1, #b) == b or string.sub(h, -#b) == b
 end
 
@@ -187,10 +186,8 @@ end
 local function find(entry)
   local k, f = slot(entry)
   if k == nil then
-    if once("miss" .. entry.name) then log("options slot " .. entry.name .. "=missing") end
     return nil, nil
   end
-  if once("key" .. entry.name) then log("options slot " .. entry.name .. "=#x" .. printed(k)) end
   return k, f
 end
 
@@ -273,7 +270,6 @@ end
 local function isAnchor(v)
   local h = hexOf(v)
   if h == nil then return false end
-  if h == ANCHOR then return true end
   return string.sub(h, 1, #ANCHOR) == ANCHOR or string.sub(h, -#ANCHOR) == ANCHOR
 end
 
@@ -320,16 +316,7 @@ local function afterAnchor(items, key)
   end
   if anchor == nil then
     n = ours(out, n, mine)
-    if #mine > 0 and once("anchor") then log("options anchor missing") end
-    return out
   end
-  local same = (#out == #items)
-  i = 1
-  while same and i <= #items do
-    if out[i] ~= items[i] then same = false end
-    i = i + 1
-  end
-  if not same and once("moved") then log("options row moved after=" .. ANCHOR) end
   return out
 end
 
@@ -373,15 +360,6 @@ local function findMine(t, depth, acc)
   return nil
 end
 
-local SKIPS = {}
-
--- says a skip the first few times
-local function skip(why)
-  local n = (SKIPS[why] or 0) + 1
-  SKIPS[why] = n
-  if n <= 3 then log("options move skip " .. why) end
-end
-
 -- moves our rows after the anchor
 local function move(...)
   local acc = { any = false }
@@ -393,15 +371,9 @@ local function move(...)
     if type(v) == "table" and type(v[1]) == "table" then items = findMine(v, 0, acc) end
     i = i + 1
   end
-  if items == nil then
-    if acc.any then skip("not ours") else skip("no list") end
-    return
-  end
+  if items == nil then return end
   local key = idKey(items[1])
-  if key == nil then
-    skip("no key")
-    return
-  end
+  if key == nil then return end
   reorder(items, key)
 end
 
@@ -579,7 +551,6 @@ local function wrapData(cur)
       else
         b = extRow(EXTBY[id])
       end
-      if b == nil and once("notpl" .. id) then log("options data id=" .. id .. " no bundle") end
       return b
     end
     local res = cur(id, ...)
@@ -646,10 +617,7 @@ local function wrapList(cur, key)
   w = function(tab, c, idx, ...)
     local res = pack(cur(tab, c, idx, ...))
     local ok = pcall(function()
-      if debugId() == nil then
-        if once("notabids") then log("options tab ids missing") end
-        return
-      end
+      if debugId() == nil then return end
       if not isDebug(tab) then return end
       local items = itemsOf(res[1])
       local k = (type(items) == "table" and type(items[1]) == "table") and idKey(items[1]) or nil
@@ -697,7 +665,6 @@ local function place(O, k, cur, name, make)
   local st = state(O, cur, name)
   if st == "ours" then return true end
   if st == "moved" then
-    if once("handover") then log("options handover") end
     return true
   end
   local rec = REG[name]

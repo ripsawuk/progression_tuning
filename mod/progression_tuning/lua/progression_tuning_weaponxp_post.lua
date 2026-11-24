@@ -189,7 +189,7 @@ end
 -- a gun to carry this ref ladder
 local function new_gun(ref, id)
   local g = { ref = ref, id = id, level = nil, primed = false, ladder = nil, n = 0, src = nil,
-              prestige = own_prestige(ref), foreign = not ours(ref) }
+              prestige = own_prestige(ref) }
   S.guns[ref] = g
   if id ~= nil then S.byid[id] = g end
   return g
@@ -307,7 +307,7 @@ end
 
 -- one card per item name at this level
 local function enqueue_attach(g, level, total)
-  if g.id == nil or g.foreign then return end
+  if g.id == nil then return end
   local ids, k, src, why = display_loots(g, level)
   if ids == nil or k < 1 then
     if said("noloot:" .. tostring(g.id)) then

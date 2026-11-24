@@ -233,7 +233,7 @@ progression_tuning_tokens_bandtext()
     return s;
 }
 
-// band as four ints, zeros before capture
+// band as four ints zeros before capture
 progression_tuning_tokens_bands()
 {
     rl = 0;
@@ -253,7 +253,7 @@ progression_tuning_tokens_bands()
     return rl + "/" + ru + "," + wl + "/" + wu;
 }
 
-// one channel int by key, 0 when absent
+// one channel int by key 0 when absent
 progression_tuning_tokens_field(chan, key)
 {
     v = 0;

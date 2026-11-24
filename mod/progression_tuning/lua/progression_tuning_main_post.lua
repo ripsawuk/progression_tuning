@@ -1,4 +1,4 @@
-local VERSION = "v1.4"
+local VERSION = "v1.5"
 local PREFIX = "progression_tuning: "
 
 local TICK_MS = 250
@@ -9,7 +9,7 @@ local PAID_LOG_CAP = 4
 local LIVE_POLL_TICKS = 8
 
 local lastMsg
--- one line unless the same ting just went
+-- one line unless the same thing just went
 local function log(msg)
   local s = PREFIX .. tostring(msg)
   if lastMsg == s then return end
@@ -58,7 +58,6 @@ local DEF = {
   foreign = {},
   front = nil,
   diag = false,
-  picksaid = {},
   live = { rec = { name = "getchallengeprogress" }, def = { name = "getchallengedefaultprogress" },
            cache = {}, miss = 0, armed = false },
   camo = { rows = {}, n = 0, tries = {}, seen = {}, done = {}, fired = 0, crossN = 0, log = {}, logN = 0,
@@ -498,7 +497,7 @@ local function scan_all()
   if f ~= nil then pcall(f) end
 end
 
-local PART_ORDER = { "weaponxp", "splash", "camos", "challenges", "prison", "reticles", "diag", "tokens" }
+local PART_ORDER = { "weaponxp", "splash", "camos", "challenges", "prison", "reticles", "tokens" }
 
 local function report_parts()
   local miss = {}
@@ -819,7 +818,6 @@ S.scopeN = GSCOPE_N
 
 local G = S.g11
 local GD = {
-  enabled = true,
   ver = nil,
   badver = nil,
   hex = nil,
@@ -832,8 +830,6 @@ local GD = {
   saidWrappers = 0,
   saidNoPayload = false,
   saidArm = false,
-  saidSlot = {},
-  gen = 0,
   epoch = 0,
   ready = 0,
   skips = 0,
@@ -1310,10 +1306,6 @@ local function gwrap(T, name)
   if type(T) ~= "table" then return false end
   local k, o = member(T, GN_UNLOCKED)
   if type(o) ~= "function" then
-    if not G.saidSlot[name] then
-      G.saidSlot[name] = true
-      log("g11 " .. name .. " has no isunlockedwithid slot yet - waiting for it")
-    end
     return false
   end
   if GOURS[o] then return false end
@@ -1387,19 +1379,19 @@ local function gmissing()
 end
 
 local A = S.api
-A.log, A.clip, A.said, A.norm = log, clip, said, norm
+A.log, A.clip, A.said = log, clip, said
 A.member, A.fn_of, A.call = member, fn_of, call
 A.fcache = fcache
 A.family, A.ours = family, ours
 A.dv, A.dvi, A.toggle, A.want, A.vlog = dv, dvi, toggle, want, vlog
-A.empty, A.engine_mark, A.in_frontend, A.vm_mark = empty, engine_mark, in_frontend, vm_mark
+A.empty, A.engine_mark, A.in_frontend = empty, engine_mark, in_frontend
 A.count_passed, A.numlist = count_passed, numlist
-A.csv_table, A.csv_file, A.csv_lookup = csv_table, csv_file, csv_lookup
+A.csv_table, A.csv_file = csv_table, csv_file
 A.cell_pick, A.gun_tries, A.resolve_gun = cell_pick, gun_tries, resolve_gun
 A.rec_value, A.rec_fields = rec_value, rec_fields
 A.note_cross, A.amounts_of = note_cross, amounts_of
 A.poll = LIVE_POLL_TICKS
-A.gstr, A.bit, A.scope, A.scopeN = gstr, glockedNow, GLOCKSMITH, GSCOPE_N
+A.gstr, A.bit, A.scope = gstr, glockedNow, GLOCKSMITH
 A.greward, A.gset = greward, function() return G.sethex, G.setn end
 A.cards = function() return G.cardK, #GCARDS end
 A.gmaxid, A.refresh = GMAXID, grefresh

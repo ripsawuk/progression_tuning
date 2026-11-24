@@ -33,12 +33,11 @@ local AE_EV = "onachievementactivated"
 
 local T = S.tokens
 if type(T) ~= "table" then
-  T = { n = {}, used = 0, armed = false, x = 0 }
+  T = { used = 0, armed = false, x = 0 }
   S.tokens = T
 end
 T.p, T.w, T.sn = T.p or 0, T.w or 0, T.sn or 0
 T.acc = T.acc or 0
-T.x = T.x or 0
 
 -- the token channel the gsc reads
 local CH = "pt_tokens_ch"
@@ -79,10 +78,6 @@ local function clock()
   if CLK.ms == nil then CLK.ms = fn_of(E, "GetMilliseconds") end
   if CLK.pz == nil then CLK.pz = fn_of(E, "IsPaused") end
   if CLK.fe == nil then CLK.fe = fn_of(E, "InFrontend") end
-  if not said("p2ms") then return end
-  if CLK.ms == nil then log("tokens clock missing GetMilliseconds") end
-  if CLK.pz == nil then log("tokens clock missing IsPaused") end
-  if CLK.fe == nil then log("tokens clock missing InFrontend") end
 end
 
 -- the engine milliseconds or nothing
@@ -149,29 +144,11 @@ local function chwrite()
   local _, _, n = chread()
   local hit = n == T.sn
   T.wpend = not hit
-  if not hit and said("p2chmiss") then log("tokens ch missing") end
   return hit
 end
 
 local EV_OURS = setmetatable({}, { __mode = "k" })
 local EV_ALL = {}
-
--- says the event wraps and the flag
-local function evsay()
-  local s = (#EV_ALL > 0) and table.concat(EV_ALL, ",") or "none"
-  local sig = tostring(T.x or 0) .. ":" .. s
-  if T.evs == sig then return end
-  T.evs = sig
-  log("tokens P6 event=" .. tostring(T.x or 0) .. " wraps=" .. s)
-end
-
--- says the permanent flag when it moved
-local function xsay()
-  if T.xl == T.x then return end
-  T.xl = T.x
-  log("tokens P5 perm=" .. tostring(T.x))
-  evsay()
-end
 
 -- the record answer for one loot id
 local function own_loot(loot)
@@ -182,7 +159,6 @@ local function own_loot(loot)
   if ok then
     v = tonumber(v)
     if v ~= nil and v > 0 then return math.floor(v) end
-    if v == false or v == 0 then return 0 end
   end
   return 0
 end
@@ -236,7 +212,6 @@ T.set = cset
 local function pset(on)
   T.x = (on == true) and 1 or 0
   T.base = nil
-  xsay()
   chwrite()
   return true
 end
@@ -251,7 +226,6 @@ local function psync()
   T.p, T.w, T.sn = p, w, n
   T.base = nil
   T.x = x or 0
-  xsay()
   if c ~= nil then T.c, T.csrc = c, "chan" end
   return true
 end
@@ -361,8 +335,7 @@ local function wrap_end()
   if T.p3 then return true end
   local OP = rawget(_G, "OnlineProgression")
   local k, o = reader()
-  if OP == nil or k == nil then
-    if said("p3miss") then log("tokens P3 wrap=0") end
+  if k == nil then
     return false
   end
   local w = function(c, keys, ...)
@@ -386,7 +359,6 @@ local function wrap_end()
     return ustate(res, keys, c, own)
   end
   if not pcall(function() OP[k] = w end) then
-    if said("p3set") then log("tokens P3 wrap=0") end
     return false
   end
   T.p3 = true
@@ -469,14 +441,7 @@ local function wrap_ev()
   got(evone(X, EV_S, evstates))
   got(evone(P, EV_E, evends))
   T.ev = (n >= 6) or nil
-  evsay()
   return T.ev == true
-end
-
--- says the status dvar is missing once
-local function stsay()
-  local v = dv(ST)
-  if (v == nil or empty(v)) and said("p2stmiss") then log("tokens P2 st=missing") end
 end
 
 -- adds one activation to its category
@@ -492,7 +457,6 @@ end
 local function tick_chan()
   clock()
   local front, paused = flags()
-  T.front, T.paused = front, paused
   psync()
   local ms = now_ms()
   local live = (not front) and (not paused) and (T.p > 0 or T.w > 0) and T.x ~= 1
@@ -516,7 +480,6 @@ local function tick_chan()
     end
   end
   if hit or T.wpend then chwrite() end
-  stsay()
 end
 
 -- hands one event to the game own root
@@ -605,7 +568,6 @@ local function had(aeid)
   if i == nil then return 0 end
   local c = cfill()
   if c == nil then return 0 end
-  T.n[aeid] = c[i]
   return c[i]
 end
 
@@ -662,7 +624,6 @@ local function install()
         end
         local n = had(id)
         if n > 0 and fire({ name = AE_EV, controller = c, kind = kdv, success = true, id = id }) then
-          T.n[id] = n - 1
           cspend(id)
           T.used = T.used + 1
           T.pend = { c = c, at = S.tick or 0, id = id }
@@ -707,7 +668,6 @@ if p0 ~= nil then
   T.p, T.w, T.sn = p0, w0, n0 or 0
 end
 if x0 ~= nil then T.x = x0 end
-T.xl = T.x
 if c0 ~= nil then
   T.c, T.csrc = c0, "chan"
 else

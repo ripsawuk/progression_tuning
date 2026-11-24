@@ -20,7 +20,6 @@ local function count_passed(...) return A.count_passed(...) end
 local function note_cross(...) return A.note_cross(...) end
 local function amounts_of(...) return A.amounts_of(...) end
 local function rec_value(...) return A.rec_value(...) end
-local function rec_fields(...) return A.rec_fields(...) end
 
 local CAMO_FIELDS = { "progress", "xp", "default" }
 local CAMO_WATCH_CAP = 8
@@ -363,7 +362,7 @@ local function camo_check()
   end
 end
 
-local S5 = { done = false, calls = 0, inN = 0, outN = 0, dropN = 0, drops = {},
+local S5 = { done = false, calls = 0, inN = 0, outN = 0, drops = {},
              w = setmetatable({}, { __mode = "k" }) }
 
 -- one tracker row per challenge id
@@ -416,7 +415,6 @@ local function s5install()
       if okc then
         S5.inN = (S5.inN or 0) + kept + dropped
         S5.outN = (S5.outN or 0) + kept
-        S5.dropN = S5.dropN + dropped
       end
     end
     return f(list, a, b, c, ...)

@@ -48,7 +48,7 @@ local GROUP_OTHER = { global = 2, intel = 2, challenge = 3, zmQuestTrackerSplash
 -- the side panel types which never hold the slot
 local SIDE = { weaponProgression = true, rankProgression = true }
 -- the card kinds parked for the centre card they ride
-local SIDE_KIND = { attach = true, wkxp = true }
+local SIDE_KIND = { attach = true }
 -- the client own alias for each kind
 local ALIAS = { generalChallenge = "uin_jup_challenge_complete",
                 camoChallenge = "uin_jup_challenge_camo_unlock" }
@@ -189,8 +189,8 @@ end
 
 -- one card per gap, worst first
 local function flush()
-  if reward_watch ~= nil then pcall(reward_watch) end
-  if aug_watch ~= nil then pcall(aug_watch) end
+  pcall(reward_watch)
+  pcall(aug_watch)
   if #S.q == 0 then return end
   if S.tick < S.nextAt then return end
   local pick = 1

@@ -117,10 +117,10 @@ local ITEMS = {
 }
 -- the switch each kind answers to
 local SW = { "zm_unlock_weapons", "zm_unlock_attachments", "zm_unlock_fieldupgrades", "zm_unlock_scorestreaks" }
-local LOCK, COST, KIND, ROWLOOT = {}, {}, {}, {}
+local LOCK, KIND, ROWLOOT = {}, {}, {}
 for i = 1, #ITEMS do
   local it = ITEMS[i]
-  LOCK[it[1]], COST[it[1]], KIND[it[1]], ROWLOOT[it[2]] = it[2], it[3], it[4], it[1]
+  LOCK[it[1]], KIND[it[1]], ROWLOOT[it[2]] = it[2], it[4], it[1]
 end
 
 -- every weapon version inherits the row it belongs to
@@ -1138,7 +1138,7 @@ local function word(v)
   return "missing"
 end
 
--- in or out for the padlock fields
+-- in or out for the arm line
 local function ok_word(v)
   if v then return "ok" end
   return "missing"
