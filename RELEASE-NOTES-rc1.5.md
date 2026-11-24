@@ -16,7 +16,7 @@
 - This is the leanest build so far: dead code is gone, and so are the debug lines that only ever printed once, so a
   launch log is shorter and every line left is one that fires again.
 - The false `core absent - no part diag` line at boot is gone. A boot no longer claims a part is missing when none is.
-- The main part is v1.5, and the table it installs carries the level 60 and augment rows.
+- The main part is v1.5, and the table carries the 32 augment research rows on top of rc1.4's.
 
 ## Known gaps
 
