@@ -778,7 +778,7 @@ def main():
     print("DRIVERS  every offline proof, with its count")
     drive(os.path.join(BUILD, "guard_test.exe"), ["self"], 19, "guard_test self")
     if os.path.isfile(CLIENT):
-        drive(os.path.join(BUILD, "nativepay_test.exe"), ["self", CLIENT], 78, "nativepay_test self")
+        drive(os.path.join(BUILD, "nativepay_test.exe"), ["self", CLIENT], 79, "nativepay_test self")
     else:
         note("nativepay_test self reads the client for its guard checks, and the game folder is a setting - "
              "KRONOS_GAME_DIR is not set, so that driver was skipped")
