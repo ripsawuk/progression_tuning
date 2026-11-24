@@ -4,8 +4,6 @@ local PART = "augments"
 local K_STORE = "d847872560dcd8e4"
 -- the pass a menu refresh runs
 local K_REFRESH = "52e47d640bf4ca01"
--- the count pass over the unlock ladder
-local K_COUNT = "633a1942eeae0eaa"
 -- the nine slot publisher
 local K_SLOTS = "bd666394faa4374c"
 -- the send a press goes through
@@ -14,6 +12,15 @@ local K_SEND = "e636d3bf423fd414"
 local K_PROG = "31eee6570ef4bb8b"
 -- the gamemode field the gate reads
 local K_BUNDLE = "053308f95ad2e716"
+-- the cache the count pass fills
+local K_CACHE = "8ac6d3ec3791c80f"
+-- the builder that owns the cache
+local K_BUILD = "fbc74f64b0a3b5af"
+-- the count key function by its hash
+local K_UKEY = "e42ea32389c5bbae"
+-- the names the count is asked under
+local U_NAMES = { "zm_augments_total_unlock_count", "zm_augments_unlock_count",
+  "#zm_augments_total_unlock_count", "#zm_augments_unlock_count" }
 -- the native list repaint
 local K_REPAINT = "236a81b14f8791e4"
 -- the dev bool the tier code reads
@@ -29,10 +36,12 @@ local SLOTS = 9
 -- a weight the fill guard computes to dark
 local DARK = 0.001
 
-local VERSION = "v10"
+local VERSION = "v11"
 local PREFIX = "progression_tuning: "
 local TICK_MS = 250
 local PASS_TICKS = 8
+local R2_PASSES = 40
+local RTRIES = 4
 
 local S = rawget(_G, "ProgressionTuning")
 if type(S) ~= "table" then
@@ -44,8 +53,9 @@ S.parts[PART] = true
 
 local G = { said = false, ownSaid = false, devseen = false, dev = nil, ticks = 0, c = 0, dirty = false,
   active = 0, sat = 0, on = nil, ix = nil, tier = {}, rows = 0, owned = 0, ev = nil, key = nil,
-  cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gask = nil, gkey = nil,
-  gfed = false }
+  cards = {}, restored = false, lkOn = false, lkMiss = false, ukey = nil, gkey = nil,
+  gfed = false, ukeys = nil, utot = nil, uob = nil, gval = nil, passes = 0, rtry = 0,
+  r1Said = false, r2Said = false }
 S.aug = G
 
 -- says a thing once
@@ -389,9 +399,6 @@ local function ticks(c, store, cache, map, quiet)
   return owned, tiers, rows, items, done
 end
 
--- the row the ladder thresholds sit on
-local rowzero
-
 -- the vm this part runs in
 local front
 
@@ -448,6 +455,12 @@ local function kfill(tbl, hex, name)
   return v
 end
 
+-- a value as the line carries it
+local function nn(v)
+  if v == nil then return "nil" end
+  return tostring(v)
+end
+
 -- the field the gate reads on the gamemode bundle
 local function bundleval(b)
   if type(b) ~= "table" then return nil end
@@ -458,48 +471,83 @@ local function bundleval(b)
   return field(b, h)
 end
 
--- the key the native gate asks for
-local function gatekey()
+-- the two keys and the bundle field once
+local function r2say()
+  if G.r2Said == true then return end
+  local fld = nil
   local fb = fn_of(rawget(_G, "Game"), "getactivegamemodescriptbundle")
-  local fk = fn_of(rawget(_G, "Challenge"), "getaeuserstatekey")
-  if fb == nil or fk == nil then return nil end
-  local okb, b = pcall(fb)
-  if not okb then return nil end
-  local fld = bundleval(b)
-  if fld == nil then return nil end
-  local okk, key = pcall(fk, fld)
-  if not okk or key == nil then return nil end
-  return key
+  if fb ~= nil then
+    local ok, b = pcall(fb)
+    if ok then fld = bundleval(b) end
+  end
+  if fld == nil and (G.passes or 0) < R2_PASSES then return end
+  G.r2Said = true
+  dp("augprobe R2 total=" .. nn(G.utot) .. " ob=" .. nn(G.uob) .. " bundle=" .. nn(fld))
+end
+
+-- the count key function the engine hands out
+local function ufn()
+  local C = rawget(_G, "Challenge")
+  local f = fn_of(C, "getaeuserstatekey")
+  if f ~= nil then return f end
+  local k = key_hex(C, K_UKEY)
+  if k == nil then return nil end
+  local v = field(C, k)
+  if type(v) == "function" then return v end
+  return nil
+end
+
+-- one user state key from its name
+local function ukeyof(name)
+  local f = ufn()
+  if f == nil then return nil end
+  local h = xh(name)
+  local ok, v = false, nil
+  if h ~= nil then ok, v = pcall(f, h) end
+  if not ok or v == nil then ok, v = pcall(f, name) end
+  if not ok or v == nil then return nil end
+  return v
 end
 
 -- the count the native gate asks for
 local function uanswer(ctx)
   local c = type(ctx) == "table" and ctx.c or nil
   if c == nil then c = G.c end
-  G.gask = true
   if type(ctx) == "table" and ctx.key ~= nil then G.gkey = ctx.key end
   if hon() ~= false then return nil end
   local Z = rawget(_G, "ZMAUGMENT")
   if type(Z) ~= "table" then return nil end
   local store, cache = field(Z, key_hex(Z, K_STORE)), cache_of(Z)
   if type(store) ~= "table" or type(cache) ~= "table" then return nil end
-  return ticks(c, store, cache, map_of(Z), true)
+  local n = ticks(c, store, cache, map_of(Z), true)
+  if type(n) == "number" then
+    G.gval, G.gfed = n, true
+  end
+  return n
 end
 
--- registers the gate key once
+-- registers every key the count is asked under
 local function ureg()
+  if (G.ukeys or 0) > 0 then return G.ukey end
   local U = S.userstate
   if type(U) ~= "table" then
     U = { answer = {} }
     S.userstate = U
   end
   if type(U.answer) ~= "table" then U.answer = {} end
-  if G.ukey ~= nil and U.answer[G.ukey] == uanswer then return G.ukey end
-  local key = gatekey()
-  if key == nil then return nil end
-  U.answer[key] = uanswer
-  G.ukey = key
-  return key
+  local n = 0
+  for i = 1, #U_NAMES do
+    local key = ukeyof(U_NAMES[i])
+    if key ~= nil then
+      U.answer[key] = uanswer
+      n = n + 1
+      if i == 1 and G.utot == nil then G.utot = key end
+      if i == 2 and G.uob == nil then G.uob = key end
+      if G.ukey == nil then G.ukey = key end
+    end
+  end
+  G.ukeys = n
+  return G.ukey
 end
 
 -- the quick revive gate field
@@ -509,16 +557,6 @@ local function qrword()
   local v = hfield(e, "isUnlocked")
   if v == nil then return "nil" end
   return tostring(v)
-end
-
--- the native gate function
-local function gatefn()
-  local Z = rawget(_G, "ZMAUGMENT")
-  local k = kfill(Z, K_COUNT, "count")
-  if k == nil then return nil end
-  local f = field(Z, k)
-  if type(f) == "function" then return f end
-  return nil
 end
 
 -- the native list repaint
@@ -532,26 +570,63 @@ local function repaint(c)
   return pcall(f, c, ty) == true
 end
 
--- the gate pass and the list repaint
-local function gate(c, owned)
-  local key = ureg()
-  G.gask, G.gkey = nil, nil
-  local row = rowzero()
-  if row == nil then
-    dp("augments gate owned=" .. owned .. " key=none fed=0 fn=0 qr=" .. qrword())
-    return
+-- the cache member and the builder beside it
+local function ckey(Z)
+  local k = slot_of(Z, "augmentresearchchallenges")
+  if k ~= nil then return k end
+  return key_hex(Z, K_CACHE)
+end
+
+-- the builder that owns the cache
+local function bfn(Z)
+  local f = fn_of(Z, "cacheaugmentresearchchallenges")
+  if f ~= nil then return f end
+  local k = key_hex(Z, K_BUILD)
+  if k == nil then return nil end
+  local v = field(Z, k)
+  if type(v) == "function" then return v end
+  return nil
+end
+
+-- nils the cache and lets the game build it again
+local function recache(c)
+  local Z = rawget(_G, "ZMAUGMENT")
+  if type(Z) ~= "table" then return nil, nil, 0 end
+  local k = ckey(Z)
+  if k == nil then return nil, nil, 0 end
+  local f = bfn(Z)
+  if f == nil then return nil, nil, 0 end
+  local old = field(Z, k)
+  local before = type(old)
+  if not pcall(function() Z[k] = nil end) then return before, nil, 0 end
+  local ok = pcall(f, c)
+  local now = field(Z, k)
+  if not ok or type(now) ~= "table" then
+    if now == nil then pcall(function() Z[k] = old end) end
+    return before, type(now), 0
   end
-  local fn = gatefn()
-  local ok = false
-  if key ~= nil and fn ~= nil then
-    ok = pcall(fn, c, row) == true
-    if ok then pcall(repaint, c) end
+  local n = 0
+  for _ in pairs(now) do n = n + 1 end
+  return before, "table", n
+end
+
+-- the count pass the game runs on its own build
+local function gate(c, owned, store, done, say)
+  G.gkey, G.gval = nil, nil
+  local before, after, rows = recache(c)
+  if G.r1Said ~= true then
+    G.r1Said = true
+    dp("augprobe R1 cache=" .. nn(before) .. " rebuilt=" .. nn(after) .. " rows=" .. rows)
   end
-  local fed = (G.gask == true) and 1 or 0
-  if fed == 1 then G.gfed = true end
-  local asked = G.gkey or key
-  dp("augments gate owned=" .. owned .. " key=" .. tostring(asked or "none")
-    .. " fed=" .. fed .. " fn=" .. (ok and 1 or 0) .. " qr=" .. qrword())
+  local rebuilt = after == "table"
+  if rebuilt then
+    pcall(repaint, c)
+    if type(done) == "table" then pcall(flag, store, done) end
+  end
+  if say ~= true then return end
+  local fed = type(G.gval) == "number" and 1 or 0
+  dp("augments gate owned=" .. owned .. " key=" .. nn(G.gkey or G.ukey)
+    .. " fed=" .. fed .. " rebuilt=" .. (rebuilt and 1 or 0) .. " qr=" .. qrword())
 end
 
 -- every panel slot follows the tier
@@ -651,8 +726,11 @@ local function whole(c)
   if rows > 0 then
     pcall(flag, store, done)
     if front() ~= false then pcall(clearall, c, Z, store, done) end
-    if owned ~= prev or (owned > 0 and G.gfed ~= true and front() ~= false) then
-      pcall(gate, c, owned)
+    if owned ~= prev then
+      pcall(gate, c, owned, store, done, true)
+    elseif owned > 0 and G.gfed ~= true and (G.rtry or 0) < RTRIES then
+      G.rtry = (G.rtry or 0) + 1
+      pcall(gate, c, owned, store, done, false)
     end
     if G.ladSaid ~= true and G.lad ~= nil then
       G.ladSaid = true
@@ -911,85 +989,11 @@ local function answered(r, id)
   return t
 end
 
--- one cell of a csv row by its column name
-local function cell(row, cols, name)
-  local v = hfield(row, name)
-  if v ~= nil then return v end
-  local i = field(cols, name)
-  if i == nil then return nil end
-  v = field(row, i)
-  if v ~= nil then return v end
-  return field(row, tostring(i))
-end
-
--- the first row one csv table holds
-local function rowread(t)
-  local csv = rawget(_G, "CSV")
-  local cols = hfield(t, "cols")
-  if type(cols) ~= "table" then return nil end
-  local file = nil
-  local gf = fn_of(csv, "GetFileName")
-  if gf ~= nil then
-    local ok, v = pcall(gf, t)
-    if ok then file = v end
-  end
-  if file == nil then file = hfield(t, "file") end
-  if file == nil then return nil end
-  local rf = fn_of(csv, "ReadRowWithFileAndColumns")
-  if rf ~= nil then
-    local ok, row = pcall(rf, file, 0, cols)
-    if ok and type(row) == "table" then return row end
-  end
-  local st = rawget(_G, "StringTable")
-  local lr = fn_of(st, "tablelookuprowwithcolumndata")
-  if lr ~= nil then
-    local ok, row = pcall(lr, file, 0, cols)
-    if ok and type(row) == "table" then return row end
-  end
-  local all = fn_of(st, "tablereadallrows")
-  if all == nil then return nil end
-  local ok, rows = pcall(all, file, cols)
-  if not ok or type(rows) ~= "table" then return nil end
-  local row = field(rows, 1)
-  if row == nil then row = field(rows, 0) end
-  if type(row) == "table" then return row end
-  return nil
-end
-
--- the row the ladder thresholds sit on
-rowzero = function()
-  if G.row ~= nil then return G.row end
-  local ch = rawget(_G, "Challenge")
-  local fe, ft = fn_of(ch, "GetAEKindID"), fn_of(ch, "GetFileTableByType")
-  local tries = {}
-  if fe ~= nil and ft ~= nil then
-    local okk, kind = pcall(fe, "ae_kind_zm_augment")
-    if okk and kind ~= nil then
-      local okt, t = pcall(ft, kind)
-      if okt and type(t) == "table" then tries[#tries + 1] = t end
-    end
-  end
-  local csv = rawget(_G, "CSV")
-  local zt = type(csv) == "table" and field(csv, "zmaugmentsachievements") or nil
-  if type(zt) == "table" then tries[#tries + 1] = zt end
-  for i = 1, #tries do
-    local t = tries[i]
-    local cols = hfield(t, "cols")
-    local row = rowread(t)
-    if type(row) == "table" and type(cols) == "table"
-      and type(cell(row, cols, "amount")) == "string"
-      and type(cell(row, cols, "augment_unlocks")) == "string" then
-      G.row = row
-      return row
-    end
-  end
-  return nil
-end
-
 -- a pass that keeps the menu on the store
 pass = function(c)
   if c == nil then c = G.c end
   G.c = c
+  G.passes = (G.passes or 0) + 1
   local one, two = dv(DV_ONE), dv(DV_TWO)
   if one == nil or two == nil then return end
   local on = (one == "1") or (two == "1")
@@ -1014,6 +1018,7 @@ pass = function(c)
     if type(f) == "function" then pcall(f, c) end
   end
   pcall(watch_tiers, c)
+  pcall(r2say)
 end
 
 -- the wrappers this part keeps one of
@@ -1238,6 +1243,7 @@ end
 tick = function()
   G.ticks = G.ticks + 1
   pcall(install)
+  pcall(ureg)
   pcall(lk_say)
   if G.dirty or G.ticks % PASS_TICKS == 1 then pcall(pass, G.c) end
   if not again() then pcall(start) end
@@ -1246,6 +1252,7 @@ end
 S.probes.augments = function() return W.refresh ~= nil and W.refresh.w ~= nil end
 
 pcall(install)
+pcall(ureg)
 pcall(seed)
 pcall(start)
 local api = S.api

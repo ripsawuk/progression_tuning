@@ -163,12 +163,16 @@ Z[STORE_K].specialty_quickrevive.isUnlocked = false
 Z[DIFF_K] = { decoy = rows(701) }
 Z[HK("lootid_to_ref")] = { [7001] = "sat_aug_one", [7002] = "sat_aug_two",
                            [55407] = "specialty_quickrevive" }
-Z[HK("augmentresearchchallenges")] = {
-  [7001] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
-             [HK("amount")] = "70000|140000|275000" },
-  [7002] = { [HK("achievementID")] = BID, [HK("carryoverAchievementID")] = CID_B,
-             [HK("amount")] = "70000|140000|275000" },
-}
+local function mk_cache()
+  return {
+    [7001] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
+               [HK("amount")] = "70000|140000|275000" },
+    [7002] = { [HK("achievementID")] = BID, [HK("carryoverAchievementID")] = CID_B,
+               [HK("amount")] = "70000|140000|275000" },
+  }
+end
+CACHE_MK = mk_cache
+Z[HK("augmentresearchchallenges")] = mk_cache()
 Z[HK("cacheaugmenttierdata")] = function(c, ch, loot)
   local ref = Z[HK("lootid_to_ref")][loot]
   local entry = ref ~= nil and Z[STORE_K][ref] or nil
@@ -334,7 +338,31 @@ end
 Game = {}
 BUNDLE = { ["#x053308f95ad2e716"] = "zm_augments_total_unlock_count" }
 Game[xhash("getactivegamemodescriptbundle")] = function() return BUNDLE end
-Challenge[xhash("getaeuserstatekey")] = function(field) return GKEYOBJ() end
+KEYS = {}
+Challenge[xhash("getaeuserstatekey")] = function(field)
+  KEYS[#KEYS + 1] = field
+  return GKEYOBJ()
+end
+function NKEYCALLS() return #KEYS end
+function LASTARG() return tostring(KEYS[#KEYS] or "") end
+function HASARG(name)
+  local h = xhash(name)
+  for i = 1, #KEYS do if KEYS[i] == h then return true end end
+  return false
+end
+function GATE_ROW() return ROW0 end
+function ROW0_NIL() GATE_ROW = function() return nil end end
+BUILDS = 0
+Z[HK("cacheaugmentresearchchallenges")] = function(c)
+  if Z[HK("augmentresearchchallenges")] ~= nil then return end
+  BUILDS = BUILDS + 1
+  Z[HK("augmentresearchchallenges")] = CACHE_MK()
+  for loot, ch in pairs(Z[HK("augmentresearchchallenges")]) do
+    Z[HK("cacheaugmenttierdata")](c, ch, loot)
+  end
+  local row = GATE_ROW()
+  if row ~= nil then Z[COUNT_K](c, row) end
+end
 function BUNDLE_EMPTY() BUNDLE = {} end
 function BUNDLE_FILL() BUNDLE = { ["#x053308f95ad2e716"] = "zm_augments_total_unlock_count" } end
 function BKEYS() local n = 0; for _ in pairs(BUNDLE) do n = n + 1 end; return n end
@@ -514,10 +542,13 @@ function TWIN()
   end
   Z[STORE_K] = { staminup = list }
   Z[HK("lootid_to_ref")] = { [55403] = "staminup" }
-  Z[HK("augmentresearchchallenges")] = {
-    [55403] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
-                [HK("amount")] = LADDER9, [HK("maxCarryover")] = 250000 },
-  }
+  CACHE_MK = function()
+    return {
+      [55403] = { [HK("achievementID")] = AID, [HK("carryoverAchievementID")] = CID_A,
+                  [HK("amount")] = LADDER9, [HK("maxCarryover")] = 250000 },
+    }
+  end
+  Z[HK("augmentresearchchallenges")] = CACHE_MK()
 end
 function PAIR(a, b) PROG[tostring(AID)] = a; PROG[tostring(CID_A)] = b end
 function LK9(ref)
@@ -719,12 +750,15 @@ def case_line(lua51):
     off(r)
     r.execute("REFRESH(0)")
     l = lines_of(r)
-    check("line: one arm line, one owned line, one ladder line and nothing else", len(l) == 3,
-          "%d lines: %s" % (len(l), " | ".join(l[:3])))
-    want = "progression_tuning: augments armed v10 unlock=0 all=0 devcomplete=false"
+    check("line: one arm line, one owned line, one ladder line, one probe line and nothing else", len(l) == 4,
+          "%d lines: %s" % (len(l), " | ".join(l[:4])))
+    want = "progression_tuning: augments armed v11 unlock=0 all=0 devcomplete=false"
     check("line: the exact arm wording", arm_line(l) == want, arm_line(l))
     check("line: the owned line names the count and the key type",
           owned_line(l) == "progression_tuning: augments owned=0 keys=number", owned_line(l))
+    r2 = [ln for ln in l if "augprobe R2" in ln]
+    check("line: one probe line names both keys and the bundle field",
+          len(r2) == 1 and r2[0].endswith(" bundle=zm_augments_total_unlock_count"), " | ".join(r2[:2]))
     ladder = [ln for ln in l if "augments ladder" in ln]
     check("line: one ladder line names the rungs and the first threshold",
           len(ladder) == 1 and ladder[0].endswith(" rungs=3 first=70000 progress=0"),
@@ -1126,7 +1160,7 @@ def case_lock_late(lua51):
           val(r, "ANS(801)"))
     r.execute("NOPRISON()")
     pump(r, 1)
-    check("late lock: a missing table is survived", len(lines_of(r)) <= 4, "%d lines" % len(lines_of(r)))
+    check("late lock: a missing table is survived", len(lines_of(r)) <= 5, "%d lines" % len(lines_of(r)))
     r.execute("PRISON()")
     pump(r, 1)
     check("late lock: a new table is extended again", r.eval("ANS(801)") is True
@@ -1671,9 +1705,9 @@ def case_gate(lua51):
           val(r, "REPAINTS") == "1" and val(r, "EQV(3)") == "true",
           "repaints=" + val(r, "REPAINTS") + " eq=" + val(r, "EQV(3)"))
     want = ("progression_tuning: augments gate owned=3 key=0#0x0A1B2C3D4E5F6071 "
-            "fed=1 fn=1 qr=true")
+            "fed=1 rebuilt=1 qr=true")
     got = [ln for ln in lines_of(r) if "augments gate" in ln]
-    check("gate: one diag line names the count, the key, the feed and the field",
+    check("gate: one diag line names the count, the key, the feed and the rebuild",
           len(got) == 1 and got[0] == want, " | ".join(got[:2]))
     r.execute("REFRESH(0)")
     check("gate: a held count is not fed again", val(r, "COUNT_CALLS") == "1",
@@ -1727,77 +1761,164 @@ def case_gate_order(lua51):
 def case_gate_row(lua51):
     r = gate_rt("tok")
     off(r)
-    r.execute("StringTable[xhash('tablelookuprowwithcolumndata')] = function() return nil end")
+    r.execute("ROW0_NIL()")
     r.execute("SET_PROG(40001, 70000)")
     r.execute("REFRESH(0)")
-    check("gate row: no ladder row leaves the key unfed and says so",
-          "augments gate owned=1 key=none fed=0 fn=0" in " ".join(lines_of(r)),
+    check("gate row: no row from the native builder leaves the pass unrun",
+          val(r, "COUNT_CALLS") == "0" and val(r, "BUILDS") == "1",
+          "calls=%s builds=%s" % (val(r, "COUNT_CALLS"), val(r, "BUILDS")))
+    check("gate row: the rebuild stands and the feed does not",
+          "augments gate owned=1 key=0#0x0A1B2C3D4E5F6071 fed=0 rebuilt=1 qr=false"
+          in " ".join(lines_of(r)),
           " | ".join([ln for ln in lines_of(r) if "augments gate" in ln][:1]))
+    check("gate row: the part reads no ladder row of its own",
+          "tablelookuprowwithcolumndata" not in SRC and "tablereadallrows" not in SRC, "checked")
     r2 = rt(ZMFIX + "\nMAKEZM()")
     off(r2)
     r2.execute("SET_PROG(40001, 70000)")
     r2.execute("REFRESH(0)")
     check("gate row: no token part means the native pass asks and gets nothing",
           val(r2, "COUNTED") in ("0", "0.0")
-          and "augments gate owned=1 key=0#0x0A1B2C3D4E5F6071 fed=0 fn=1" in " ".join(lines_of(r2)),
+          and "augments gate owned=1 key=0#0x0A1B2C3D4E5F6071 fed=0 rebuilt=1 qr=false"
+          in " ".join(lines_of(r2)),
           " | ".join([ln for ln in lines_of(r2) if "augments gate" in ln][:1]))
     r3 = gate_rt("tok")
     off(r3)
-    r3.execute("StringTable[xhash('tablelookuprowwithcolumndata')] = function() return nil end")
-    r3.execute("ROWS['aug.csv'] = { [1] = ROW0 }")
-    r3.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r3.execute("ROW0_NIL()")
+    r3.execute("SET_PROG(40001, 70000)")
     r3.execute("REFRESH(0)")
-    check("gate row: a failed row lookup falls back to the rows read",
-          val(r3, "COUNTED") in ("3", "3.0")
+    check("gate row: a rebuild without the pass leaves the cache the builder made",
+          val(r3, "CACHEK()") == "number" and val(r3, "COUNT_CALLS") == "0",
+          "key=%s calls=%s" % (val(r3, "CACHEK()"), val(r3, "COUNT_CALLS")))
+    r3.execute("GATE_ROW = function() return ROW0 end")
+    r3.execute("SET_PROG(40002, 140000)")
+    r3.execute("REFRESH(0)")
+    check("gate row: the next change reaches the pass with the builder's own row",
+          val(r3, "COUNTED") in ("3", "3.0") and val(r3, "COUNT_ROW == ROW0") == "True"
           and val(r3, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
           "counted=" + val(r3, "COUNTED"))
-    r4 = gate_rt("tok")
-    off(r4)
-    r4.execute("Challenge[xhash('GetFileTableByType')] = function() return nil end")
-    r4.execute("CSV.zmaugmentsachievements = { file = 'aug.csv',"
-               " cols = { id = 0, amount = 4, augment_unlocks = 16 } }")
-    r4.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
-    r4.execute("REFRESH(0)")
-    check("gate row: no file table from the kind falls back to the csv table",
-          val(r4, "COUNTED") in ("3", "3.0")
-          and val(r4, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
-          "counted=" + val(r4, "COUNTED"))
 
 
-# --- 31: the key resolved on a later pass, the gate found by its printed hex --------------------
+# --- 32: the key registered at arm, from the name, in either load order -------------------------
+def case_arm(lua51):
+    for first in ("tok", "aug"):
+        r = gate_rt(first)
+        check("arm (%s): every name is registered before any pass" % first,
+              val(r, "ProgressionTuning.aug.ukeys") == "4"
+              and val(r, "ProgressionTuning.aug.passes") == "0",
+              "ukeys=%s passes=%s" % (val(r, "ProgressionTuning.aug.ukeys"),
+                                      val(r, "ProgressionTuning.aug.passes")))
+        n = r.eval("(function() local n = 0"
+                   " for _ in pairs(ProgressionTuning.userstate.answer) do n = n + 1 end"
+                   " return n end)()")
+        check("arm (%s): the registry holds four answers at arm" % first, int(n) == 4, str(n))
+        check("arm (%s): both count names are hashed and asked for" % first,
+              val(r, "HASARG('zm_augments_total_unlock_count')") == "True"
+              and val(r, "HASARG('zm_augments_unlock_count')") == "True", val(r, "LASTARG()"))
+        check("arm (%s): the registered answer carries the count" % first,
+              val(r, "ANSWER()") in ("0", "0.0"), val(r, "ANSWER()"))
+    r = rt(ZMFIX + "\nMAKEZM()")
+    check("arm: the part alone makes the registry it answers through",
+          val(r, "ProgressionTuning.aug.ukeys") == "4"
+          and r.eval("type(ProgressionTuning.userstate)") == "table",
+          "ukeys=" + val(r, "ProgressionTuning.aug.ukeys"))
+    rf = rt(ZMFIX + "\nMAKEZM()",
+            "local F0 = Challenge[xhash('getaeuserstatekey')]\n"
+            "Challenge[xhash('getaeuserstatekey')] = function(a)"
+            " if type(a) == 'string' then return F0(a) end return nil end")
+    check("arm: the plain name answers when the hash form does not",
+          val(rf, "ProgressionTuning.aug.ukeys") == "4", val(rf, "ProgressionTuning.aug.ukeys"))
+
+
+# --- 33: the rebuild clears the native cache and repaints once per change -----------------------
+def case_rebuild(lua51):
+    r = gate_rt("tok")
+    off(r)
+    r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r.execute("BEFORE = ZMAUGMENT[xhash('augmentresearchchallenges')]")
+    r.execute("REFRESH(0)")
+    check("rebuild: the native builder ran once on a cleared cache",
+          val(r, "BUILDS") == "1"
+          and r.eval("ZMAUGMENT[xhash('augmentresearchchallenges')] ~= BEFORE") is True,
+          "builds=" + val(r, "BUILDS"))
+    check("rebuild: the cache the builder made holds the rows",
+          val(r, "CACHEK()") == "number", val(r, "CACHEK()"))
+    check("rebuild: one repaint for the one change", val(r, "REPAINTS") == "1", val(r, "REPAINTS"))
+    check("rebuild: one probe line names the types and the rows",
+          count_line(lines_of(r), "progression_tuning: augprobe R1 cache=table rebuilt=table rows=2") == 1,
+          " | ".join([ln for ln in lines_of(r) if "augprobe R1" in ln][:2]))
+    r.execute("REFRESH(0); REFRESH(0)")
+    check("rebuild: a held count rebuilds nothing",
+          val(r, "BUILDS") == "1" and val(r, "REPAINTS") == "1",
+          "builds=%s repaints=%s" % (val(r, "BUILDS"), val(r, "REPAINTS")))
+    r.execute("SET_PROG(40001, 0); SET_PROG(40002, 0)")
+    r.execute("REFRESH(0)")
+    check("rebuild: a changed count rebuilds and repaints once more",
+          val(r, "BUILDS") == "2" and val(r, "REPAINTS") == "2",
+          "builds=%s repaints=%s" % (val(r, "BUILDS"), val(r, "REPAINTS")))
+    check("rebuild: and says one more gate line",
+          count_line(lines_of(r), "augments gate") == 2,
+          "%d" % count_line(lines_of(r), "augments gate"))
+
+
+# --- 34: fifty unchanged passes say nothing twice ----------------------------------------------
+def case_idle(lua51):
+    r = gate_rt("tok")
+    off(r)
+    r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
+    r.execute("REFRESH(0)")
+    for _ in range(50):
+        r.execute("REFRESH(0)")
+    l = lines_of(r)
+    check("idle: the gate line is said once over fifty unchanged passes",
+          count_line(l, "augments gate") == 1, "%d" % count_line(l, "augments gate"))
+    check("idle: R1 is said once", count_line(l, "augprobe R1") == 1,
+          "%d" % count_line(l, "augprobe R1"))
+    check("idle: R2 is said once", count_line(l, "augprobe R2") == 1,
+          "%d" % count_line(l, "augprobe R2"))
+    check("idle: one rebuild and one repaint for the one change",
+          val(r, "BUILDS") == "1" and val(r, "REPAINTS") == "1",
+          "builds=%s repaints=%s" % (val(r, "BUILDS"), val(r, "REPAINTS")))
+    check("idle: the whole session stays under twelve lines", len(l) <= 12, "%d lines" % len(l))
+
+
+# --- 31: the key comes from the name, so an empty bundle does not stop it -----------------------
 def case_gate_late(lua51):
     r = gate_rt("tok")
     off(r)
     r.execute("BUNDLE_EMPTY()")
     check("gate late: the bundle is empty at arm", val(r, "BKEYS()") == "0", val(r, "BKEYS()"))
+    check("gate late: the keys resolve at arm from the names alone",
+          val(r, "ProgressionTuning.aug.ukeys") == "4" and r.eval("ProgressionTuning.aug.ukey") is not None,
+          "ukeys=" + val(r, "ProgressionTuning.aug.ukeys"))
+    check("gate late: the total key is asked for by the hash of its name",
+          val(r, "HASARG('zm_augments_total_unlock_count')") == "True", val(r, "LASTARG()"))
     r.execute("SET_PROG(40001, 70000); SET_PROG(40002, 140000)")
     r.execute("REFRESH(0)")
-    check("gate late: an empty bundle leaves the key unresolved",
-          r.eval("ProgressionTuning.aug.ukey") is None and val(r, "COUNT_CALLS") == "0",
-          "ukey=%s calls=%s" % (r.eval("ProgressionTuning.aug.ukey"), val(r, "COUNT_CALLS")))
-    check("gate late: the first pass says the key was not there",
-          "augments gate owned=3 key=none fed=0 fn=0" in " ".join(lines_of(r)),
+    check("gate late: the rebuild runs with no bundle at all",
+          val(r, "BUILDS") == "1" and val(r, "COUNT_CALLS") == "1", val(r, "BUILDS"))
+    check("gate late: the native pass cannot ask without the bundle and says so",
+          "augments gate owned=3 key=0#0x0A1B2C3D4E5F6071 fed=0 rebuilt=1 qr=false"
+          in " ".join(lines_of(r)),
           " | ".join([ln for ln in lines_of(r) if "augments gate" in ln][:1]))
     r.execute("BUNDLE_FILL()")
     r.execute("REFRESH(0)")
-    check("gate late: the key resolves on a later pass",
-          r.eval("ProgressionTuning.aug.ukey") is not None, "ukey=nil")
-    check("gate late: the native pass runs on that later pass",
-          val(r, "COUNTED") in ("3", "3.0") and val(r, "COUNT_CALLS") == "1",
+    check("gate late: the first success retries once and the native pass answers three",
+          val(r, "COUNTED") in ("3", "3.0") and val(r, "COUNT_CALLS") == "2",
           "counted=%s calls=%s" % (val(r, "COUNTED"), val(r, "COUNT_CALLS")))
     check("gate late: quick revive opens at three owned",
           val(r, "FIELD('specialty_quickrevive','isUnlocked')") == "true",
           val(r, "FIELD('specialty_quickrevive','isUnlocked')"))
-    check("gate late: the diag names the key, the feed and the pass",
-          "augments gate owned=3 key=0#0x0A1B2C3D4E5F6071 fed=1 fn=1 qr=true" in " ".join(lines_of(r)),
-          " | ".join([ln for ln in lines_of(r) if "augments gate" in ln][-1:]))
+    check("gate late: the retry says nothing new",
+          count_line(lines_of(r), "augments gate") == 1,
+          "%d" % count_line(lines_of(r), "augments gate"))
     check("gate late: the answer is matched by the printed key, not the object",
           val(r, "ProgressionTuning.aug.ukey == GATE_KEY") == "False",
           val(r, "ProgressionTuning.aug.ukey == GATE_KEY"))
     check("gate late: the function under the xhash of the hex is never used",
           val(r, "DECOY()") == "0", "decoy=" + val(r, "DECOY()"))
     r.execute("REFRESH(0)")
-    check("gate late: a held count is not fed again", val(r, "COUNT_CALLS") == "1",
+    check("gate late: a held count is not fed again", val(r, "COUNT_CALLS") == "2",
           val(r, "COUNT_CALLS"))
 
 
@@ -1852,7 +1973,7 @@ def main():
                  case_channel, case_restore, case_restore_late, case_popup, case_popup_multi,
                  case_popup_on, case_popup_match, case_popup_late, case_twin, case_twin_popup,
                  case_twin_on, case_ladder_active, case_gate, case_gate_on, case_gate_order,
-                 case_gate_row, case_gate_late, case_missing):
+                 case_gate_row, case_arm, case_rebuild, case_idle, case_gate_late, case_missing):
         info("case: " + case.__name__)
         try:
             case(LuaRuntime)

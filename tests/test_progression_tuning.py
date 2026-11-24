@@ -1015,9 +1015,9 @@ SRC = "".join(LUA_TEXT[n] for n in LUA_FILES)
 
 DIAG_START = 'local RC1D = "rc1diag"'
 DIAG_END = "local RC1D_END = true"
-SHIP_LUA_LEN = 291361
-SHIP_LUA_SHA = "40E13510EF9406903F91511072C0459820BA89563BC31997A26EB062CF7B267C"
-LITERAL_SHA = "711D70CF1939A3F61137AAAD4FC050F14BDE56F7066C45B63E6653DA1C9ED36B"
+SHIP_LUA_LEN = 291754
+SHIP_LUA_SHA = "1994E9061BBF78A87957274C03AB5E363A2F11489724CD9F8888BF56E1C27271"
+LITERAL_SHA = "C02669182E34FBE375028EAB109AA5A8FE4B1B2F3BCF79A17B3231E5A048F4B8"
 # the console cleanup of 2026-11-19: every line it took out
 LOG_REMOVED = [
     " Q12 act=",
@@ -1027,7 +1027,6 @@ LOG_REMOVED = [
     " ch=",
     " complete=",
     " front=",
-    " hit=",
     " ids (header ",
     " inf=",
     " ms=",
@@ -1492,6 +1491,9 @@ LITERAL_ADDED = [
     " kd=",
     " wraps=",
     " no bundle",
+    # the user state line, once per asked key
+    " hit=",
+    "userstate ask=",
     "4849F2616A844C09",
     "5a6d0000000000be",
     "7bf7f57679e8d050",
@@ -9979,6 +9981,32 @@ def userstate_registry(lua51):
     check("userstate: the token part's own answer stands over the registry",
           sv("SER(ASK('cer__doublexp__player_xp_end_time'))") == want,
           sv("SER(ASK('cer__doublexp__player_xp_end_time'))"))
+
+    # the one line a key gets, and only one
+    said = [ln for ln in lines_of(rt) if "userstate ask=" in ln]
+    check("userstate: one line per asked key, none for a key already said",
+          count_line(said, "userstate ask=a hit=0") == 1
+          and count_line(said, "userstate ask=b hit=0") == 1
+          and count_line(said, "userstate ask=k hit=1") == 1
+          and count_line(said, "userstate ask=n hit=0") == 1,
+          " | ".join(said[:5]))
+    check("userstate: the key the part answers itself is a hit",
+          count_line(said, "userstate ask=cer__doublexp__player_xp_end_time hit=1") == 1,
+          " | ".join(said[-2:]))
+
+    # twelve keys a session, no more
+    rc = lua51(unpack_returned_tuples=True)
+    rc.execute(PRELUDE)
+    rc.execute("FRONTEND = false")
+    rc.execute(TOKREG_FIX)
+    rc.execute(LUA_TEXT[TOKENS])
+    for i in range(20):
+        rc.execute("ASK('cap%d')" % i)
+    capped = [ln for ln in lines_of(rc) if "userstate ask=" in ln]
+    check("userstate: twelve keys a session at most, in the order they were asked",
+          len(capped) == 12 and capped[0].endswith("ask=cap0 hit=0")
+          and capped[-1].endswith("ask=cap11 hit=0"),
+          "%d lines, last %s" % (len(capped), capped[-1] if capped else "none"))
 
 
 def tokens_channel(lua51):
